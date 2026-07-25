@@ -1,5 +1,8 @@
 #include "websocket_server.h"
 
+// Fix: LwIP TCP operations must run in TCP/IP context on ESP-IDF 5.x
+#include <lwip/tcpip.h>
+
 WebSocketServer::WebSocketServer()
   : server(nullptr), ws(nullptr), lastBroadcast(0), started(false) {}
 
@@ -23,20 +26,21 @@ void WebSocketServer::begin(NVSManager &nvsRef, RelayController &relaysRef,
   }
 }
 
-void WebSocketServer::startServer() {
-  if (started) return;
+// Called from tcpip_thread context to avoid LwIP locking asserts
+void WebSocketServer::startServerTcpIpCb(void *ctx) {
+  WebSocketServer *self = static_cast<WebSocketServer *>(ctx);
 
-  ws = new AsyncWebSocket("/ws");
-  ws->onEvent([this](AsyncWebSocket *s, AsyncWebSocketClient *c,
+  self->ws = new AsyncWebSocket("/ws");
+  self->ws->onEvent([self](AsyncWebSocket *s, AsyncWebSocketClient *c,
                      AwsEventType t, void *a, uint8_t *d, size_t l) {
-    onWsEvent(s, c, t, a, d, l);
+    self->onWsEvent(s, c, t, a, d, l);
   });
 
-  server = new AsyncWebServer(80);
-  server->addHandler(ws);
-  server->serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
+  self->server = new AsyncWebServer(80);
+  self->server->addHandler(self->ws);
+  self->server->serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
 
-  server->onNotFound([this](AsyncWebServerRequest *request) {
+  self->server->onNotFound([self](AsyncWebServerRequest *request) {
     if (!LittleFS.exists("/index.html")) {
       request->send(200, "text/plain", "Dashboard not found. Upload data/ files.");
       return;
@@ -44,8 +48,14 @@ void WebSocketServer::startServer() {
     request->send(LittleFS, "/index.html", "text/html");
   });
 
-  server->begin();
-  started = true;
+  self->server->begin();
+  self->started = true;
+  Serial.println("[INIT] Dashboard server started");
+}
+
+void WebSocketServer::startServer() {
+  if (started) return;
+  tcpip_callback(startServerTcpIpCb, this);
 }
 
 void WebSocketServer::stopServer() {

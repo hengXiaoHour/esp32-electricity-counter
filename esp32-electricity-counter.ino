@@ -107,17 +107,13 @@ void networkTask(void *pvParameters) {
       }
     }
 
-    // Start webserver when WiFi is connected (not during AP-mode captive portal)
+    // Start webserver when WiFi is connected (runs via tcpip_callback for LwIP safety)
     if (!wsServer.isRunning()) {
       if (wifiMgr.isConnected()) {
-        // Give TCP stack a moment to stabilize
-        delay(500);
-        Serial.println("[INIT] Starting WebSocket Server on port 80...");
+        Serial.println("[INIT] Starting WebSocket Server (via tcpip_callback)...");
         wsServer.startServer();
-        Serial.println("[INIT] Dashboard available");
       } else if (wifiMgr.isApMode()) {
-        // In AP mode, WiFiManager's captive portal WebServer uses port 80
-        // AsyncWebServer will start once STA mode connects
+        // AP mode: WiFiManager's captive portal uses port 80, AsyncWebServer stays off
       }
     }
 
