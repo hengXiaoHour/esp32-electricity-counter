@@ -4,7 +4,53 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>ESP32 Electricity Counter</title>
-<link rel="stylesheet" href="style.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#1a1a2e;color:#e0e0e0;padding:12px;min-height:100vh}
+#header{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #333}
+#header h1{font-size:1.3rem;color:#00e676;white-space:nowrap}
+#sysInfo{display:flex;flex-wrap:wrap;gap:8px 16px;font-size:.85rem}
+#sysInfo span{padding:4px 10px;background:#16213e;border-radius:6px}
+#ledStatus{display:inline-block;width:14px;height:14px;border-radius:50%;background:#555;vertical-align:middle;margin-left:4px}
+#channels{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;margin-bottom:16px}
+.card{background:#16213e;border-radius:10px;padding:14px;border-left:4px solid #00e676}
+.card.warning{border-left-color:#ffd700}
+.card.tripped{border-left-color:#ff1744}
+.card.off{border-left-color:#555}
+.card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.ch-name{font-weight:600;font-size:1rem}
+.ch-status{font-size:.75rem;padding:3px 10px;border-radius:10px;font-weight:600}
+.ch-status.ok{background:#1b5e20;color:#69f0ae}
+.ch-status.warning{background:#e65100;color:#ffd740}
+.ch-status.tripped{background:#b71c1c;color:#ff8a80}
+.ch-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+.ch-stats>div{text-align:center}
+.label{font-size:.7rem;color:#888;text-transform:uppercase;letter-spacing:.5px}
+.value{font-size:1.2rem;font-weight:700}
+.unit{font-size:.75rem;color:#aaa}
+.relay-indicator{display:inline-block;padding:2px 10px;border-radius:8px;font-size:.8rem;font-weight:700}
+.relay-on{background:#1b5e20;color:#69f0ae}
+.relay-off{background:#4a0000;color:#ff5252}
+.ch-controls{display:flex;flex-wrap:wrap;gap:6px}
+.ch-controls input{flex:1;min-width:60px;padding:5px 8px;background:#0f3460;border:1px solid #333;border-radius:5px;color:#e0e0e0;font-size:.8rem}
+.ch-controls button{padding:5px 12px;background:#00e676;color:#1a1a2e;border:none;border-radius:5px;font-weight:600;cursor:pointer;font-size:.8rem}
+.ch-controls button.reset{background:#ff1744;color:#fff}
+#eventsPanel{background:#16213e;border-radius:10px;padding:14px;margin-bottom:16px}
+#eventsPanel h3{font-size:.95rem;margin-bottom:8px;color:#00e676}
+#eventList{font-size:.8rem}
+.event{display:flex;gap:10px;align-items:center;padding:4px 0;border-bottom:1px solid #222}
+.event .time{color:#888;font-family:monospace;font-size:.75rem}
+.event .ch-tag{background:#333;padding:2px 8px;border-radius:4px;font-weight:600;font-size:.7rem}
+.event.tripped .ch-tag{background:#b71c1c}
+.event.warning .ch-tag{background:#e65100}
+.event .msg{flex:1}
+#settingsPanel{background:#16213e;border-radius:10px;padding:14px;margin-bottom:16px}
+#settingsPanel h3{font-size:.95rem;margin-bottom:8px;color:#00e676}
+.cal-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.cal-row label{min-width:100px;font-size:.85rem}
+.cal-row input{width:100px;padding:5px 8px;background:#0f3460;border:1px solid #333;border-radius:5px;color:#e0e0e0;font-size:.85rem}
+.cal-row button{padding:5px 12px;background:#00e676;color:#1a1a2e;border:none;border-radius:5px;font-weight:600;cursor:pointer}
+</style>
 </head>
 <body>
 <div id="header">
@@ -16,14 +62,11 @@
     <span id="ledStatus"></span>
   </div>
 </div>
-
 <div id="channels"></div>
-
 <div id="eventsPanel">
   <h3>Event Log</h3>
   <div id="eventList"></div>
 </div>
-
 <div id="settingsPanel">
   <h3>Calibration</h3>
   <div class="cal-row">
@@ -37,7 +80,18 @@
     <button onclick="sendCal('set_current_cal','currCal')">Set</button>
   </div>
 </div>
-
-<script src="script.js"></script>
+<script>
+const WS_URL=(location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws';
+let ws=null,reconnectTimer=null;
+function connectWS(){if(ws&&ws.readyState===WebSocket.OPEN)return;ws=new WebSocket(WS_URL);ws.onopen=()=>{document.getElementById('wifiStatus').textContent='🟢 Connected';if(reconnectTimer){clearInterval(reconnectTimer);reconnectTimer=null}};ws.onclose=()=>{document.getElementById('wifiStatus').textContent='🔴 Disconnected';if(!reconnectTimer)reconnectTimer=setInterval(connectWS,3000)};ws.onmessage=e=>{try{updateDashboard(JSON.parse(e.data))}catch(e){}}}
+function updateDashboard(d){document.getElementById('voltage').textContent=(d.v||0).toFixed(1)+' V';document.getElementById('wifiStatus').textContent=d.wifi?'🟢 Connected':d.ap?'🟡 AP Mode':'🔴 Disconnected';document.getElementById('uptime').textContent=formatUptime(d.uptime||0);const le=document.getElementById('ledStatus');let lc='#555';if(d.ota)lc='#06f';else if(!d.wifi)lc='red';else{let ht=false,hw=false;for(const c of d.ch){if(c.s===2)ht=true;if(c.s===1)hw=true}lc=ht?'red':hw?'#ffd700':'#0f0'}le.style.backgroundColor=lc;const ct=document.getElementById('channels');ct.innerHTML='';for(let i=0;i<d.ch.length;i++){const c=d.ch[i],cd=document.createElement('div');cd.className='card'+(c.s===2?' tripped':c.s===1?' warning':c.r?'':' off');const sl=['OK','WARNING','TRIPPED','DISABLED'][c.s]||'UNKNOWN',sc=['ok','warning','tripped',''][c.s]||'';cd.innerHTML='<div class="card-header"><span class="ch-name">'+escHtml(c.n)+'</span><span class="ch-status '+sc+'">'+sl+'</span></div><div class="ch-stats"><div><span class="label">Current</span><br><span class="value">'+c.a.toFixed(2)+'</span> <span class="unit">A</span></div><div><span class="label">Power</span><br><span class="value">'+c.w.toFixed(1)+'</span> <span class="unit">W</span></div><div><span class="label">Apparent</span><br><span class="value">'+c.va.toFixed(1)+'</span> <span class="unit">VA</span></div><div><span class="label">Power Factor</span><br><span class="value">'+c.pf.toFixed(3)+'</span></div><div><span class="label">Energy</span><br><span class="value">'+c.kwh.toFixed(3)+'</span> <span class="unit">kWh</span></div><div><span class="label">Relay</span><br><span class="relay-indicator '+(c.r?'relay-on':'relay-off')+'">'+(c.r?'ON':'OFF')+'</span></div></div><div class="ch-controls"><input type="number" id="clim_'+i+'" value="'+c.cl+'" step="0.5" placeholder="Cur limit (A)" title="Current limit"><input type="number" id="plim_'+i+'" value="'+c.pl+'" step="100" placeholder="Pwr limit (W)" title="Power limit"><input type="text" id="name_'+i+'" value="'+escHtml(c.n)+'" placeholder="Name" title="Channel name"><button onclick="setLimit('+i+')">Limit</button>'+(c.s===2?'<button class="reset" onclick="resetRelay('+i+')">Reset</button>':'')+'</div>';ct.appendChild(cd)}const el=document.getElementById('eventList');el.innerHTML='';if(d.events){for(const ev of d.events.slice(-10).reverse()){const dv=document.createElement('div'),sc2=ev.s===2?' tripped':ev.s===1?' warning':'';dv.className='event '+sc2;dv.innerHTML='<span class="time">'+formatTime(ev.t)+'</span><span class="ch-tag">Ch'+(ev.c+1)+'</span><span class="msg">'+escHtml(ev.m)+'</span>';el.appendChild(dv)}}if(document.getElementById('voltCal').value==='')document.getElementById('voltCal').value=d.voltageCalibration||260;if(document.getElementById('currCal').value==='')document.getElementById('currCal').value=d.currentCalibration||100}
+function setLimit(ch){const cl=document.getElementById('clim_'+ch).value,pl=document.getElementById('plim_'+ch).value,nm=document.getElementById('name_'+ch).value;if(ws&&ws.readyState===WebSocket.OPEN){ws.send(JSON.stringify({cmd:'set_limit',ch:ch,val:parseFloat(cl)}));ws.send(JSON.stringify({cmd:'set_power_limit',ch:ch,val:parseFloat(pl)}));if(nm)ws.send(JSON.stringify({cmd:'set_name',ch:ch,name:nm}))}}
+function resetRelay(ch){if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({cmd:'reset_relay',ch:ch}))}
+function sendCal(cmd,iid){const v=parseFloat(document.getElementById(iid).value);if(ws&&ws.readyState===WebSocket.OPEN&&!isNaN(v))ws.send(JSON.stringify({cmd:cmd,val:v}))}
+function formatUptime(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),se=s%60;return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(se).padStart(2,'0')}
+function formatTime(ms){return new Date(ms).toLocaleTimeString()}
+function escHtml(s){if(!s)return '';return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+connectWS();
+</script>
 </body>
 </html>

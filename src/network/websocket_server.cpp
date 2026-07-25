@@ -34,7 +34,6 @@ void WebSocketServer::startServer() {
 
   server = new AsyncWebServer(80);
   server->addHandler(ws);
-  server->serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
 
   server->onNotFound([this](AsyncWebServerRequest *request) {
     if (!LittleFS.exists("/index.html")) {
