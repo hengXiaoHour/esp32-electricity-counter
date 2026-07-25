@@ -170,14 +170,31 @@ void WebSocketServer::handleCommand(AsyncWebSocketClient *client, const char *ms
         if (sysData->channels[ch].status == STATUS_TRIPPED) {
           sysData->channels[ch].status = STATUS_OK;
         }
+        sysData->channels[ch].energyKWh = 0.0f;
         xSemaphoreGive(*dataMutex);
       }
       if (powerCalc) {
         powerCalc->resetEnergy(ch);
-        sysData->channels[ch].energyKWh = 0.0f;
       }
+      lastBroadcast = 0;
       printf("[WS] reset_relay: ch=%d limits=%.0fA/%.0fW relay=OFF energy=0\n",
              ch, DEFAULT_CURRENT_LIMIT_A, DEFAULT_POWER_LIMIT_W);
+    }
+
+  } else if (s.indexOf("\"cmd\":\"test_inject\"") >= 0) {
+    int ch = -1; float val = 0;
+    int ci = s.indexOf("\"ch\":");
+    if (ci >= 0) ch = s.substring(ci + 5).toInt();
+    int vi = s.indexOf("\"val\":");
+    if (vi >= 0) val = s.substring(vi + 6).toFloat();
+    if (ch >= 0 && ch < NUM_CHANNELS && val >= 0 && powerCalc) {
+      powerCalc->setEnergyKWh(ch, val);
+      if (sysData && dataMutex && xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        sysData->channels[ch].energyKWh = val;
+        xSemaphoreGive(*dataMutex);
+      }
+      lastBroadcast = 0;
+      printf("[WS] test_inject: ch=%d energy=%.3f kWh\n", ch, val);
     }
 
   } else if (s.indexOf("\"cmd\":\"set_relay\"") >= 0) {

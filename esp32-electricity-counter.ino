@@ -361,6 +361,23 @@ static void handleSerialCommand(const String &cmd) {
     }
   }
 
+  else if (cmd.startsWith("inject ")) {
+    // inject <ch> <kwh> — set fake energy for testing
+    int sp1 = cmd.indexOf(' ', 7);
+    if (sp1 > 0) {
+      int ch = cmd.substring(7, sp1).toInt() - 1;
+      float kwh = cmd.substring(sp1 + 1).toFloat();
+      if (ch >= 0 && ch < NUM_CHANNELS && kwh >= 0) {
+        powerCalc.setEnergyKWh(ch, kwh);
+        if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+          systemData.channels[ch].energyKWh = kwh;
+          xSemaphoreGive(dataMutex);
+        }
+        Serial.printf("  Ch%d energy injected: %.3f kWh\n", ch + 1, kwh);
+      }
+    }
+  }
+
   else if (cmd == "info") {
     Serial.println();
     Serial.printf("  %-16sESP32-S3 Electricity Counter v1.0\n", "Firmware:");

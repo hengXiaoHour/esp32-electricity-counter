@@ -23,6 +23,7 @@ public:
   float getPowerFactor(int ch) const   { return powerFactor[ch]; }
   float getEnergyKWh(int ch) const     { return energyKWh[ch]; }
   void resetEnergy(int ch)             { if (ch >= 0 && ch < NUM_CHANNELS) energyKWh[ch] = 0.0f; }
+  void setEnergyKWh(int ch, float v)   { if (ch >= 0 && ch < NUM_CHANNELS) energyKWh[ch] = v; }
 
   // Calibration factors (set from NVS)
   float voltageCal;
