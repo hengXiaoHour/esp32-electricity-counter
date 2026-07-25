@@ -21,9 +21,25 @@ void NVSManager::saveWiFi(const String &ssid, const String &password) {
   prefs.putString("wifi_pass", password);
 }
 
+void NVSManager::saveWiFiSSID(const String &ssid) {
+  prefs.putString("wifi_ssid", ssid);
+}
+
+void NVSManager::saveWiFiPass(const String &pass) {
+  prefs.putString("wifi_pass", pass);
+}
+
 void NVSManager::clearWiFi() {
   prefs.remove("wifi_ssid");
   prefs.remove("wifi_pass");
+}
+
+void NVSManager::saveWiFiMode(uint8_t mode) {
+  prefs.putUChar("wifi_mode", mode);
+}
+
+uint8_t NVSManager::loadWiFiMode() {
+  return prefs.getUChar("wifi_mode", 0);
 }
 
 // --- Channel Config ---

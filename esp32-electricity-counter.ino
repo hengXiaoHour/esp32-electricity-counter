@@ -239,7 +239,8 @@ void setup() {
   Serial.println("\n✅ System running! Tasks active:");
   Serial.println("  Core 0: Network (WiFi, WebSocket, OTA)");
   Serial.println("  Core 1: Sensor (ADC, Power, Limits)");
-  Serial.println("Commands: status, ch N, test led, test relay N, reset N, setwifi, wifi, clearwifi, info");
+  Serial.println("Commands: status, ch N, test led, test relay N, reset N,");
+  Serial.println("  setwifi sta|ap|auto, setwifi ssid <n>, setwifi pass <p>, setwifi connect, wifi, clearwifi, reboot, info");
   Serial.print("> ");
 }
 
@@ -332,62 +333,85 @@ static void handleSerialCommand(const String &cmd) {
     Serial.printf("CPU: 240MHz dual-core\n");
     Serial.printf("Channels: %d, Relays: %d\n", NUM_CHANNELS, NUM_RELAYS);
     Serial.printf("ADC: %d-bit, %.1fV ref\n", ADC_RESOLUTION, ADC_REFERENCE_V);
-    Serial.printf("Help: status, ch N, test led, test relay N, reset N, setwifi <ssid> <pass>, wifi\n");
+    Serial.printf("Help: status, ch N, test led, test relay N, reset N,\n");
+    Serial.printf("  setwifi sta|ap|auto, setwifi ssid <name>, setwifi pass <pwd>,\n");
+    Serial.printf("  setwifi connect|save, wifi, clearwifi, reboot, info\n");
   }
 
   else if (cmd == "wifi") {
     String ssid, pass;
     nvs.loadWiFi(ssid, pass);
-    Serial.printf("WiFi SSID: \"%s\" (password: %d chars)\n", ssid.c_str(), pass.length());
+    uint8_t mode = nvs.loadWiFiMode();
+    const char *modeStr[] = {"AUTO", "STA", "AP"};
+    Serial.printf("WiFi mode: %s\n", mode <= 2 ? modeStr[mode] : "?");
+    Serial.printf("SSID: \"%s\" (password: %d chars)\n", ssid.c_str(), pass.length());
     Serial.printf("Status: %s\n", wifiMgr.isConnected() ? "CONNECTED" : wifiMgr.isApMode() ? "AP MODE" : "DISCONNECTED");
     Serial.printf("RSSI: %d dBm\n", wifiMgr.getRSSI());
     Serial.printf("IP: %s\n", WiFi.localIP().toString().c_str());
     Serial.printf("AP IP: %s\n", WiFi.softAPIP().toString().c_str());
   }
 
-  else if (cmd.startsWith("setwifi ")) {
-    // Format: setwifi <ssid> <password>
-    // Password is everything after the last space (or empty if no trailing)
-    String rest = cmd.substring(8);
-    int sep = rest.lastIndexOf(' ');
-    if (sep < 0) {
-      // Only SSID given (open network)
-      String ssid = rest;
-      ssid.trim();
-      if (ssid.length() > 0) {
-        nvs.saveWiFi(ssid, "");
-        Serial.printf("WiFi SSID saved: \"%s\" (open network)\n", ssid.c_str());
-        Serial.println("Rebooting...");
-        delay(100);
-        ESP.restart();
-      } else {
-        Serial.println("Usage: setwifi <ssid> <password>");
-      }
+  else if (cmd == "setwifi sta") {
+    nvs.saveWiFiMode(1);
+    Serial.println("WiFi mode: STA (station). Will connect to saved SSID on next boot.");
+  }
+
+  else if (cmd == "setwifi ap") {
+    nvs.saveWiFiMode(2);
+    Serial.println("WiFi mode: AP (access point). Board will always start as AP.");
+  }
+
+  else if (cmd == "setwifi auto") {
+    nvs.saveWiFiMode(0);
+    Serial.println("WiFi mode: AUTO. Will try STA first, fallback to AP.");
+  }
+
+  else if (cmd.startsWith("setwifi ssid ")) {
+    String ssid = cmd.substring(13);
+    ssid.trim();
+    if (ssid.length() > 0) {
+      nvs.saveWiFiSSID(ssid);
+      Serial.printf("WiFi SSID saved: \"%s\"\n", ssid.c_str());
     } else {
-      String ssid = rest.substring(0, sep);
-      String pass = rest.substring(sep + 1);
-      ssid.trim();
-      if (ssid.length() > 0) {
-        nvs.saveWiFi(ssid, pass);
-        Serial.printf("WiFi saved: SSID=\"%s\", password=%d chars\n", ssid.c_str(), pass.length());
-        Serial.println("Rebooting...");
-        delay(100);
-        ESP.restart();
-      } else {
-        Serial.println("Usage: setwifi <ssid> <password>");
-      }
+      Serial.println("Usage: setwifi ssid <network name>");
+    }
+  }
+
+  else if (cmd.startsWith("setwifi pass ")) {
+    String pass = cmd.substring(13);
+    pass.trim();
+    nvs.saveWiFiPass(pass);
+    Serial.printf("WiFi password saved (%d chars)\n", pass.length());
+  }
+
+  else if (cmd == "setwifi connect" || cmd == "setwifi save") {
+    String ssid, pass;
+    nvs.loadWiFi(ssid, pass);
+    if (ssid.length() > 0) {
+      nvs.saveWiFiMode(1);
+      Serial.printf("Connecting to \"%s\"... Rebooting.\n", ssid.c_str());
+      delay(100);
+      ESP.restart();
+    } else {
+      Serial.println("No SSID set. Use 'setwifi ssid <name>' first.");
     }
   }
 
   else if (cmd == "clearwifi") {
     nvs.clearWiFi();
-    Serial.println("WiFi credentials cleared. Rebooting into AP mode...");
+    nvs.saveWiFiMode(0);
+    Serial.println("WiFi credentials + mode cleared from NVS.");
+    Serial.println("Type 'reboot' to restart in AP mode.");
+  }
+
+  else if (cmd == "reboot") {
+    Serial.println("Rebooting...");
     delay(100);
     ESP.restart();
   }
 
   else {
-    Serial.println("Unknown command. Try: status, ch N, test led, test relay N, reset N, setwifi, wifi, clearwifi, info");
+    Serial.println("Unknown. Try: status, ch N, test led, test relay N, reset N, setwifi ..., wifi, clearwifi, reboot, info");
   }
 }
 

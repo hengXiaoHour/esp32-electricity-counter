@@ -11,7 +11,13 @@ public:
   // WiFi credentials
   bool loadWiFi(String &ssid, String &password);
   void saveWiFi(const String &ssid, const String &password);
+  void saveWiFiSSID(const String &ssid);
+  void saveWiFiPass(const String &pass);
   void clearWiFi();
+
+  // WiFi mode: 0=AUTO (STA fallback AP), 1=STA only, 2=AP only
+  void saveWiFiMode(uint8_t mode);
+  uint8_t loadWiFiMode();
 
   // Per-channel configuration
   bool loadChannelConfig(uint8_t channel, char *name, size_t nameLen,

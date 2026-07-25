@@ -13,8 +13,13 @@ void WiFiManager::begin(NVSManager &nvsRef) {
 
   // Load WiFi credentials
   nvs->loadWiFi(configuredSSID, configuredPass);
+  uint8_t mode = nvs->loadWiFiMode();
 
-  if (configuredSSID.length() > 0) {
+  if (mode == 2) {
+    // AP-only mode
+    startAPMode();
+  } else if (configuredSSID.length() > 0) {
+    // STA mode (or AUTO with credentials)
     state = WIFI_CONNECTING;
     connectToWiFi();
   } else {
