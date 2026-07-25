@@ -369,7 +369,8 @@ static void handleSerialCommand(const String &cmd) {
     Serial.printf("  %-16s%s %s\n", "Built:", __DATE__, __TIME__);
     Serial.printf("  %-16s4 MB Flash, 2 MB PSRAM\n", "Hardware:");
     Serial.printf("  %-16s240 MHz dual-core\n", "CPU:");
-    Serial.printf("  %-16s%d channels, %d relays\n", "Channels:", NUM_CHANNELS, NUM_RELAYS);
+    Serial.printf("  %-16s%d\n", "Channels:", NUM_CHANNELS);
+    Serial.printf("  %-16s%d\n", "Relays:", NUM_RELAYS);
     Serial.printf("  %-16s%d-bit, %.1fV ref\n", "ADC:", ADC_RESOLUTION, ADC_REFERENCE_V);
     Serial.println();
   }
@@ -377,6 +378,7 @@ static void handleSerialCommand(const String &cmd) {
   else if (cmd == "help") {
     Serial.println();
     Serial.println("  Commands:");
+    Serial.println("    help                Show available commands");
     Serial.println("    status              System status overview");
     Serial.println("    ch <N>              Channel details (1-6)");
     Serial.println("    test led            LED color sequence test");
@@ -405,7 +407,8 @@ static void handleSerialCommand(const String &cmd) {
       wifiMgr.isConnected() ? "CONNECTED" : wifiMgr.isApMode() ? "AP MODE" : "DISCONNECTED");
     Serial.printf("  %-16s%d dBm\n", "RSSI:", wifiMgr.getRSSI());
     Serial.printf("  %-16s%s\n", "IP:", WiFi.localIP().toString().c_str());
-    Serial.printf("  %-16s%s\n", "AP IP:", WiFi.softAPIP().toString().c_str());
+    if (wifiMgr.isApMode())
+      Serial.printf("  %-16s%s\n", "AP IP:", WiFi.softAPIP().toString().c_str());
     Serial.println();
   }
 
