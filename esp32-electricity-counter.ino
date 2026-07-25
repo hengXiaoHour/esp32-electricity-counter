@@ -21,6 +21,27 @@ SystemData systemData;
 SemaphoreHandle_t dataMutex;
 
 static uint32_t lastSensorCycle = 0;
+static bool wifiIpPrinted = false;
+
+void onWiFiEvent(WiFiEvent_t event, arduino_event_info_t info) {
+  if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
+    wifiIpPrinted = true;
+    Serial.printf("\n*** WiFi CONNECTED ***\n");
+    Serial.printf("  SSID: %s\n", WiFi.SSID().c_str());
+    Serial.printf("  IP:   %s\n", WiFi.localIP().toString().c_str());
+    Serial.printf("  DNS:  %s\n", WiFi.dnsIP().toString().c_str());
+    Serial.printf("  Dashboard: http://%s/\n", WiFi.localIP().toString().c_str());
+    Serial.print("> ");
+  }
+  if (event == ARDUINO_EVENT_WIFI_AP_START) {
+    wifiIpPrinted = true;
+    Serial.printf("\n*** AP MODE ***\n");
+    Serial.printf("  SSID: \"%s\" / \"%s\"\n", WiFi.softAPSSID().c_str(), WiFiManager::AP_PASS);
+    Serial.printf("  IP:   %s\n", WiFi.softAPIP().toString().c_str());
+    Serial.printf("  Config page: http://%s/\n", WiFi.softAPIP().toString().c_str());
+    Serial.print("> ");
+  }
+}
 
 // Forward declarations
 static void handleSerialCommand(const String &cmd);
@@ -107,24 +128,21 @@ void networkTask(void *pvParameters) {
       }
     }
 
-    // Print IP when WiFi connects
-    {
-      static bool ipPrinted = false;
-      if (wifiMgr.isConnected() && !ipPrinted) {
-        ipPrinted = true;
-        Serial.printf("\n*** WiFi CONNECTED ***\n");
-        Serial.printf("  SSID: %s\n", wifiMgr.getSSID());
-        Serial.printf("  IP:   %s\n", WiFi.localIP().toString().c_str());
-        Serial.printf("  DNS:  %s\n", WiFi.dnsIP().toString().c_str());
-        Serial.printf("  Dashboard: http://%s/\n", WiFi.localIP().toString().c_str());
-      }
-      if (wifiMgr.isApMode() && !ipPrinted) {
-        ipPrinted = true;
-        Serial.printf("\n*** AP MODE ***\n");
-        Serial.printf("  SSID: \"%s\" / \"%s\"\n", wifiMgr.getSSID(), WiFiManager::AP_PASS);
-        Serial.printf("  IP:   %s\n", WiFi.softAPIP().toString().c_str());
-        Serial.printf("  Config page: http://%s/\n", WiFi.softAPIP().toString().c_str());
-      }
+    // Print IP once when WiFi connects
+    if (!wifiIpPrinted && wifiMgr.isConnected() && WiFi.localIP() != IPAddress(0,0,0,0)) {
+      wifiIpPrinted = true;
+      Serial.printf("\n*** WiFi CONNECTED ***\n");
+      Serial.printf("  SSID: %s\n", wifiMgr.getSSID());
+      Serial.printf("  IP:   %s\n", WiFi.localIP().toString().c_str());
+      Serial.printf("  DNS:  %s\n", WiFi.dnsIP().toString().c_str());
+      Serial.printf("  Dashboard: http://%s/\n", WiFi.localIP().toString().c_str());
+    }
+    if (!wifiIpPrinted && wifiMgr.isApMode()) {
+      wifiIpPrinted = true;
+      Serial.printf("\n*** AP MODE ***\n");
+      Serial.printf("  SSID: \"%s\" / \"%s\"\n", wifiMgr.getSSID(), WiFiManager::AP_PASS);
+      Serial.printf("  IP:   %s\n", WiFi.softAPIP().toString().c_str());
+      Serial.printf("  Config page: http://%s/\n", WiFi.softAPIP().toString().c_str());
     }
 
     // Start webserver when WiFi is connected (runs via tcpip_callback for LwIP safety)
@@ -239,6 +257,8 @@ void setup() {
 
   dataMutex = xSemaphoreCreateMutex();
   Serial.println("[INIT] Mutex created");
+
+  WiFi.onEvent(onWiFiEvent);
 
   Serial.print("[INIT] WiFi... ");
   wifiMgr.begin(nvs);
