@@ -168,7 +168,7 @@ void WebSocketServer::handleCommand(AsyncWebSocketClient *client, const char *ms
     if (ci >= 0) ch = s.substring(ci + 5).toInt();
     int si = s.indexOf("\"state\":");
     if (ch >= 0 && ch < NUM_CHANNELS && si >= 0 && relays) {
-      bool state = s.substring(si + 8).toInt() != 0;
+      bool state = s.substring(si + 8, si + 12) == "true";
       printf("[WS] set_relay: ch=%d state=%s\n", ch, state ? "ON" : "OFF");
       relays->set(ch, state);
       if (sysData && dataMutex && xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
