@@ -1,12 +1,12 @@
-#include "config.h"
-#include "core/power_calculator.h"
-#include "core/relay_controller.h"
-#include "core/limit_manager.h"
-#include "network/wifi_manager.h"
-#include "network/websocket_server.h"
-#include "network/ota_handler.h"
-#include "ui/status_led.h"
-#include "utils/nvs_manager.h"
+#include "src/config.h"
+#include "src/core/power_calculator.h"
+#include "src/core/relay_controller.h"
+#include "src/core/limit_manager.h"
+#include "src/network/wifi_manager.h"
+#include "src/network/websocket_server.h"
+#include "src/network/ota_handler.h"
+#include "src/ui/status_led.h"
+#include "src/utils/nvs_manager.h"
 
 NVSManager      nvs;
 PowerCalculator powerCalc;
@@ -72,11 +72,6 @@ static void updateSharedData() {
   }
 }
 
-static float getPowerLimit(int ch)   { return systemData.channels[ch].powerLimit; }
-static float getCurrentLimit(int ch) { return systemData.channels[ch].currentLimit; }
-static float getCurrentRMS(int ch)   { return powerCalc.getCurrentRMS(ch); }
-static float getActivePower(int ch)  { return powerCalc.getActivePower(ch); }
-
 // ==============================
 // FreeRTOS Tasks
 // ==============================
@@ -114,10 +109,10 @@ void sensorTask(void *pvParameters) {
       float currRMS[NUM_CHANNELS], actPower[NUM_CHANNELS];
       float pLimit[NUM_CHANNELS], cLimit[NUM_CHANNELS];
       for (int ch = 0; ch < NUM_CHANNELS; ch++) {
-        currRMS[ch] = getCurrentRMS(ch);
-        actPower[ch] = getActivePower(ch);
-        pLimit[ch] = getPowerLimit(ch);
-        cLimit[ch] = getCurrentLimit(ch);
+        currRMS[ch] = powerCalc.getCurrentRMS(ch);
+        actPower[ch] = powerCalc.getActivePower(ch);
+        pLimit[ch] = systemData.channels[ch].powerLimit;
+        cLimit[ch] = systemData.channels[ch].currentLimit;
       }
 
       limitMgr.check(currRMS, actPower, pLimit, cLimit,

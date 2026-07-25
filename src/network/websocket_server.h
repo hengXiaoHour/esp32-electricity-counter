@@ -9,6 +9,9 @@
 
 class WebSocketServer {
 public:
+  WebSocketServer();
+  ~WebSocketServer();
+
   void begin(NVSManager &nvs, RelayController &relays, LimitManager &limits,
              SystemData *sysData, SemaphoreHandle_t *mutex);
   void loop();
@@ -16,8 +19,8 @@ public:
   void broadcastData(const SystemData &data);
 
 private:
-  AsyncWebServer server;
-  AsyncWebSocket ws;
+  AsyncWebServer *server;
+  AsyncWebSocket *ws;
   NVSManager *nvs;
   RelayController *relays;
   LimitManager *limits;
@@ -31,7 +34,6 @@ private:
 
   void handleCommand(AsyncWebSocketClient *client, const char *msg);
 
-  // JSON serialization
   void buildJson(const SystemData &data, String &json);
   void buildChannelJson(const ChannelData &ch, String &json, bool last);
   void buildEventJson(const Event &ev, String &json, bool last);

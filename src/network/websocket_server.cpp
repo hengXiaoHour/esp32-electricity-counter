@@ -1,7 +1,12 @@
 #include "websocket_server.h"
 
 WebSocketServer::WebSocketServer()
-  : server(80), ws("/ws"), lastBroadcast(0) {}
+  : server(nullptr), ws(nullptr), lastBroadcast(0) {}
+
+WebSocketServer::~WebSocketServer() {
+  delete ws;
+  delete server;
+}
 
 void WebSocketServer::begin(NVSManager &nvsRef, RelayController &relaysRef,
                             LimitManager &limitsRef,
@@ -12,25 +17,22 @@ void WebSocketServer::begin(NVSManager &nvsRef, RelayController &relaysRef,
   sysData = sysDataRef;
   dataMutex = mutexRef;
 
-  // Mount LittleFS
   if (!LittleFS.begin()) {
-    // Format if mount fails
     LittleFS.format();
     LittleFS.begin();
   }
 
-  // WebSocket event handler
-  ws.onEvent([this](AsyncWebSocket *s, AsyncWebSocketClient *c,
-                    AwsEventType t, void *a, uint8_t *d, size_t l) {
+  ws = new AsyncWebSocket("/ws");
+  ws->onEvent([this](AsyncWebSocket *s, AsyncWebSocketClient *c,
+                     AwsEventType t, void *a, uint8_t *d, size_t l) {
     onWsEvent(s, c, t, a, d, l);
   });
-  server.addHandler(&ws);
 
-  // Serve static files from LittleFS
-  server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
+  server = new AsyncWebServer(80);
+  server->addHandler(ws);
+  server->serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
 
-  // Fallback to index.html for SPA routing
-  server.onNotFound([this](AsyncWebServerRequest *request) {
+  server->onNotFound([this](AsyncWebServerRequest *request) {
     if (!LittleFS.exists("/index.html")) {
       request->send(200, "text/plain", "Dashboard not found. Upload data/ files.");
       return;
@@ -38,30 +40,29 @@ void WebSocketServer::begin(NVSManager &nvsRef, RelayController &relaysRef,
     request->send(LittleFS, "/index.html", "text/html");
   });
 
-  server.begin();
+  server->begin();
 }
 
 void WebSocketServer::loop() {
-  ws.cleanupClients();
+  if (ws) ws->cleanupClients();
 }
 
 void WebSocketServer::broadcastData(const SystemData &data) {
-  if (ws.count() == 0) return;
-
+  if (!ws || ws->count() == 0) return;
   if (millis() - lastBroadcast < WS_UPDATE_INTERVAL_MS) return;
   lastBroadcast = millis();
 
   String json;
   buildJson(data, json);
-  ws.textAll(json);
+  ws->textAll(json);
 }
 
-void WebSocketServer::onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
+void WebSocketServer::onWsEvent(AsyncWebSocket *srv, AsyncWebSocketClient *client,
                                  AwsEventType type, void *arg,
                                  uint8_t *data, size_t len) {
+  (void)srv;
   switch (type) {
     case WS_EVT_CONNECT:
-      break;
     case WS_EVT_DISCONNECT:
       break;
     case WS_EVT_DATA: {
@@ -79,15 +80,11 @@ void WebSocketServer::onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *cl
 }
 
 void WebSocketServer::handleCommand(AsyncWebSocketClient *client, const char *msg) {
-  // Parse simple JSON commands
-  // Format: {"cmd":"set_limit","ch":0,"val":16.0}
-  // We use basic string parsing to avoid ArduinoJson dependency
-
+  (void)client;
   String s(msg);
 
   if (s.indexOf("\"cmd\":\"set_limit\"") >= 0) {
-    int ch = -1;
-    float val = 0;
+    int ch = -1; float val = 0;
     int ci = s.indexOf("\"ch\":");
     if (ci >= 0) ch = s.substring(ci + 5).toInt();
     int vi = s.indexOf("\"val\":");
@@ -101,8 +98,7 @@ void WebSocketServer::handleCommand(AsyncWebSocketClient *client, const char *ms
     }
 
   } else if (s.indexOf("\"cmd\":\"set_power_limit\"") >= 0) {
-    int ch = -1;
-    float val = 0;
+    int ch = -1; float val = 0;
     int ci = s.indexOf("\"ch\":");
     if (ci >= 0) ch = s.substring(ci + 5).toInt();
     int vi = s.indexOf("\"val\":");

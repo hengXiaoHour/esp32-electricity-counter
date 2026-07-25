@@ -57,7 +57,7 @@ void WiFiManager::loop() {
   }
 
   if (state == WIFI_AP_MODE) {
-    dnsServer.processNext();
+    dnsServer.processNextRequest();
     if (httpServer) {
       httpServer->handleClient();
     }
