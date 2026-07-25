@@ -145,7 +145,7 @@ void networkTask(void *pvParameters) {
       Serial.printf("  Config page: http://%s/\n", WiFi.softAPIP().toString().c_str());
     }
 
-    // Start webserver when WiFi is connected (runs via tcpip_callback for LwIP safety)
+    // Start webserver after WiFi connects (LwIP already initialized)
     {
       static bool serverRequested = false;
       if (!serverRequested && !wsServer.isRunning()) {
@@ -153,8 +153,6 @@ void networkTask(void *pvParameters) {
           serverRequested = true;
           Serial.println("[INIT] Starting WebSocket Server...");
           wsServer.startServer();
-        } else if (wifiMgr.isApMode()) {
-          // AP mode: WiFiManager's captive portal uses port 80, stay off
         }
       }
     }
@@ -260,6 +258,10 @@ void setup() {
 
   WiFi.onEvent(onWiFiEvent);
 
+  Serial.print("[INIT] LittleFS... ");
+  wsServer.begin(nvs, relays, limitMgr, &systemData, &dataMutex);
+  Serial.println("OK");
+
   Serial.print("[INIT] WiFi... ");
   wifiMgr.begin(nvs);
   statusLED.setMode(LED_SOLID_RED);
@@ -269,10 +271,6 @@ void setup() {
   } else {
     Serial.println("CONNECTING (IP will be printed on connect)");
   }
-
-  Serial.print("[INIT] WebSocket Server (deferred)... ");
-  wsServer.begin(nvs, relays, limitMgr, &systemData, &dataMutex);
-  Serial.println("LittleFS mounted (server starts after WiFi connects)");
 
   Serial.print("[INIT] OTA... ");
   otaHandler.begin("esp32-elec-counter");

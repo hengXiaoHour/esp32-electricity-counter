@@ -1,8 +1,5 @@
 #include "websocket_server.h"
 
-// LwIP TCP core lock for thread-safe TCP operations
-#include <lwip/tcpip.h>
-
 WebSocketServer::WebSocketServer()
   : server(nullptr), ws(nullptr), lastBroadcast(0), started(false) {}
 
@@ -47,11 +44,9 @@ void WebSocketServer::startServer() {
     request->send(LittleFS, "/index.html", "text/html");
   });
 
-  // Acquire LwIP core lock before TCP operations
-  LOCK_TCPIP_CORE();
+  // server->begin() needs LwIP initialized + correct task context.
+  // We call it directly here — it works after WiFi connects from networkTask.
   server->begin();
-  UNLOCK_TCPIP_CORE();
-
   started = true;
 }
 
