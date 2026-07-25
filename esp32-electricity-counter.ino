@@ -128,12 +128,16 @@ void networkTask(void *pvParameters) {
     }
 
     // Start webserver when WiFi is connected (runs via tcpip_callback for LwIP safety)
-    if (!wsServer.isRunning()) {
-      if (wifiMgr.isConnected()) {
-        Serial.println("[INIT] Starting WebSocket Server...");
-        wsServer.startServer();
-      } else if (wifiMgr.isApMode()) {
-        // AP mode: WiFiManager's captive portal uses port 80, AsyncWebServer stays off
+    {
+      static bool serverRequested = false;
+      if (!serverRequested && !wsServer.isRunning()) {
+        if (wifiMgr.isConnected()) {
+          serverRequested = true;
+          Serial.println("[INIT] Starting WebSocket Server...");
+          wsServer.startServer();
+        } else if (wifiMgr.isApMode()) {
+          // AP mode: WiFiManager's captive portal uses port 80, stay off
+        }
       }
     }
 
