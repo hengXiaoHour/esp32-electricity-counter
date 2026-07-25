@@ -1,0 +1,15 @@
+{
+  "locked": true,
+  "version": "1.0.0",
+  "description": "Architecture lock for ESP32 Electricity Counter",
+  "rules": {
+    "allowed_directories": ["doc", "src", "tests", "config", "data", "scripts", "src/hardware", "src/core", "src/api", "src/utils", "doc/opencode_agent"],
+    "source_root": "src/",
+    "test_root": "tests/",
+    "doc_root": "doc/",
+    "python_naming": "snake_case",
+    "test_pattern": "test_*.py",
+    "type_hints_required": true
+  },
+  "message": "This project structure is LOCKED. AI agents must not create files outside the defined tree without user approval."
+}
