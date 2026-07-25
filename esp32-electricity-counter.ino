@@ -24,7 +24,6 @@ static uint32_t lastSensorCycle = 0;
 
 // Forward declarations
 static void handleSerialCommand(const String &cmd);
-static void processSerial();
 
 static void updateLED() {
   if (otaHandler.isInProgress()) {
@@ -240,7 +239,8 @@ void setup() {
   Serial.println("\n✅ System running! Tasks active:");
   Serial.println("  Core 0: Network (WiFi, WebSocket, OTA)");
   Serial.println("  Core 1: Sensor (ADC, Power, Limits)");
-  Serial.println("Commands: status, ch N, test led, test relay N, reset N, info");
+  Serial.println("Commands: status, ch N, test led, test relay N, reset N, setwifi, wifi, clearwifi, info");
+  Serial.print("> ");
 }
 
 // ==============================
@@ -332,42 +332,65 @@ static void handleSerialCommand(const String &cmd) {
     Serial.printf("CPU: 240MHz dual-core\n");
     Serial.printf("Channels: %d, Relays: %d\n", NUM_CHANNELS, NUM_RELAYS);
     Serial.printf("ADC: %d-bit, %.1fV ref\n", ADC_RESOLUTION, ADC_REFERENCE_V);
-    Serial.printf("Help: status, ch N, test led, test relay N, reset N\n");
+    Serial.printf("Help: status, ch N, test led, test relay N, reset N, setwifi <ssid> <pass>, wifi\n");
+  }
+
+  else if (cmd == "wifi") {
+    String ssid, pass;
+    nvs.loadWiFi(ssid, pass);
+    Serial.printf("WiFi SSID: \"%s\" (password: %d chars)\n", ssid.c_str(), pass.length());
+    Serial.printf("Status: %s\n", wifiMgr.isConnected() ? "CONNECTED" : wifiMgr.isApMode() ? "AP MODE" : "DISCONNECTED");
+    Serial.printf("RSSI: %d dBm\n", wifiMgr.getRSSI());
+    Serial.printf("IP: %s\n", WiFi.localIP().toString().c_str());
+    Serial.printf("AP IP: %s\n", WiFi.softAPIP().toString().c_str());
+  }
+
+  else if (cmd.startsWith("setwifi ")) {
+    // Format: setwifi <ssid> <password>
+    // Password is everything after the last space (or empty if no trailing)
+    String rest = cmd.substring(8);
+    int sep = rest.lastIndexOf(' ');
+    if (sep < 0) {
+      // Only SSID given (open network)
+      String ssid = rest;
+      ssid.trim();
+      if (ssid.length() > 0) {
+        nvs.saveWiFi(ssid, "");
+        Serial.printf("WiFi SSID saved: \"%s\" (open network)\n", ssid.c_str());
+        Serial.println("Rebooting...");
+        delay(100);
+        ESP.restart();
+      } else {
+        Serial.println("Usage: setwifi <ssid> <password>");
+      }
+    } else {
+      String ssid = rest.substring(0, sep);
+      String pass = rest.substring(sep + 1);
+      ssid.trim();
+      if (ssid.length() > 0) {
+        nvs.saveWiFi(ssid, pass);
+        Serial.printf("WiFi saved: SSID=\"%s\", password=%d chars\n", ssid.c_str(), pass.length());
+        Serial.println("Rebooting...");
+        delay(100);
+        ESP.restart();
+      } else {
+        Serial.println("Usage: setwifi <ssid> <password>");
+      }
+    }
+  }
+
+  else if (cmd == "clearwifi") {
+    nvs.clearWiFi();
+    Serial.println("WiFi credentials cleared. Rebooting into AP mode...");
+    delay(100);
+    ESP.restart();
   }
 
   else {
-    Serial.println("Unknown command. Try: status, ch N, test led, test relay N, reset N, info");
-  }
-}
-
-// ==============================
-// Serial Command Processing
-// ==============================
-static char serialBuf[64];
-static uint8_t serialPos = 0;
-
-void processSerial() {
-  while (Serial.available()) {
-    char c = Serial.read();
-    // Echo
-    if (c >= 32 && c <= 126) Serial.write(c);
-    else if (c == '\r') Serial.write('\n');
-
-    if (c == '\n' || c == '\r') {
-      if (serialPos > 0) {
-        serialBuf[serialPos] = '\0';
-        Serial.println();
-        handleSerialCommand(String(serialBuf));
-        serialPos = 0;
-        Serial.print("> ");
-      }
-    } else if (serialPos < sizeof(serialBuf) - 1) {
-      serialBuf[serialPos++] = c;
-    }
+    Serial.println("Unknown command. Try: status, ch N, test led, test relay N, reset N, setwifi, wifi, clearwifi, info");
   }
 }
 
 void loop() {
-  processSerial();
-  vTaskDelay(pdMS_TO_TICKS(50));
+  vTaskDelay(pdMS_TO_TICKS(100));
 }
