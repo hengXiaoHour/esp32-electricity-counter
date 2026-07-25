@@ -98,6 +98,16 @@ void NVSManager::saveCurrentCalibration(float value) {
   prefs.putFloat("curr_cal", value);
 }
 
+float NVSManager::loadChannelCurrentCal(uint8_t channel) {
+  String key = channelKey(channel, "ccal");
+  return prefs.getFloat(key.c_str(), loadCurrentCalibration());
+}
+
+void NVSManager::saveChannelCurrentCal(uint8_t channel, float value) {
+  String key = channelKey(channel, "ccal");
+  prefs.putFloat(key.c_str(), value);
+}
+
 // --- Default Names ---
 
 const char *NVSManager::defaultChannelName(uint8_t channel) {

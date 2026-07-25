@@ -1,104 +1,86 @@
-# Plan: ESP32-S3 6-Channel AC Electricity Counter
+# Plan: Fix Dashboard Bugs + Red Dark Theme
 
-## Files to Create
+## Files to Modify
+- `data/index.html` — clean skeleton, link to external CSS/JS, add OTA panel, per-channel cal rows
+- `data/style.css` — complete dark/red theme redesign with blink animations
+- `data/script.js` — rewritten with hasRelay, per-channel cal, blink toggling, OTA panel
 
-```
-src/
-├── config.h                       # Pin defines, constants, calibration defaults
-├── main.ino                       # Entry point, FreeRTOS tasks, shared data
-├── sensor/
-│   ├── current_sensor.h
-│   └── current_sensor.cpp         # 6-ch ADC sampling, RMS calculation
-├── sensor/
-│   ├── voltage_sensor.h
-│   └── voltage_sensor.cpp         # ADC sampling, RMS, calibration
-├── core/
-│   ├── power_calculator.h
-│   └── power_calculator.cpp       # Real power, apparent, PF, kWh
-├── core/
-│   ├── relay_controller.h
-│   └── relay_controller.cpp       # Relay switching, active-LOW
-├── core/
-│   ├── limit_manager.h
-│   └── limit_manager.cpp          # Warning/trip logic, event log
-├── network/
-│   ├── wifi_manager.h
-│   └── wifi_manager.cpp           # WiFi + fallback AP + captive portal
-├── network/
-│   ├── websocket_server.h
-│   └── websocket_server.cpp       # AsyncWebSocket, JSON, commands
-├── network/
-│   ├── ota_handler.h
-│   └── ota_handler.cpp            # ArduinoOTA setup
-├── ui/
-│   ├── status_led.h
-│   └── status_led.cpp             # WS2812 with R/G swap
-├── utils/
-│   ├── nvs_manager.h
-│   └── nvs_manager.cpp            # Preferences wrapper
-data/
-├── index.html                     # Dashboard HTML
-├── style.css                      # Dashboard styles
-└── script.js                      # WebSocket client + UI
-```
+## JSON Payload Changes (documented in script.js header comment)
+
+### Added fields
+| Field | Location | Type | Description |
+|-------|----------|------|-------------|
+| `hasRelay` | per-channel `ch[i]` | bool | true for relay-controlled channels (1-4), false for monitor-only (5-6) |
+| `currentCalibration` | root | number[] | Array of 6 values, one per channel |
+| `otaProgress` | root | number (optional) | OTA update progress 0-100 |
+| `firmwareVersion` | root | string (optional) | Current firmware version (e.g. "1.0.0") |
+
+### Changed fields
+| Field | Before | After |
+|-------|--------|-------|
+| `currentCalibration` | single number | array of 6 numbers |
+| `voltageCalibration` | unchanged | unchanged (stays global) |
+
+### Removed fields
+None.
+
+### New commands
+| Command | Payload | Description |
+|---------|---------|-------------|
+| `set_current_cal` | `{cmd, ch: int, val: float}` | Set per-channel current calibration |
+
+### Changed commands
+| Command | Before | After |
+|---------|--------|-------|
+| `set_voltage_cal` | `{cmd, val}` | unchanged |
+| `set_current_cal` | `{cmd, val}` (global) | `{cmd, ch, val}` (per-channel) |
 
 ## Implementation Steps
 
-### Step 1: Config + NVS Manager
-- `src/config.h` — all pin `#define`s, constants (warning threshold, ADC params, calibration defaults), relay active-LOW flag
-- `src/utils/nvs_manager.h/.cpp` — Preferences wrapper: save/load channel configs (name, limit), WiFi creds, calibration values
-- **Verification:** Compile check
+### Step 1: Rewrite `data/index.html`
+- Remove all inline `<style>` and `<script>` blocks
+- Add `<link rel="stylesheet" href="style.css">`
+- Add `<script src="script.js" defer></script>`
+- Add OTA panel div (hidden by default, between header and channels)
+- Add `#currentCalRows` container in settings panel for per-channel calibration
+- Changed: `sendCal('set_voltage_cal','voltCal')` → `sendVoltageCal()`
+- Remove old global `currCal` input row
 
-### Step 2: Status LED
-- `src/ui/status_led.h/.cpp` — WS2812 wrapper, `setStatusColor()` with R/G swap, blink patterns for each state (green, yellow, red, blue)
-- **Verification:** Compile check
+### Step 2: Rewrite `data/style.css`
+- Base: `#0c0c10` body bg, `#15151a` card bg, `#2a2a32` border
+- Brand red: `#e63946` for header, buttons, hover borders
+- OK status: `#2ecc71` green (semantic, distinct from red)
+- Warning: `#f39c12` amber
+- Tripped: `#ff1744` bright red
+- Typography: system sans-serif for UI labels, `mono` class for numeric readings
+- Cards: 1px border, `border-radius: 10px`, `box-shadow`, border color changes on status
+- `@keyframes blink-yellow` / `@keyframes blink-red` — opacity + box-shadow pulse
+- `.blink-yellow`, `.blink-red`, `.blink-blue` classes
+- `.monitor-only` muted gray tag
+- OTA panel styles (gradient bar, progress fill)
+- Button styles: primary (brand red bg), reset (bright red outline), secondary (muted)
+- Hover states: slight lift (`translateY(-1px)`), border glow
+- Smooth transitions: 150-200ms
+- Responsive: keep `auto-fill, minmax(280px, 1fr)`
 
-### Step 3: Sensors (Current + Voltage)
-- `src/sensor/current_sensor.h/.cpp` — ADC init, sample all 6 channels, compute RMS current
-- `src/sensor/voltage_sensor.h/.cpp` — ADC init, sample, compute RMS voltage with calibration
-- **Verification:** Compile check
+### Step 3: Rewrite `data/script.js`
+- Preserve all existing functionality: `connectWS()`, `updateDashboard()`, `setLimit()`, `resetRelay()`, `formatUptime()`, `formatTime()`, `escHtml()`
+- **hasRelay**: check `ch.hasRelay` — if false, hide relay indicator, show "Monitoring Only", no Reset button; if true, show relay ON/OFF + Reset button always
+- **Blink**: set `ledEl.className` to `'blink-yellow'`/`'blink-red'`/`'blink-blue'` based on state; apply same class to channel status badge
+- **Per-channel cal**: `initCalibrationRows(count)` generates row HTML once; `sendCurrentCal(ch)` sends `{cmd:'set_current_cal', ch, val}`
+- **OTA panel**: show/hide `#otaPanel`, update progress bar width + percentage text
+- **Voltage cal**: `sendVoltageCal()` sends `{cmd:'set_voltage_cal', val}`
+- Add `mono` class to `<span class="value mono">` for readings
+- Each `data.ch[i]` gets `hasRelay` field; Reset button appears on all relay channels (not just tripped)
 
-### Step 4: Power Calculator
-- `src/core/power_calculator.h/.cpp` — Real power (V×I), apparent power (V_rms × I_rms), power factor, accumulated kWh
-- **Verification:** Compile check
-
-### Step 5: Relay Controller + Limit Manager
-- `src/core/relay_controller.h/.cpp` — Relay init, on/off with active-LOW config, status readback
-- `src/core/limit_manager.h/.cpp` — Warning (≥90%) / trip (≥100%) logic, event log ring buffer, per-channel state machine
-- **Verification:** Compile check
-
-### Step 6: WiFi Manager
-- `src/network/wifi_manager.h/.cpp` — Connect using stored creds, fallback AP + captive portal/DNS, retry/backoff, connection callback
-- **Verification:** Compile check
-
-### Step 7: WebSocket Server + OTA
-- `src/network/websocket_server.h/.cpp` — AsyncWebServer + AsyncWebSocket, JSON serialization of shared data, command parsing (set limit, set name, reset relay)
-- `src/network/ota_handler.h/.cpp` — ArduinoOTA setup, progress callback, LED status integration
-- **Verification:** Compile check
-
-### Step 8: main.ino
-- Shared data struct with `SemaphoreHandle_t`
-- Core 0 task: networking (WiFi, WebSocket, OTA)
-- Core 1 task: sensor sampling + math + limit checking
-- `setup()` and `loop()` — FreeRTOS task creation, no `delay()`
-- **Verification:** Compile check
-
-### Step 9: Dashboard Web Files
-- `data/index.html` — mobile-responsive single-page layout with per-channel cards, settings panel, event log
-- `data/style.css` — clean modern styling
-- `data/script.js` — WebSocket client, live updates, editable fields, relay reset buttons
-- **Verification:** Manual review (visual correctness)
-
-### Step 10: README + Final Integration
-- Update `README.md` with setup instructions: board selection, partition scheme, library installation, first-boot WiFi provisioning
-- **Verification:** Full compile check
-
-## Test Strategy
-
-Arduino C++ firmware — no automated test framework available. Verification = compile against ESP32-S3 target using Arduino IDE/CLI. Each step's verification confirms no syntax or type errors.
-
-If `arduino-cli` is available: `arduino-cli compile --fqbn esp32:esp32:esp32s3 src/main.ino`
+## Verification
+- Open `index.html` in browser — should render with dark/red theme
+- Check that cards render correctly for all states
+- Verify calibration section shows 6 current inputs + 1 voltage input
+- Verify OTA panel renders with progress bar
+- Verify blink animations work on LED dot and status badges
+- Manual: check all button onclick handlers reference existing functions
+- Mobile: test at 320px width
 
 ## Rollback
-
-Each step is a git commit. If something breaks, `git revert <commit>` to undo.
+- All 3 files are in `data/` — restore from git if available, or keep originals as backup

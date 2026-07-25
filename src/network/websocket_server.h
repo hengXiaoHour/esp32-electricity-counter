@@ -39,6 +39,6 @@ private:
   void handleCommand(AsyncWebSocketClient *client, const char *msg);
 
   void buildJson(const SystemData &data, String &json);
-  void buildChannelJson(const ChannelData &ch, String &json, bool last);
+  void buildChannelJson(const ChannelData &ch, int index, String &json, bool last);
   void buildEventJson(const Event &ev, String &json, bool last);
 };

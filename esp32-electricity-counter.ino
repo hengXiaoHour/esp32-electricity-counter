@@ -68,7 +68,9 @@ static void updateLED() {
 static void updateSharedData() {
   systemData.voltageRMS = powerCalc.getVoltageRMS();
   systemData.voltageCalibration = powerCalc.voltageCal;
-  systemData.currentCalibration = powerCalc.currentCal[0];
+  for (int ch = 0; ch < NUM_CHANNELS; ch++) {
+    systemData.currentCalibration[ch] = powerCalc.currentCal[ch];
+  }
   systemData.uptime = millis() / 1000;
   systemData.wifiConnected = wifiMgr.isConnected();
   systemData.wifiRSSI = wifiMgr.isConnected() ? wifiMgr.getRSSI() : 0;
@@ -218,12 +220,11 @@ void setup() {
   Serial.printf("  %-19s%s\n", "Power Calculator", "OK"); powerCalc.begin();
 
   float vCal = nvs.loadVoltageCalibration();
-  float cCal = nvs.loadCurrentCalibration();
   powerCalc.voltageCal = vCal;
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {
-    powerCalc.currentCal[ch] = cCal;
+    powerCalc.currentCal[ch] = nvs.loadChannelCurrentCal(ch);
   }
-  Serial.printf("  %-19svoltage=%.1fV  current=%.1f\n", "Calibration", vCal, cCal);
+  Serial.printf("  %-19svoltage=%.1fV  current=%.1f (ch1)\n", "Calibration", vCal, powerCalc.currentCal[0]);
 
   Serial.printf("  %s\n", "Channel Config");
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {

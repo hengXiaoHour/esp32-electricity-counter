@@ -51,10 +51,10 @@ esp32-electricity-counter/
 │       ├── nvs_manager.h            # Preferences wrapper for channel configs, WiFi, cal
 │       └── nvs_manager.cpp
 │
-├── data/                            # LittleFS filesystem (web dashboard)
-│   ├── index.html                   # Dashboard HTML
-│   ├── style.css                    # Dashboard styles
-│   └── script.js                    # WebSocket client + live updates
+├── data/                            # Web dashboard files (hosted on PC/phone, NOT on ESP32)
+│   ├── index.html                   # Dashboard HTML — includes connection panel for IP input
+│   ├── style.css                    # Dashboard styles — dark/red theme
+│   └── script.js                    # WebSocket client — connects to user-specified ESP32 IP
 │
 ├── .workflow/                        # AI agent workflow state
 │   ├── RESEARCH.md

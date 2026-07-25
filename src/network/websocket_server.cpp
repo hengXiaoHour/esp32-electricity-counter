@@ -166,12 +166,15 @@ void WebSocketServer::handleCommand(AsyncWebSocketClient *client, const char *ms
     }
 
   } else if (s.indexOf("\"cmd\":\"set_current_cal\"") >= 0) {
+    int ch = -1; float val = 0;
+    int ci = s.indexOf("\"ch\":");
+    if (ci >= 0) ch = s.substring(ci + 5).toInt();
     int vi = s.indexOf("\"val\":");
-    if (vi >= 0) {
-      float val = s.substring(vi + 6).toFloat();
-      nvs->saveCurrentCalibration(val);
+    if (vi >= 0) val = s.substring(vi + 6).toFloat();
+    if (ch >= 0 && ch < NUM_CHANNELS && val > 0) {
+      nvs->saveChannelCurrentCal(ch, val);
       if (sysData && dataMutex && xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        sysData->currentCalibration = val;
+        sysData->currentCalibration[ch] = val;
         xSemaphoreGive(*dataMutex);
       }
     }
@@ -193,12 +196,22 @@ void WebSocketServer::buildJson(const SystemData &data, String &json) {
   json += data.apMode ? "true" : "false";
   json += ",\"ota\":";
   json += data.otaInProgress ? "true" : "false";
-  json += ",\"otap\":";
+  json += ",\"otaProgress\":";
   json += data.otaProgress;
-  json += ",\"ch\":[";
+  json += ",\"voltageCalibration\":";
+  json += String(data.voltageCalibration, 1);
+  json += ",\"currentCalibration\":[";
+  for (int i = 0; i < NUM_CHANNELS; i++) {
+    json += String(data.currentCalibration[i], 1);
+    if (i < NUM_CHANNELS - 1) json += ",";
+  }
+  json += "]";
+  json += ",\"firmwareVersion\":\"";
+  json += FIRMWARE_VERSION;
+  json += "\",\"ch\":[";
 
   for (int i = 0; i < NUM_CHANNELS; i++) {
-    buildChannelJson(data.channels[i], json, i == NUM_CHANNELS - 1);
+    buildChannelJson(data.channels[i], i, json, i == NUM_CHANNELS - 1);
   }
 
   json += "],\"events\":[";
@@ -211,7 +224,7 @@ void WebSocketServer::buildJson(const SystemData &data, String &json) {
   json += "]}";
 }
 
-void WebSocketServer::buildChannelJson(const ChannelData &ch, String &json, bool last) {
+void WebSocketServer::buildChannelJson(const ChannelData &ch, int index, String &json, bool last) {
   json += "{\"n\":\"";
   json += ch.name;
   json += "\",\"a\":";
@@ -228,6 +241,8 @@ void WebSocketServer::buildChannelJson(const ChannelData &ch, String &json, bool
   json += ch.status;
   json += ",\"r\":";
   json += ch.relayOn ? "true" : "false";
+  json += ",\"hasRelay\":";
+  json += (index < RELAY_CHANNEL_COUNT) ? "true" : "false";
   json += ",\"cl\":";
   json += String(ch.currentLimit, 1);
   json += ",\"pl\":";

@@ -28,8 +28,10 @@ public:
   // Calibration
   float loadVoltageCalibration();
   void saveVoltageCalibration(float value);
-  float loadCurrentCalibration();
-  void saveCurrentCalibration(float value);
+  float loadCurrentCalibration();       // Legacy: single shared value
+  void saveCurrentCalibration(float value); // Legacy
+  float loadChannelCurrentCal(uint8_t channel);  // Per-channel
+  void saveChannelCurrentCal(uint8_t channel, float value);
 
   // Default channel names
   static const char *defaultChannelName(uint8_t channel);

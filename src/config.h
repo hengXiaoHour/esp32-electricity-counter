@@ -46,6 +46,11 @@
 #define SAMPLES_PER_CYCLE      500   // ~500 samples per 50Hz cycle at 25kHz
 
 // ==============================
+// Firmware Version
+// ==============================
+#define FIRMWARE_VERSION "1.1.0"
+
+// ==============================
 // Default Calibration Constants
 // ==============================
 // SCT-013-100: 100A RMS → 1V RMS output
@@ -132,7 +137,7 @@ struct SystemData {
   ChannelData channels[NUM_CHANNELS];
   float voltageRMS;
   float voltageCalibration;
-  float currentCalibration;
+  float currentCalibration[NUM_CHANNELS];
   uint32_t uptime;
 
   bool wifiConnected;

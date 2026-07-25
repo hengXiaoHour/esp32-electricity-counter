@@ -1,81 +1,60 @@
-# Research: ESP32-S3 6-Channel AC Electricity Counter
+# Research: Fix Dashboard Bugs + Red Dark Theme
 
 ## Current State
 
-Empty project — git initialized, architecture locked in `doc/ARCHITECTURE.md`. Build prompt at `doc/esp32s3-electricity-counter-prompt.md`.
+Three files in `data/`:
+- `index.html` (97 lines) — contains inline `<style>` and `<script>` blocks that duplicate `style.css` and `script.js` verbatim. Does NOT link to external files.
+- `style.css` (50 lines) — navy-blue theme (`#1a1a2e` bg, `#00d4ff` accent), thick 4px left-border cards, no blink animations.
+- `script.js` (129 lines) — WebSocket client with `updateDashboard()`, `setLimit()`, `resetRelay()`, `sendCal()`. Single global `currCal`.
 
-## Requirements Summary
+### Current JSON Payload Shape (inferred)
+```json
+{
+  "v": 230.0, "wifi": true, "ap": false, "uptime": 3600, "ota": false,
+  "voltageCalibration": 260, "currentCalibration": 100,
+  "ch": [{"n":"Ch1","s":0,"r":true,"a":5.2,"w":1196,"va":1200,"pf":0.997,"kwh":123.456,"cl":10,"pl":2000}, ...],
+  "events": [{"t":1234567890,"c":0,"s":2,"m":"message"}]
+}
+```
 
-**Hardware:**
-- ESP32-S3 (dual-core), 6× SCT-013-100 current sensors (GPIO2,16,4,5,6,7), 1× ZMPT101B voltage sensor (GPIO1), 4× relay module (GPIO43,44,13,12, active-LOW), 1× WS2812 RGB LED (GPIO48, R/G swapped)
-- Channels 1-4 relay-controllable, channels 5-6 monitoring-only
+### Architecture
+- Project root: `esp32-electricity-counter.ino` (Arduino C++)
+- `src/` — C++ modules (sensors, core, network, ui, utils)
+- `data/` — LittleFS web dashboard (HTML/CSS/JS)
+- NVS (Preferences) for WiFi creds, channel configs, calibration
 
-**Software Architecture:**
-- Arduino IDE / Arduino framework (not ESP-IDF, not PlatformIO)
-- Dual-core FreeRTOS: Core 0 = networking/UI, Core 1 = sensor sampling/math
-- Shared data protected by `SemaphoreHandle_t`
-- NVS (`Preferences`) for per-channel config (names, limits) and WiFi creds
-- LittleFS for dashboard web files
-- AsyncWebServer + AsyncWebSocket for dashboard
-- ArduinoOTA for OTA updates
-- Fallback AP + captive portal if no WiFi credentials stored
+## Requirements (from prompt)
 
-**Dashboard:**
-- Single-page mobile-responsive HTML/CSS/JS served from LittleFS
-- Real-time WebSocket updates (no polling)
-- Per-channel: name, current, power, kWh, status, relay state, limit, reset button
-- Editable settings panel
-- Event log
+1. **Fix file duplication** — index.html links to style.css + script.js, no inline code
+2. **hasRelay support** — channels 1-4 have relays, 5-6 are monitor-only. UI must hide relay indicator + reset button for monitor-only channels; show "Monitoring Only" tag
+3. **Per-channel current calibration** — 6 separate values instead of 1 global. Keep voltage calibration global (single ZMPT101B). Each sends `{cmd:'set_current_cal', ch:i, val:x}`
+4. **Blinking states** — CSS `@keyframes` pulse/blink applied via class toggle (`.blink-yellow`, `.blink-red`) on LED dot AND channel status badges
+5. **OTA status section** — panel/banner that appears during OTA with progress percentage and firmware version
+6. **Theme redesign** — Dark panel with red accent:
+   - Near-black bg (`#0a0a0d`–`#121215`)
+   - Brand red accent (`#e63946`) for header/buttons/borders
+   - Green (`#2ecc71`) for OK status (semantic, distinct from brand red)
+   - Amber for warning, bright red for tripped
+   - Monospace for all numeric readings
+   - 1px border cards with subtle shadow, hover states
+   - Smooth transitions (150-200ms)
+   - Keep responsive grid (`auto-fill`/`auto-fit`, `minmax(280px,1fr)`)
 
-**Key Constraints:**
-- No `delay()` in loops
-- Non-blocking throughout
-- Relay active-LOW (configurable via `#define`)
-- WS2812 R/G channel swap wrapper
-- Calibration constants in NVS
+## Approach
 
-## Libraries Required
-
-| Library | Purpose |
-|---|---|
-| `ESPAsyncWebServer` | Async HTTP + WebSocket server |
-| `AsyncTCP` | Required by ESPAsyncWebServer on ESP32 |
-| `ArduinoOTA` | OTA firmware updates |
-| `Adafruit NeoPixel` | WS2812 RGB LED |
-| `Preferences` | Built-in, NVS storage |
-| `LittleFS` | Built-in, SPIFFS alternative |
-| `WiFi` | Built-in |
-| `AsyncPing` (optional) | Network diagnostics |
-
-## Pin Validation (ESP32-S3)
-
-- GPIO1-7: All are valid ADC1 channels on ESP32-S3 ✅
-- GPIO43,44: Valid GPIOs ✅
-- GPIO48: Valid for WS2812 (RMT peripheral) ✅
-- GPIO12,13: Valid GPIOs ✅
-
-## Approach Options
-
-**Option A — Single .ino with tab-split headers/cpp** (recommended)
-- `main.ino` as entry point, split logic into `.h`/`.cpp` files per module
-- Works cleanly with Arduino IDE multi-tab sketches
-- Easy to compile and flash
-
-**Option B — All-in-one .ino**
-- Everything in a single file — not recommended per the prompt (readable split required)
-
-**Chosen: Option A**
+- Clean rewrite of all 3 files (preserving functionality)
+- Add `hasRelay: bool` per channel to payload
+- Replace single `currentCalibration: number` with `currentCalibration: number[]` (array of 6)
+- Add `otaProgress?: number` and `firmwareVersion?: string` for OTA panel
+- Add `mono` class in HTML for monospace readings; CSS targets `.mono`
+- No frameworks, no build step
 
 ## Risks
-
-1. **ADC noise**: ESP32-S3 ADC is known to be noisy — calibration constants essential
-2. **FreeRTOS stack sizing**: Need to allocate enough stack for WebSocket JSON serialization on Core 0
-3. **LittleFS partition**: Must specify correct partition scheme in Arduino IDE
-4. **6 current channels + 1 voltage**: ADC sampling loop needs to be fast enough — RTOS task priority tuning
-5. **R/G swap confusion**: Must document clearly so nobody "fixes" it later
+- Must not break existing limit-setting, reset, event log, uptime/wifi display
+- Inline JS from index.html currently references `sendCal('set_voltage_cal','voltCal')` — this function signature changes
+- Calibration rows must be populated dynamically (6 channels) — need to ensure they initialize only once
+- Mobile responsive must survive the restyle
 
 ## Open Questions
-
-- Desired warning threshold % (currently assuming 90% from prompt)
-- Calibration default values for SCT-013-100 and ZMPT101B (using typical values from datasheets)
-- WebSocket update interval (suggesting 500ms)
+- Confirm: channels 1-4 = hasRelay true, 5-6 = hasRelay false? (Assumed from prompt: relays on GPIO43,44,13,12 = 4 channels)
+- The `off` class currently triggers on `!ch.r` (relay off) — after adding `hasRelay`, should `off` only apply to relay channels that are off, or stay as-is for monitor-only too?
