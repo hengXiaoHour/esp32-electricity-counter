@@ -84,6 +84,20 @@ void networkTask(void *pvParameters) {
     wsServer.loop();
     otaHandler.loop();
 
+    // Start webserver when WiFi is connected (not during AP-mode captive portal)
+    if (!wsServer.isRunning()) {
+      if (wifiMgr.isConnected()) {
+        // Give TCP stack a moment to stabilize
+        delay(500);
+        Serial.println("[INIT] Starting WebSocket Server on port 80...");
+        wsServer.startServer();
+        Serial.println("[INIT] Dashboard available");
+      } else if (wifiMgr.isApMode()) {
+        // In AP mode, WiFiManager's captive portal WebServer uses port 80
+        // AsyncWebServer will start once STA mode connects
+      }
+    }
+
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
       wsServer.broadcastData(systemData);
       xSemaphoreGive(dataMutex);
@@ -188,9 +202,9 @@ void setup() {
   statusLED.setMode(LED_SOLID_RED);
   Serial.println(wifiMgr.isConnected() ? "CONNECTED" : "CONNECTING (AP fallback if no creds)");
 
-  Serial.print("[INIT] WebSocket Server... ");
+  Serial.print("[INIT] WebSocket Server (deferred)... ");
   wsServer.begin(nvs, relays, limitMgr, &systemData, &dataMutex);
-  Serial.println("OK (serving from LittleFS)");
+  Serial.println("LittleFS mounted (server starts after WiFi connects)");
 
   Serial.print("[INIT] OTA... ");
   otaHandler.begin("esp32-elec-counter");

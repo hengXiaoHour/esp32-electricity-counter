@@ -1,7 +1,7 @@
 #include "websocket_server.h"
 
 WebSocketServer::WebSocketServer()
-  : server(nullptr), ws(nullptr), lastBroadcast(0) {}
+  : server(nullptr), ws(nullptr), lastBroadcast(0), started(false) {}
 
 WebSocketServer::~WebSocketServer() {
   delete ws;
@@ -21,6 +21,10 @@ void WebSocketServer::begin(NVSManager &nvsRef, RelayController &relaysRef,
     LittleFS.format();
     LittleFS.begin();
   }
+}
+
+void WebSocketServer::startServer() {
+  if (started) return;
 
   ws = new AsyncWebSocket("/ws");
   ws->onEvent([this](AsyncWebSocket *s, AsyncWebSocketClient *c,
@@ -41,6 +45,14 @@ void WebSocketServer::begin(NVSManager &nvsRef, RelayController &relaysRef,
   });
 
   server->begin();
+  started = true;
+}
+
+void WebSocketServer::stopServer() {
+  if (!started) return;
+  if (ws) { ws->closeAll(); delete ws; ws = nullptr; }
+  if (server) { delete server; server = nullptr; }
+  started = false;
 }
 
 void WebSocketServer::loop() {
@@ -48,7 +60,7 @@ void WebSocketServer::loop() {
 }
 
 void WebSocketServer::broadcastData(const SystemData &data) {
-  if (!ws || ws->count() == 0) return;
+  if (!started || !ws || ws->count() == 0) return;
   if (millis() - lastBroadcast < WS_UPDATE_INTERVAL_MS) return;
   lastBroadcast = millis();
 
