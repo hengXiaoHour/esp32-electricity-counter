@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>ESP32 Electricity Counter</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="header">
+  <h1>⚡ Electricity Monitor</h1>
+  <div id="sysInfo">
+    <span id="voltage">--.- V</span>
+    <span id="wifiStatus">⚫ Disconnected</span>
+    <span id="uptime">--:--:--</span>
+    <span id="ledStatus"></span>
+  </div>
+</div>
+
+<div id="channels"></div>
+
+<div id="eventsPanel">
+  <h3>Event Log</h3>
+  <div id="eventList"></div>
+</div>
+
+<div id="settingsPanel">
+  <h3>Calibration</h3>
+  <div class="cal-row">
+    <label>Voltage Cal:</label>
+    <input type="number" id="voltCal" step="0.1">
+    <button onclick="sendCal('set_voltage_cal','voltCal')">Set</button>
+  </div>
+  <div class="cal-row">
+    <label>Current Cal:</label>
+    <input type="number" id="currCal" step="0.1">
+    <button onclick="sendCal('set_current_cal','currCal')">Set</button>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>

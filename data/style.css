@@ -1,0 +1,50 @@
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#1a1a2e;color:#e0e0e0;padding:16px;max-width:900px;margin:0 auto}
+#header{margin-bottom:20px}
+h1{font-size:22px;color:#00d4ff;margin-bottom:8px}
+#sysInfo{display:flex;flex-wrap:wrap;gap:12px;font-size:14px;background:#16213e;padding:10px 14px;border-radius:8px}
+#voltage{color:#ffd700;font-weight:bold}
+#wifiStatus{color:#aaa}
+#uptime{color:#888}
+#ledStatus{width:12px;height:12px;border-radius:50%;display:inline-block;margin-left:auto}
+#channels{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-bottom:20px}
+.card{background:#16213e;border-radius:10px;padding:14px;position:relative;border-left:4px solid #00d4ff}
+.card.warning{border-left-color:#ffd700}
+.card.tripped{border-left-color:#ff4444}
+.card.off{border-left-color:#555}
+.card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.ch-name{font-weight:600;font-size:16px}
+.ch-status{font-size:12px;padding:2px 8px;border-radius:4px;background:#333;color:#aaa}
+.ch-status.ok{background:#1b5e20;color:#81c784}
+.ch-status.warning{background:#e65100;color:#ffcc80}
+.ch-status.tripped{background:#b71c1c;color:#ef9a9a}
+.ch-stats{display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:13px;margin-bottom:8px}
+.ch-stats div{padding:2px 0}
+.ch-stats .label{color:#888}
+.ch-stats .value{color:#fff;font-weight:500}
+.ch-stats .unit{color:#666;font-size:11px}
+.relay-indicator{font-size:12px;padding:2px 8px;border-radius:4px;display:inline-block}
+.relay-on{background:#1b5e20;color:#81c784}
+.relay-off{background:#b71c1c;color:#ef9a9a}
+.ch-controls{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.ch-controls input{flex:1;min-width:60px;padding:4px 6px;border:1px solid #333;border-radius:4px;background:#0f3460;color:#e0e0e0;font-size:12px}
+.ch-controls button{padding:4px 10px;border:none;border-radius:4px;background:#0f3460;color:#00d4ff;cursor:pointer;font-size:12px;white-space:nowrap}
+.ch-controls button:hover{background:#1a4a7a}
+.ch-controls button.reset{background:#b71c1c;color:#fff}
+#eventsPanel{background:#16213e;border-radius:10px;padding:14px;margin-bottom:20px}
+#eventsPanel h3{font-size:15px;color:#ffd700;margin-bottom:8px}
+#eventList{max-height:200px;overflow-y:auto;font-size:12px}
+.event{padding:4px 0;border-bottom:1px solid #222;display:flex;gap:8px}
+.event .time{color:#666;white-space:nowrap}
+.event .ch-tag{color:#00d4ff}
+.event .msg{color:#ccc}
+.event.tripped .msg{color:#ff4444}
+.event.warning .msg{color:#ffd700}
+#settingsPanel{background:#16213e;border-radius:10px;padding:14px;margin-bottom:20px}
+#settingsPanel h3{font-size:15px;color:#00d4ff;margin-bottom:8px}
+.cal-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.cal-row label{min-width:100px;font-size:13px;color:#aaa}
+.cal-row input{flex:1;max-width:120px;padding:4px 6px;border:1px solid #333;border-radius:4px;background:#0f3460;color:#e0e0e0}
+.cal-row button{padding:4px 12px;border:none;border-radius:4px;background:#0f3460;color:#00d4ff;cursor:pointer}
+.cal-row button:hover{background:#1a4a7a}
+@media(max-width:480px){#channels{grid-template-columns:1fr}}
