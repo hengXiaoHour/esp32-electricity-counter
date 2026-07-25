@@ -22,6 +22,10 @@ SemaphoreHandle_t dataMutex;
 
 static uint32_t lastSensorCycle = 0;
 
+// Forward declarations
+static void handleSerialCommand(const String &cmd);
+static void processSerial();
+
 static void updateLED() {
   if (otaHandler.isInProgress()) {
     statusLED.setMode(LED_SOLID_BLUE);
@@ -78,11 +82,31 @@ static void updateSharedData() {
 
 void networkTask(void *pvParameters) {
   TickType_t lastWake = xTaskGetTickCount();
+  char serBuf[64];
+  uint8_t serPos = 0;
 
   while (true) {
     wifiMgr.loop();
     wsServer.loop();
     otaHandler.loop();
+
+    // Serial processing on Core 0
+    while (Serial.available()) {
+      char c = Serial.read();
+      if (c >= 32 && c <= 126) Serial.write(c);
+      else if (c == '\r') Serial.write('\n');
+      if (c == '\n' || c == '\r') {
+        if (serPos > 0) {
+          serBuf[serPos] = '\0';
+          Serial.println();
+          handleSerialCommand(String(serBuf));
+          serPos = 0;
+          Serial.print("> ");
+        }
+      } else if (serPos < sizeof(serBuf) - 1) {
+        serBuf[serPos++] = c;
+      }
+    }
 
     // Start webserver when WiFi is connected (not during AP-mode captive portal)
     if (!wsServer.isRunning()) {
@@ -316,36 +340,34 @@ static void handleSerialCommand(const String &cmd) {
   }
 }
 
-void loop() {
-  static char serialBuf[64];
-  static uint8_t serialPos = 0;
-  static uint32_t lastSerialStatus = 0;
+// ==============================
+// Serial Command Processing
+// ==============================
+static char serialBuf[64];
+static uint8_t serialPos = 0;
 
-  // Read serial commands
+void processSerial() {
   while (Serial.available()) {
     char c = Serial.read();
+    // Echo
+    if (c >= 32 && c <= 126) Serial.write(c);
+    else if (c == '\r') Serial.write('\n');
+
     if (c == '\n' || c == '\r') {
       if (serialPos > 0) {
         serialBuf[serialPos] = '\0';
+        Serial.println();
         handleSerialCommand(String(serialBuf));
         serialPos = 0;
+        Serial.print("> ");
       }
     } else if (serialPos < sizeof(serialBuf) - 1) {
       serialBuf[serialPos++] = c;
     }
   }
+}
 
-  // Periodic status every 30s
-  if (millis() - lastSerialStatus > 30000) {
-    lastSerialStatus = millis();
-    Serial.printf("[%lus] WiFi:%s AP:%s V:%.1fV LED:", millis()/1000,
-      wifiMgr.isConnected()?"Y":"N", wifiMgr.isApMode()?"Y":"N",
-      powerCalc.getVoltageRMS());
-    for (int ch = 0; ch < NUM_CHANNELS; ch++) {
-      Serial.printf(" Ch%d:%.1fA", ch+1, powerCalc.getCurrentRMS(ch));
-    }
-    Serial.println();
-  }
-
-  vTaskDelay(pdMS_TO_TICKS(100));
+void loop() {
+  processSerial();
+  vTaskDelay(pdMS_TO_TICKS(50));
 }
