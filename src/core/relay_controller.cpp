@@ -19,6 +19,11 @@ bool RelayController::getState(uint8_t relayIndex) const {
   return states[relayIndex];
 }
 
+bool RelayController::readActualState(uint8_t relayIndex) const {
+  if (relayIndex >= NUM_RELAYS) return false;
+  return digitalRead(RELAY_PINS[relayIndex]) == RELAY_ACTIVE_STATE;
+}
+
 void RelayController::trip(uint8_t relayIndex) {
   set(relayIndex, false);
 }

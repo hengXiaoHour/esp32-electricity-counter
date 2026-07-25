@@ -2,69 +2,131 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>ESP32 Electricity Monitor</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+
+<!-- Connection View -->
 <div id="connectPanel">
   <div class="connect-card">
     <div class="connect-icon"></div>
     <h1 class="connect-title">Electricity Monitor</h1>
-    <p class="connect-sub">Connect to ESP32-S3</p>
+    <p class="connect-sub">ESP32-S3 Web Interface</p>
+    
     <div class="connect-row">
       <input type="text" id="esp32Ip" placeholder="192.168.1.x" spellcheck="false" autocomplete="off">
-      <button id="connectBtn" onclick="handleConnect()">Connect</button>
+      <button class="btn-primary" onclick="handleConnect()">Connect</button>
     </div>
-    <div id="connectStatus" class="connect-status disconnected">Enter the ESP32 IP address and connect</div>
-    <div class="connect-hint">Opens a WebSocket to <span id="wsHint">ws://&lt;ip&gt;/ws</span></div>
+    
+    <div id="connectStatus" class="connect-status disconnected">Ready to connect</div>
+    
+    <div class="demo-toggle">
+      <label for="demoMode"><input type="checkbox" id="demoMode" onchange="toggleDemoMode(this)"> Run Mock Demo Mode</label>
+    </div>
   </div>
 </div>
 
+<!-- Main Dashboard View -->
 <div id="dashboard" class="hidden">
-  <div id="header">
-    <div id="headerLeft">
-      <h1>Electricity Monitor</h1>
-      <span id="connectedBadge" class="connected-badge">● <span id="connectedIp">-</span></span>
+  
+  <!-- Header Overview Card -->
+  <div class="header-card">
+    <div class="header-brand">
+      <div id="ledStatus" class="led led-ok"></div>
+      <div>
+        <h1>Electricity Monitor</h1>
+      </div>
     </div>
-    <div id="sysInfo">
-      <span id="voltage">--.- V</span>
-      <span id="wifiStatus">-</span>
-      <span id="currentTime">--:--:--</span>
-      <span id="ledStatus"></span>
+    
+    <div class="summary-metrics">
+      <div class="metric-box">
+        <span class="label">Voltage</span>
+        <span id="headerVoltage" class="value mono">--.- V</span>
+      </div>
+      <div class="metric-box">
+        <span class="label">Total Power</span>
+        <span id="totalPower" class="value mono">0 W</span>
+      </div>
+      <div class="metric-box">
+        <span class="label">Total Current</span>
+        <span id="totalCurrent" class="value mono">0.00 A</span>
+      </div>
     </div>
   </div>
 
-  <div id="connectionBar">
-    <span id="connStatus">● Connected</span>
-    <button id="disconnectBtn" onclick="handleDisconnect()">Disconnect</button>
+  <!-- Connection Status Bar -->
+  <div class="control-bar">
+    <span id="connStatus" class="mono" style="color: var(--color-success)">● Connected</span>
+    <button class="btn-outline" onclick="handleDisconnect()">Disconnect</button>
   </div>
 
+  <!-- OTA Upgrade Progress -->
   <div id="otaPanel" class="hidden">
-    <div class="ota-header">OTA Update In Progress</div>
-    <div class="ota-progress-track"><div id="otaProgress" class="ota-progress-fill"></div></div>
-    <div class="ota-meta">
+    <div style="font-size: 0.8rem; font-weight: 700; color: var(--color-info);">OTA FIRMWARE UPDATE IN PROGRESS</div>
+    <div class="ota-track"><div id="otaProgress" class="ota-fill"></div></div>
+    <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--text-muted);" class="mono">
       <span id="otaPercent">0%</span>
-      <span id="otaVersion">-</span>
+      <span id="otaVersion">v1.0.0</span>
     </div>
   </div>
 
+  <!-- Dynamic Channel Cards Grid -->
   <div id="channels"></div>
 
-  <div id="eventsPanel">
-    <h3>Event Log</h3>
-    <div id="eventList"></div>
+  <!-- Event Log Panel -->
+  <div class="panel-box">
+    <div class="panel-header">
+      <h3>Event Log</h3>
+      <span class="mono" style="font-size: 0.7rem; color: var(--text-dim);" id="eventCount">0 events</span>
+    </div>
+    <div id="eventList">
+      <div class="event-item" style="color: var(--text-dim);">No events logged yet.</div>
+    </div>
   </div>
 
-  <div id="settingsPanel">
-    <h3>Calibration</h3>
-    <div class="cal-row">
-      <label>Voltage Cal:</label>
-      <input type="number" id="voltCal" step="0.1">
-      <button onclick="sendVoltageCal()">Set</button>
+  <!-- Calibration Panel -->
+  <div class="panel-box">
+    <div class="panel-header">
+      <h3>System Calibration</h3>
     </div>
-    <div class="cal-section-divider">Per-Channel Current Calibration</div>
-    <div id="currentCalRows"></div>
+    <div class="cal-row" style="max-width: 300px;">
+      <label>Voltage Cal:</label>
+      <input type="number" id="voltCal" step="0.1" value="260">
+      <button class="btn-sm" onclick="sendVoltageCal()">Set</button>
+    </div>
+    <div style="margin-top: 14px; font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">Current Sensor Calibration</div>
+    <div id="currentCalRows" class="cal-grid"></div>
+  </div>
+
+</div>
+
+<!-- Edit Limits Pop Overlay Modal -->
+<div id="editModal" class="modal-overlay hidden" onclick="if(event.target === this) closeEditModal()">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3 id="modalTitle">Configure Channel</h3>
+      <button class="modal-close" onclick="closeEditModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Channel Name</label>
+        <input type="text" id="modalChName" placeholder="e.g. Living Room AC">
+      </div>
+      <div class="form-group">
+        <label>Current Limit (Amperes)</label>
+        <input type="number" id="modalChClim" step="0.5" placeholder="10.0">
+      </div>
+      <div class="form-group">
+        <label>Power Limit (Watts)</label>
+        <input type="number" id="modalChPlim" step="50" placeholder="2200">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-sm" onclick="closeEditModal()">Cancel</button>
+      <button class="btn-primary" style="padding: 6px 14px; font-size: 0.75rem;" onclick="saveModalSettings()">Save Settings</button>
+    </div>
   </div>
 </div>
 

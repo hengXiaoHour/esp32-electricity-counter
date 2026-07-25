@@ -10,6 +10,9 @@ public:
   void set(uint8_t relayIndex, bool on);
   bool getState(uint8_t relayIndex) const;
 
+  // Read actual GPIO pin level to determine real relay state
+  bool readActualState(uint8_t relayIndex) const;
+
   // Convenience: trip = off, reset = on
   void trip(uint8_t relayIndex);
   void reset(uint8_t relayIndex);

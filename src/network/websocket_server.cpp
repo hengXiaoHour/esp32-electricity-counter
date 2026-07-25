@@ -36,11 +36,19 @@ void WebSocketServer::startServer() {
   server->addHandler(ws);
 
   server->onNotFound([this](AsyncWebServerRequest *request) {
-    if (!LittleFS.exists("/index.html")) {
-      request->send(200, "text/plain", "Dashboard not found. Upload data/ files.");
+    String path = request->url();
+    if (path == "/" || path.isEmpty()) {
+      path = "/index.html";
+    }
+    if (!LittleFS.exists(path)) {
+      request->send(404, "text/plain", "Not found");
       return;
     }
-    request->send(LittleFS, "/index.html", "text/html");
+    String contentType = "text/plain";
+    if (path.endsWith(".html")) contentType = "text/html";
+    else if (path.endsWith(".css")) contentType = "text/css";
+    else if (path.endsWith(".js")) contentType = "application/javascript";
+    request->send(LittleFS, path, contentType);
   });
 
   // server->begin() needs LwIP initialized + correct task context.
@@ -152,6 +160,23 @@ void WebSocketServer::handleCommand(AsyncWebSocketClient *client, const char *ms
         limits->resetChannel(ch, *relays, sysData->channels);
         xSemaphoreGive(*dataMutex);
       }
+    }
+
+  } else if (s.indexOf("\"cmd\":\"set_relay\"") >= 0) {
+    int ch = -1;
+    int ci = s.indexOf("\"ch\":");
+    if (ci >= 0) ch = s.substring(ci + 5).toInt();
+    int si = s.indexOf("\"state\":");
+    if (ch >= 0 && ch < NUM_CHANNELS && si >= 0 && relays) {
+      bool state = s.substring(si + 8).toInt() != 0;
+      printf("[WS] set_relay: ch=%d state=%s\n", ch, state ? "ON" : "OFF");
+      relays->set(ch, state);
+      if (sysData && dataMutex && xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        sysData->channels[ch].relayOn = state;
+        xSemaphoreGive(*dataMutex);
+      }
+    } else {
+      printf("[WS] set_relay: PARSE ERROR — raw: %s\n", msg);
     }
 
   } else if (s.indexOf("\"cmd\":\"set_voltage_cal\"") >= 0) {

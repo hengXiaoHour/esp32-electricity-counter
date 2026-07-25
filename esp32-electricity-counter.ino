@@ -240,17 +240,15 @@ void setup() {
     systemData.channels[ch].currentLimit = cLimit;
     systemData.channels[ch].powerLimit = pLimit;
     systemData.channels[ch].status = STATUS_OK;
-    systemData.channels[ch].relayOn = (ch < RELAY_CHANNEL_COUNT);
+    systemData.channels[ch].relayOn = false;
     Serial.printf("    Ch%d  %-16s  %.1fA / %.0fW  %s\n",
       ch+1, name, cLimit, pLimit,
       ch < RELAY_CHANNEL_COUNT ? "RELAY" : "MONITOR");
   }
 
   for (int ch = 0; ch < RELAY_CHANNEL_COUNT; ch++) {
-    relays.reset(ch);
-    systemData.channels[ch].relayOn = true;
+    systemData.channels[ch].relayOn = false;
   }
-  Serial.printf("  %-19sON (normally closed)\n", "Relays");
 
   dataMutex = xSemaphoreCreateMutex();
   Serial.printf("  %-19s%s\n", "Mutex", "OK");
