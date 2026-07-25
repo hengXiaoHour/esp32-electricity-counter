@@ -27,10 +27,13 @@ void WiFiManager::begin(NVSManager &nvsRef) {
   }
 }
 
+static uint8_t flapCount = 0;
+
 void WiFiManager::loop() {
   if (state == WIFI_CONNECTING) {
     if (WiFi.status() == WL_CONNECTED) {
       state = WIFI_CONNECTED;
+      flapCount = 0;
       rssi = WiFi.RSSI();
       if (httpServer) {
         stopAPMode();
@@ -47,8 +50,8 @@ void WiFiManager::loop() {
 
   if (state == WIFI_CONNECTED) {
     // Update RSSI periodically
-    if (WiFi.status() != WL_CONNECTED) {
-      state = WIFI_CONNECTING;
+    checkConnection();
+    if (state != WIFI_CONNECTED) {
       retryCount = 0;
       connectToWiFi();
     } else {
@@ -74,6 +77,17 @@ const char *WiFiManager::getSSID() const {
     return configuredSSID.c_str();
   }
   return AP_SSID;
+}
+
+void WiFiManager::checkConnection() {
+  if (WiFi.status() == WL_CONNECTED) {
+    flapCount = 0;
+  } else {
+    flapCount++;
+    if (flapCount >= 3) {
+      state = WIFI_CONNECTING;
+    }
+  }
 }
 
 void WiFiManager::connectToWiFi() {
