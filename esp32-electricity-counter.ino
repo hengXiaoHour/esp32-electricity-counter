@@ -144,6 +144,8 @@ void networkTask(void *pvParameters) {
           wsServer.startServer();
           Serial.printf("  %-19s%s\n", "WebSocket", "STARTED");
           Serial.println();
+          Serial.println("  Core 0: Network (WiFi, WebSocket, OTA)");
+          Serial.println("  Core 1: Sensor (ADC, Power, Limits)");
           Serial.println("  Type 'help' for commands");
           Serial.print("> ");
         }
@@ -273,9 +275,6 @@ void setup() {
   xTaskCreatePinnedToCore(sensorTask, "sensor", 8192, NULL, 2, NULL, 1);
 
   Serial.println();
-  Serial.println("  Core 0: Network (WiFi, WebSocket, OTA)");
-  Serial.println("  Core 1: Sensor (ADC, Power, Limits)");
-  Serial.print("> ");
 }
 
 // ==============================
