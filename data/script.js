@@ -270,8 +270,8 @@ function createChannelCardElement(idx) {
       <span class="limit-text mono">Max: -- A / -- W</span>
     </div>
     <div class="card-actions">
-      <button class="btn-sm btn-edit" onclick="openEditModal(${idx})">Edit Limits</button>
-      <button class="btn-sm btn-reset" onclick="handleResetRelay(${idx})">Reset Relay</button>
+      <button class="btn-sm btn-edit" onclick="openEditModal(${idx})">Edit</button>
+      <button class="btn-sm btn-reset" onclick="handleResetRelay(${idx})">&#8634; Reset Counter</button>
     </div>
   `;
   return card;
@@ -395,6 +395,16 @@ function closeEditModal() {
   document.getElementById('editModal').classList.add('hidden');
 }
 
+function resetModalToDefaults() {
+  if (activeEditChIdx === null) return;
+  const idx = activeEditChIdx;
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ cmd: 'reset_ch_to_default', ch: idx }));
+  }
+  closeEditModal();
+  showToast(`Channel ${idx+1} reset to defaults`);
+}
+
 function saveModalSettings() {
   if (activeEditChIdx === null) return;
   const idx = activeEditChIdx;
@@ -440,7 +450,7 @@ function handleResetRelay(idx) {
 
   if (pendingActions[idx] === 'confirm') {
     delete pendingActions[idx];
-    btn.textContent = 'Reset';
+    btn.innerHTML = '&#8634; Reset Counter';
     btn.classList.remove('confirming');
     
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -453,7 +463,7 @@ function handleResetRelay(idx) {
     btn.classList.add('confirming');
     setTimeout(() => {
       delete pendingActions[idx];
-      btn.textContent = 'Reset';
+      btn.innerHTML = '&#8634; Reset Counter';
       btn.classList.remove('confirming');
     }, 3000);
   }

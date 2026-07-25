@@ -98,9 +98,6 @@
     </div>
     <div style="margin-top: 14px; font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">Channel Calibration</div>
     <div id="calibrationRows" class="cal-grid"></div>
-    <div style="margin-top: 14px;">
-      <button class="btn-sm" onclick="resetChannelNames()" style="color:#e74c3c;">Reset Names to Defaults</button>
-    </div>
   </div>
 
   <!-- Data Logs Panel -->
@@ -150,6 +147,7 @@
     </div>
     <div class="modal-footer">
       <button class="btn-sm" onclick="closeEditModal()">Cancel</button>
+      <button class="btn-sm" onclick="resetModalToDefaults()" style="color:#e74c3c;">Reset to Default</button>
       <button class="btn-primary" style="padding: 6px 14px; font-size: 0.75rem;" onclick="saveModalSettings()">Save Settings</button>
     </div>
   </div>

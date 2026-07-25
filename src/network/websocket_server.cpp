@@ -318,17 +318,27 @@ void WebSocketServer::handleCommand(AsyncWebSocketClient *client, const char *ms
       printf("[WS] set_lpf_alpha: ch=%d val=%.2f\n", ch, val);
     }
 
-  } else if (s.indexOf("\"cmd\":\"reset_channel_names\"") >= 0) {
-    for (int i = 0; i < NUM_CHANNELS; i++) {
+  } else if (s.indexOf("\"cmd\":\"reset_channel_names\"") >= 0 || s.indexOf("\"cmd\":\"reset_ch_to_default\"") >= 0) {
+    int ch = -1;
+    int ci = s.indexOf("\"ch\":");
+    if (ci >= 0) ch = s.substring(ci + 5).toInt();
+    int startCh = (ch >= 0 && ch < NUM_CHANNELS) ? ch : 0;
+    int endCh = (ch >= 0 && ch < NUM_CHANNELS) ? ch + 1 : NUM_CHANNELS;
+    for (int i = startCh; i < endCh; i++) {
       nvs->clearChannelConfig(i);
+      nvs->saveMonthlyKwhLimit(i, DEFAULT_MONTHLY_KWH_LIMIT);
     }
     if (sysData && dataMutex && xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-      for (int i = 0; i < NUM_CHANNELS; i++) {
+      for (int i = startCh; i < endCh; i++) {
         strncpy(sysData->channels[i].name, NVSManager::defaultChannelName(i), MAX_CHANNEL_NAME_LEN - 1);
         sysData->channels[i].name[MAX_CHANNEL_NAME_LEN - 1] = '\0';
+        sysData->channels[i].currentLimit = DEFAULT_CURRENT_LIMIT_A;
+        sysData->channels[i].powerLimit = DEFAULT_POWER_LIMIT_W;
+        sysData->channels[i].monthlyKwhLimit = DEFAULT_MONTHLY_KWH_LIMIT;
       }
       xSemaphoreGive(*dataMutex);
     }
+    printf("[WS] reset_ch_to_default: ch=%s\n", ch >= 0 ? String(ch).c_str() : "all");
   }
 }
 
