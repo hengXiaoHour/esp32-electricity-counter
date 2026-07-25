@@ -107,10 +107,30 @@ void networkTask(void *pvParameters) {
       }
     }
 
+    // Print IP when WiFi connects
+    {
+      static bool ipPrinted = false;
+      if (wifiMgr.isConnected() && !ipPrinted) {
+        ipPrinted = true;
+        Serial.printf("\n*** WiFi CONNECTED ***\n");
+        Serial.printf("  SSID: %s\n", wifiMgr.getSSID());
+        Serial.printf("  IP:   %s\n", WiFi.localIP().toString().c_str());
+        Serial.printf("  DNS:  %s\n", WiFi.dnsIP().toString().c_str());
+        Serial.printf("  Dashboard: http://%s/\n", WiFi.localIP().toString().c_str());
+      }
+      if (wifiMgr.isApMode() && !ipPrinted) {
+        ipPrinted = true;
+        Serial.printf("\n*** AP MODE ***\n");
+        Serial.printf("  SSID: \"%s\" / \"%s\"\n", wifiMgr.getSSID(), WiFiManager::AP_PASS);
+        Serial.printf("  IP:   %s\n", WiFi.softAPIP().toString().c_str());
+        Serial.printf("  Config page: http://%s/\n", WiFi.softAPIP().toString().c_str());
+      }
+    }
+
     // Start webserver when WiFi is connected (runs via tcpip_callback for LwIP safety)
     if (!wsServer.isRunning()) {
       if (wifiMgr.isConnected()) {
-        Serial.println("[INIT] Starting WebSocket Server (via tcpip_callback)...");
+        Serial.println("[INIT] Starting WebSocket Server...");
         wsServer.startServer();
       } else if (wifiMgr.isApMode()) {
         // AP mode: WiFiManager's captive portal uses port 80, AsyncWebServer stays off
@@ -219,7 +239,12 @@ void setup() {
   Serial.print("[INIT] WiFi... ");
   wifiMgr.begin(nvs);
   statusLED.setMode(LED_SOLID_RED);
-  Serial.println(wifiMgr.isConnected() ? "CONNECTED" : "CONNECTING (AP fallback if no creds)");
+  if (wifiMgr.isApMode()) {
+    Serial.printf("AP MODE @ %s\n", WiFi.softAPIP().toString().c_str());
+    Serial.printf("  Connect to SSID: \"%s\" / \"%s\"\n", wifiMgr.getSSID(), WiFiManager::AP_PASS);
+  } else {
+    Serial.println("CONNECTING (IP will be printed on connect)");
+  }
 
   Serial.print("[INIT] WebSocket Server (deferred)... ");
   wsServer.begin(nvs, relays, limitMgr, &systemData, &dataMutex);
