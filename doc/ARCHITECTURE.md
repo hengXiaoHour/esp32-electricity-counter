@@ -1,4 +1,4 @@
-# Project Architecture — ESP32 Electricity Counter
+# Project Architecture — ESP32-S3 6-Channel AC Electricity Counter
 
 ## 🔒 ARCHITECTURE LOCK
 
@@ -10,65 +10,75 @@ Machine-readable lock: `./.architecture.lock.json`
 
 ```
 esp32-electricity-counter/
-├── doc/                          # Documentation
-│   ├── ARCHITECTURE.md           # THIS FILE — project structure (locked)
-│   ├── .architecture.lock.json   # Machine-readable lock (do not edit)
-│   └── opencode_agent/           # Agent context (auto-managed)
+├── doc/                              # Documentation
+│   ├── ARCHITECTURE.md               # THIS FILE — project structure (locked)
+│   ├── .architecture.lock.json       # Machine-readable lock (do not edit)
+│   ├── esp32s3-electricity-counter-prompt.md  # Original build prompt
+│   └── opencode_agent/               # Agent context (auto-managed)
 │       ├── AGENTS.md
 │       ├── lessons.md
 │       └── memories.json
 │
-├── src/                          # Application source code
-│   ├── main.py                   # Entry point
-│   ├── config.py                 # Configuration
-│   ├── hardware/                 # Hardware abstraction layer
-│   │   ├── __init__.py
-│   │   ├── sensor.py             # Current/voltage sensor interface
-│   │   ├── display.py            # Display driver
-│   │   └── wifi.py               # WiFi connectivity
-│   ├── core/                     # Core business logic
-│   │   ├── __init__.py
-│   │   ├── counter.py            # Electricity counting logic
-│   │   ├── calculator.py         # Consumption calculations
-│   │   └── storage.py            # Data persistence
-│   ├── api/                      # API layer
-│   │   ├── __init__.py
-│   │   └── server.py             # REST/Web server
-│   └── utils/                    # Shared utilities
-│       ├── __init__.py
-│       ├── logger.py
-│       └── helpers.py
+├── src/                              # Application source code
+│   ├── main.ino                      # Arduino sketch entry point
+│   ├── config.h                      # Pin assignments and #define constants
+│   ├── sensor/                       # ADC sampling and RMS calculation
+│   │   ├── current_sensor.h
+│   │   ├── current_sensor.cpp
+│   │   ├── voltage_sensor.h
+│   │   └── voltage_sensor.cpp
+│   ├── core/                         # Business logic
+│   │   ├── power_calculator.h        # Real power, apparent power, PF, kWh
+│   │   ├── power_calculator.cpp
+│   │   ├── limit_manager.h           # Per-channel limits, warning/trip logic
+│   │   ├── limit_manager.cpp
+│   │   ├── relay_controller.h        # Relay switching
+│   │   └── relay_controller.cpp
+│   ├── network/                      # Networking (Core 0 tasks)
+│   │   ├── wifi_manager.h
+│   │   ├── wifi_manager.cpp
+│   │   ├── websocket_server.h
+│   │   ├── websocket_server.cpp
+│   │   ├── ota_handler.h
+│   │   └── ota_handler.cpp
+│   ├── ui/                           # Status display
+│   │   ├── status_led.h              # WS2812 RGB LED (R/G swap handled)
+│   │   └── status_led.cpp
+│   └── utils/                        # Shared utilities
+│       ├── nvs_manager.h             # NVS/Preferences storage
+│       └── nvs_manager.cpp
 │
-├── tests/                        # Test suite
-│   ├── __init__.py
-│   ├── test_counter.py
-│   ├── test_calculator.py
-│   └── conftest.py               # Shared fixtures
+├── data/                             # LittleFS filesystem (web dashboard)
+│   ├── index.html                    # Dashboard HTML
+│   ├── style.css                     # Dashboard styles
+│   └── script.js                     # Dashboard WebSocket client
 │
-├── config/                       # Configuration files
-│   └── settings.yaml
-│
-├── data/                         # Runtime data (SPIFFS/LittleFS)
-│
-├── scripts/                      # Utility scripts
+├── scripts/                          # Utility scripts
 │   └── deploy.sh
 │
-├── requirements.txt              # Python dependencies
-├── pyproject.toml                # Project config (lint, test, build)
 ├── .gitignore
-└── README.md
+└── README.md                         # Setup instructions
 ```
 
 ## Conventions
 
 | Aspect | Rule |
 |---|---|
-| **Python files** | `snake_case.py` |
-| **Test files** | `test_<module>.py` in `tests/` |
+| **C++ files** | `snake_case.h` / `snake_case.cpp` |
+| **Arduino sketch** | `main.ino` at `src/` root |
+| **Header guards** | `#pragma once` |
 | **Documentation** | `doc/` directory only |
-| **Imports** | Absolute imports preferred |
-| **Types** | Type hints required on all functions |
-| **Tests** | pytest with fixtures |
+| **Web files** | `data/` directory for LittleFS |
+| **Naming** | `snake_case` for files and functions |
+| **Indentation** | 2 spaces |
+| **Platform** | Arduino IDE / Arduino framework (not ESP-IDF, not PlatformIO) |
+| **Target** | ESP32-S3 |
+
+## Dual-Core Architecture
+
+- **Core 0**: Networking + WebSocket + dashboard + OTA (responsiveness priority)
+- **Core 1**: Real-time ADC sampling + RMS math + limit checking + relay control (deterministic priority)
+- Shared data protected by FreeRTOS `SemaphoreHandle_t`
 
 ## Lock Enforcement
 
@@ -77,9 +87,13 @@ esp32-electricity-counter/
 3. If a directory doesn't exist yet but fits logically — ask the user
 4. If the file doesn't fit the structure at all — BLOCKED, explain why to the user
 
-## Notes
+## Pin Mapping
 
-- `src/hardware/` contains platform-specific hardware code (ESP32 GPIO, ADC, I2C)
-- `src/core/` contains pure business logic with hardware abstraction
-- `src/api/` handles external communication (HTTP, MQTT, etc.)
-- `config/` contains static configuration, not secrets (use env vars or .env for secrets)
+| Component | Pins | Notes |
+|---|---|---|
+| CT sensors (6ch) | GPIO2, 16, 4, 5, 6, 7 | SCT-013-100, analog input |
+| Voltage sensor | GPIO1 | ZMPT101B, analog input |
+| Relays (4ch) | GPIO43, 44, 13, 12 | Active-LOW (configurable) |
+| RGB LED | GPIO48 | WS2812, R/G channels swapped |
+
+Channels 1–4 are relay-controllable; channels 5–6 are monitoring-only.

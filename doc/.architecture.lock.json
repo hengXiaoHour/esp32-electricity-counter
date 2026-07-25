@@ -1,15 +1,27 @@
 {
   "locked": true,
   "version": "1.0.0",
-  "description": "Architecture lock for ESP32 Electricity Counter",
+  "description": "Architecture lock for ESP32-S3 6-Channel AC Electricity Counter",
+  "project_type": "arduino-cpp",
   "rules": {
-    "allowed_directories": ["doc", "src", "tests", "config", "data", "scripts", "src/hardware", "src/core", "src/api", "src/utils", "doc/opencode_agent"],
+    "allowed_directories": [
+      "doc",
+      "src",
+      "src/sensor",
+      "src/core",
+      "src/network",
+      "src/ui",
+      "src/utils",
+      "data",
+      "scripts",
+      "doc/opencode_agent"
+    ],
     "source_root": "src/",
-    "test_root": "tests/",
     "doc_root": "doc/",
-    "python_naming": "snake_case",
-    "test_pattern": "test_*.py",
-    "type_hints_required": true
+    "cpp_naming": "snake_case",
+    "arduino_sketch": "main.ino",
+    "web_files_root": "data/",
+    "header_guard": "pragma_once"
   },
   "message": "This project structure is LOCKED. AI agents must not create files outside the defined tree without user approval."
 }
