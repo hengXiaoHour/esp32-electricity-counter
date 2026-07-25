@@ -1,0 +1,36 @@
+{
+  "project": "esp32-electricity-counter",
+  "observation_count": 5,
+  "observations": [
+    {
+      "id": 1,
+      "type": "decision",
+      "text": "Project is Arduino C++ (not Python despite global default). ESP32-S3 target with dual-core FreeRTOS.",
+      "created_at": "2026-07-24T12:00:00Z"
+    },
+    {
+      "id": 2,
+      "type": "decision",
+      "text": "Used pointer-based AsyncWebServer/AsyncWebSocket in WebSocketServer class to avoid default constructor issues. Allocated via new in begin().",
+      "created_at": "2026-07-24T12:00:00Z"
+    },
+    {
+      "id": 3,
+      "type": "fix",
+      "text": "AsyncTCP lib needed const on status() method — patched AsyncTCP.h:198 and AsyncTCP.cpp:1344.",
+      "created_at": "2026-07-24T12:00:00Z"
+    },
+    {
+      "id": 4,
+      "type": "fix",
+      "text": "DNSServer method is processNextRequest() not processNext(). Fixed wifi_manager.cpp.",
+      "created_at": "2026-07-24T12:00:00Z"
+    },
+    {
+      "id": 5,
+      "type": "fix",
+      "text": "Arduino .ino must not #include its own .cpp files — causes multiple definition linker errors. All code lives in .ino directly; src/ modules provide class implementations.",
+      "created_at": "2026-07-24T12:00:00Z"
+    }
+  ]
+}
