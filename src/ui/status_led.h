@@ -25,6 +25,7 @@ public:
   StatusLED();
   void begin();
   void setMode(LedMode mode);
+  LedMode getMode() const { return currentMode; }
   void loop();
 
 private:

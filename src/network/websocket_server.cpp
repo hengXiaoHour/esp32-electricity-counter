@@ -4,10 +4,13 @@ WebSocketServer::WebSocketServer()
   : server(80), ws("/ws"), lastBroadcast(0) {}
 
 void WebSocketServer::begin(NVSManager &nvsRef, RelayController &relaysRef,
-                            LimitManager &limitsRef) {
+                            LimitManager &limitsRef,
+                            SystemData *sysDataRef, SemaphoreHandle_t *mutexRef) {
   nvs = &nvsRef;
   relays = &relaysRef;
   limits = &limitsRef;
+  sysData = sysDataRef;
+  dataMutex = mutexRef;
 
   // Mount LittleFS
   if (!LittleFS.begin()) {
@@ -91,6 +94,10 @@ void WebSocketServer::handleCommand(AsyncWebSocketClient *client, const char *ms
     if (vi >= 0) val = s.substring(vi + 6).toFloat();
     if (ch >= 0 && ch < NUM_CHANNELS && val > 0) {
       nvs->saveChannelConfig(ch, "", val, 0);
+      if (sysData && dataMutex && xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        sysData->channels[ch].currentLimit = val;
+        xSemaphoreGive(*dataMutex);
+      }
     }
 
   } else if (s.indexOf("\"cmd\":\"set_power_limit\"") >= 0) {
@@ -102,6 +109,10 @@ void WebSocketServer::handleCommand(AsyncWebSocketClient *client, const char *ms
     if (vi >= 0) val = s.substring(vi + 6).toFloat();
     if (ch >= 0 && ch < NUM_CHANNELS && val > 0) {
       nvs->saveChannelConfig(ch, "", 0, val);
+      if (sysData && dataMutex && xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        sysData->channels[ch].powerLimit = val;
+        xSemaphoreGive(*dataMutex);
+      }
     }
 
   } else if (s.indexOf("\"cmd\":\"set_name\"") >= 0) {
@@ -115,6 +126,11 @@ void WebSocketServer::handleCommand(AsyncWebSocketClient *client, const char *ms
       if (end > ni) {
         String name = s.substring(ni, end);
         nvs->saveChannelConfig(ch, name.c_str(), 0, 0);
+        if (sysData && dataMutex && xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+          strncpy(sysData->channels[ch].name, name.c_str(), MAX_CHANNEL_NAME_LEN - 1);
+          sysData->channels[ch].name[MAX_CHANNEL_NAME_LEN - 1] = '\0';
+          xSemaphoreGive(*dataMutex);
+        }
       }
     }
 
@@ -122,20 +138,33 @@ void WebSocketServer::handleCommand(AsyncWebSocketClient *client, const char *ms
     int ch = -1;
     int ci = s.indexOf("\"ch\":");
     if (ci >= 0) ch = s.substring(ci + 5).toInt();
-    if (ch >= 0 && ch < NUM_CHANNELS) {
-      // Relay reset will be picked up by main loop
+    if (ch >= 0 && ch < NUM_CHANNELS && sysData && dataMutex) {
+      if (xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        limits->resetChannel(ch, *relays, sysData->channels);
+        xSemaphoreGive(*dataMutex);
+      }
     }
 
   } else if (s.indexOf("\"cmd\":\"set_voltage_cal\"") >= 0) {
     int vi = s.indexOf("\"val\":");
     if (vi >= 0) {
-      nvs->saveVoltageCalibration(s.substring(vi + 6).toFloat());
+      float val = s.substring(vi + 6).toFloat();
+      nvs->saveVoltageCalibration(val);
+      if (sysData && dataMutex && xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        sysData->voltageCalibration = val;
+        xSemaphoreGive(*dataMutex);
+      }
     }
 
   } else if (s.indexOf("\"cmd\":\"set_current_cal\"") >= 0) {
     int vi = s.indexOf("\"val\":");
     if (vi >= 0) {
-      nvs->saveCurrentCalibration(s.substring(vi + 6).toFloat());
+      float val = s.substring(vi + 6).toFloat();
+      nvs->saveCurrentCalibration(val);
+      if (sysData && dataMutex && xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        sysData->currentCalibration = val;
+        xSemaphoreGive(*dataMutex);
+      }
     }
   }
 }

@@ -9,10 +9,10 @@
 
 class WebSocketServer {
 public:
-  void begin(NVSManager &nvs, RelayController &relays, LimitManager &limits);
+  void begin(NVSManager &nvs, RelayController &relays, LimitManager &limits,
+             SystemData *sysData, SemaphoreHandle_t *mutex);
   void loop();
 
-  // Called from Core 1 sensor task (via shared data) to broadcast updates
   void broadcastData(const SystemData &data);
 
 private:
@@ -21,6 +21,8 @@ private:
   NVSManager *nvs;
   RelayController *relays;
   LimitManager *limits;
+  SystemData *sysData;
+  SemaphoreHandle_t *dataMutex;
 
   uint32_t lastBroadcast;
 
