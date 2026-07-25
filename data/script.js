@@ -361,17 +361,31 @@ function saveModalSettings() {
   closeEditModal();
 }
 
+function showToast(msg) {
+  let toast = document.getElementById('toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'toast';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.className = 'toast show';
+  clearTimeout(toast._hide);
+  toast._hide = setTimeout(() => { toast.className = 'toast'; }, 2500);
+}
+
 function handleResetRelay(idx) {
   const card = document.querySelector(`.card[data-ch="${idx}"]`);
   const btn = card.querySelector('.btn-reset');
 
   if (pendingActions[idx] === 'confirm') {
     delete pendingActions[idx];
-    btn.textContent = 'Resetting...';
+    btn.textContent = 'Reset';
     btn.classList.remove('confirming');
     
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ cmd: 'reset_relay', ch: idx }));
+      showToast(`Channel ${idx+1}: limits reset, relay OFF`);
     }
   } else {
     pendingActions[idx] = 'confirm';
@@ -379,7 +393,7 @@ function handleResetRelay(idx) {
     btn.classList.add('confirming');
     setTimeout(() => {
       delete pendingActions[idx];
-      btn.textContent = 'Reset Relay';
+      btn.textContent = 'Reset';
       btn.classList.remove('confirming');
     }, 3000);
   }

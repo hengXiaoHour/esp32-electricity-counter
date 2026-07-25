@@ -155,11 +155,23 @@ void WebSocketServer::handleCommand(AsyncWebSocketClient *client, const char *ms
     int ch = -1;
     int ci = s.indexOf("\"ch\":");
     if (ci >= 0) ch = s.substring(ci + 5).toInt();
-    if (ch >= 0 && ch < NUM_CHANNELS && sysData && dataMutex) {
+    if (ch >= 0 && ch < NUM_CHANNELS && sysData && dataMutex && nvs && relays) {
+      char name[MAX_CHANNEL_NAME_LEN];
+      float oldClim, oldPlim;
+      nvs->loadChannelConfig(ch, name, sizeof(name), oldClim, oldPlim);
+      nvs->saveChannelConfig(ch, name, DEFAULT_CURRENT_LIMIT_A, DEFAULT_POWER_LIMIT_W);
+      relays->set(ch, false);
       if (xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        limits->resetChannel(ch, *relays, sysData->channels);
+        sysData->channels[ch].currentLimit = DEFAULT_CURRENT_LIMIT_A;
+        sysData->channels[ch].powerLimit = DEFAULT_POWER_LIMIT_W;
+        sysData->channels[ch].relayOn = false;
+        if (sysData->channels[ch].status == STATUS_TRIPPED) {
+          sysData->channels[ch].status = STATUS_OK;
+        }
         xSemaphoreGive(*dataMutex);
       }
+      printf("[WS] reset_relay: ch=%d limits=%.0fA/%.0fW relay=OFF\n",
+             ch, DEFAULT_CURRENT_LIMIT_A, DEFAULT_POWER_LIMIT_W);
     }
 
   } else if (s.indexOf("\"cmd\":\"set_relay\"") >= 0) {

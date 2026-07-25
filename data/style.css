@@ -198,6 +198,10 @@ body {
 .cal-row label { font-size: 0.75rem; color: var(--text-muted); min-width: 50px; font-family: var(--font-mono); }
 .cal-row input { flex: 1; min-width: 0; width: 0; padding: 5px; background: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-main); border-radius: 4px; font-family: var(--font-mono); }
 
+/* Toast notification */
+#toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--color-success); color: #fff; padding: 10px 20px; border-radius: 8px; font-size: 0.8rem; font-weight: 600; z-index: 1000; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+#toast.show { opacity: 1; }
+
 @media (max-width: 600px) {
   .header-card { flex-direction: column; align-items: flex-start; }
   .summary-metrics { width: 100%; justify-content: space-between; }
