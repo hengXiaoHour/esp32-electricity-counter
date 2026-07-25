@@ -14,14 +14,15 @@
       "src/utils",
       "data",
       "scripts",
+      ".workflow",
       "doc/opencode_agent"
     ],
     "source_root": "src/",
     "doc_root": "doc/",
-    "cpp_naming": "snake_case",
-    "arduino_sketch": "main.ino",
     "web_files_root": "data/",
-    "header_guard": "pragma_once"
+    "cpp_naming": "snake_case",
+    "header_guard": "pragma_once",
+    "arduino_sketch": "esp32-electricity-counter.ino"
   },
   "message": "This project structure is LOCKED. AI agents must not create files outside the defined tree without user approval."
 }
