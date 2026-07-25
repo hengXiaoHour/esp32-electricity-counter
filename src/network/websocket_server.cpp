@@ -1,6 +1,6 @@
 #include "websocket_server.h"
 
-// Fix: LwIP TCP operations must run in TCP/IP context on ESP-IDF 5.x
+// LwIP TCP core lock for thread-safe TCP operations
 #include <lwip/tcpip.h>
 
 WebSocketServer::WebSocketServer()
@@ -26,21 +26,20 @@ void WebSocketServer::begin(NVSManager &nvsRef, RelayController &relaysRef,
   }
 }
 
-// Called from tcpip_thread context to avoid LwIP locking asserts
-void WebSocketServer::startServerTcpIpCb(void *ctx) {
-  WebSocketServer *self = static_cast<WebSocketServer *>(ctx);
+void WebSocketServer::startServer() {
+  if (started) return;
 
-  self->ws = new AsyncWebSocket("/ws");
-  self->ws->onEvent([self](AsyncWebSocket *s, AsyncWebSocketClient *c,
+  ws = new AsyncWebSocket("/ws");
+  ws->onEvent([this](AsyncWebSocket *s, AsyncWebSocketClient *c,
                      AwsEventType t, void *a, uint8_t *d, size_t l) {
-    self->onWsEvent(s, c, t, a, d, l);
+    onWsEvent(s, c, t, a, d, l);
   });
 
-  self->server = new AsyncWebServer(80);
-  self->server->addHandler(self->ws);
-  self->server->serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
+  server = new AsyncWebServer(80);
+  server->addHandler(ws);
+  server->serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
 
-  self->server->onNotFound([self](AsyncWebServerRequest *request) {
+  server->onNotFound([this](AsyncWebServerRequest *request) {
     if (!LittleFS.exists("/index.html")) {
       request->send(200, "text/plain", "Dashboard not found. Upload data/ files.");
       return;
@@ -48,14 +47,12 @@ void WebSocketServer::startServerTcpIpCb(void *ctx) {
     request->send(LittleFS, "/index.html", "text/html");
   });
 
-  self->server->begin();
-  self->started = true;
-  Serial.println("[INIT] Dashboard server started");
-}
+  // Acquire LwIP core lock before TCP operations
+  LOCK_TCPIP_CORE();
+  server->begin();
+  UNLOCK_TCPIP_CORE();
 
-void WebSocketServer::startServer() {
-  if (started) return;
-  tcpip_callback(startServerTcpIpCb, this);
+  started = true;
 }
 
 void WebSocketServer::stopServer() {

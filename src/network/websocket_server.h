@@ -21,9 +21,6 @@ public:
 
   void broadcastData(const SystemData &data);
 
-  // LwIP callback: called from tcpip_thread so TCP operations don't assert
-  static void startServerTcpIpCb(void *ctx);
-
 private:
   AsyncWebServer *server;
   AsyncWebSocket *ws;
