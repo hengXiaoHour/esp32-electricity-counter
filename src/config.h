@@ -71,6 +71,7 @@
 // Default limits
 #define DEFAULT_CURRENT_LIMIT_A   16.0f
 #define DEFAULT_POWER_LIMIT_W     3500.0f
+#define DEFAULT_MONTHLY_KWH_LIMIT 48.0f
 #define WARNING_THRESHOLD_PCT     90
 
 // ==============================
@@ -85,6 +86,12 @@
 // ==============================
 #define EVENT_LOG_SIZE    50
 #define EVENT_MSG_LEN     64
+
+// ==============================
+// Data Logging
+// ==============================
+#define LOG_DIR "/logs"
+#define LOG_INTERVAL_MS 300000
 
 // ==============================
 // WiFi
@@ -126,6 +133,7 @@ struct ChannelData {
   float energyKWh;
   float currentLimit;
   float powerLimit;
+  float monthlyKwhLimit;
   ChannelStatus status;
   bool relayOn;
 };

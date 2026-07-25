@@ -6,7 +6,11 @@ void PowerCalculator::begin() {
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {
     currentCal[ch] = DEFAULT_CURRENT_CALIBRATION;
     energyKWh[ch] = 0.0f;
+    noiseFloor[ch] = 0.0f;
+    lpfAlpha[ch] = 1.0f;
+    filteredCurrentRMS[ch] = 0.0f;
   }
+  autoZeroPending = false;
   analogReadResolution(ADC_RESOLUTION);
 }
 
@@ -14,18 +18,13 @@ void PowerCalculator::update(float deltaSeconds) {
   collectSamples();
   computeAll();
 
-  // Accumulate energy (kWh)
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {
-    // activePower is in Watts, deltaSeconds is in seconds
-    // Energy (kWh) = Power (W) × Time (h) / 1000
     float deltaHours = deltaSeconds / 3600.0f;
     energyKWh[ch] += activePower[ch] * deltaHours / 1000.0f;
   }
 }
 
 void PowerCalculator::collectSamples() {
-  // Interleaved sampling: voltage + all 6 current channels per index
-  // This keeps V-I samples closely paired for real power calculation
   for (int i = 0; i < RMS_SAMPLES; i++) {
     voltageSamples[i] = (float)analogRead(PIN_VOLTAGE);
     delayMicroseconds(ADC_READ_INTERVAL_US);
@@ -38,14 +37,12 @@ void PowerCalculator::collectSamples() {
 }
 
 void PowerCalculator::computeAll() {
-  // 1. Remove DC offset from voltage
   float vSum = 0.0f;
   for (int i = 0; i < RMS_SAMPLES; i++) {
     vSum += voltageSamples[i];
   }
   float vMean = vSum / RMS_SAMPLES;
 
-  // Compute voltage RMS
   float vSumSq = 0.0f;
   for (int i = 0; i < RMS_SAMPLES; i++) {
     float centered = voltageSamples[i] - vMean;
@@ -56,11 +53,10 @@ void PowerCalculator::computeAll() {
   float vPinVoltage = (vAdcRMS / ADC_MAX_VALUE) * ADC_REFERENCE_V;
   voltageRMS = vPinVoltage * voltageCal;
 
-  // 2. Per-channel: current RMS, real power, apparent power, PF
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {
     float iSum = 0.0f;
     float iSumSq = 0.0f;
-    float pSum = 0.0f;  // Instantaneous power = v_centered × i_centered
+    float pSum = 0.0f;
 
     for (int i = 0; i < RMS_SAMPLES; i++) {
       float vCentered = voltageSamples[i] - vMean;
@@ -71,30 +67,29 @@ void PowerCalculator::computeAll() {
       pSum += vCentered * iCentered;
     }
 
-    // Current RMS (remove DC offset)
     float iMean = iSum / RMS_SAMPLES;
     float iMeanSq = iSumSq / RMS_SAMPLES;
     float iVariance = iMeanSq - iMean * iMean;
     float iAdcRMS = sqrtf(iVariance > 0.0f ? iVariance : 0.0f);
     float iPinVoltage = (iAdcRMS / ADC_MAX_VALUE) * ADC_REFERENCE_V;
-    currentRMS[ch] = iPinVoltage * currentCal[ch];
+    float rawRMS = iPinVoltage * currentCal[ch];
 
-    // Real power: average of instantaneous V×I (with DC offsets removed)
+    float adjustedRMS = rawRMS - noiseFloor[ch];
+    if (adjustedRMS < 0.0f) adjustedRMS = 0.0f;
+
+    currentRMS[ch] = adjustedRMS;
+
+    filteredCurrentRMS[ch] = lpfAlpha[ch] * adjustedRMS + (1.0f - lpfAlpha[ch]) * filteredCurrentRMS[ch];
+
     float pMean = pSum / RMS_SAMPLES;
-    // Convert from ADC units to real Watts:
-    // (adc_v - vMean) represents voltage swing at pin (0-3.3V → 0-ADC_MAX_VALUE)
-    // (adc_i - iMean) represents current sensor output voltage
-    // Real power in watts requires the product of actual voltage × actual current
     float pinVoltageScale = ADC_REFERENCE_V / ADC_MAX_VALUE;
     float pWatts = pMean * pinVoltageScale * voltageCal * currentCal[ch];
     activePower[ch] = fabsf(pWatts);
 
-    // Apparent power
     float vActual = (vAdcRMS / ADC_MAX_VALUE) * ADC_REFERENCE_V * voltageCal;
-    float iActual = currentRMS[ch];
+    float iActual = filteredCurrentRMS[ch];
     apparentPower[ch] = vActual * iActual;
 
-    // Power factor
     if (apparentPower[ch] > 0.001f) {
       powerFactor[ch] = activePower[ch] / apparentPower[ch];
       if (powerFactor[ch] > 1.0f) powerFactor[ch] = 1.0f;
@@ -102,4 +97,29 @@ void PowerCalculator::computeAll() {
       powerFactor[ch] = 1.0f;
     }
   }
+}
+
+void PowerCalculator::setNoiseFloor(int ch, float val) {
+  if (ch < 0 || ch >= NUM_CHANNELS) return;
+  noiseFloor[ch] = val;
+  filteredCurrentRMS[ch] = 0.0f;
+}
+
+void PowerCalculator::setLpfAlpha(int ch, float val) {
+  if (ch < 0 || ch >= NUM_CHANNELS) return;
+  if (val < 0.01f) val = 0.01f;
+  if (val > 1.0f) val = 1.0f;
+  lpfAlpha[ch] = val;
+}
+
+void PowerCalculator::requestAutoZero(int ch) {
+  if (ch < 0 || ch >= NUM_CHANNELS) return;
+  autoZeroChannel = ch;
+  autoZeroPending = true;
+}
+
+float PowerCalculator::runAutoZeroSingle(int ch) {
+  collectSamples();
+  computeAll();
+  return currentRMS[ch];
 }

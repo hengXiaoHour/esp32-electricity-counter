@@ -7,6 +7,7 @@
 #include "src/network/ota_handler.h"
 #include "src/ui/status_led.h"
 #include "src/utils/nvs_manager.h"
+#include "src/core/data_logger.h"
 
 NVSManager      nvs;
 PowerCalculator powerCalc;
@@ -171,6 +172,30 @@ void sensorTask(void *pvParameters) {
     if (deltaSeconds < 0.001f) deltaSeconds = 0.1f;
     lastSensorCycle = millis();
 
+    if (powerCalc.isAutoZeroBusy()) {
+      int ch = powerCalc.getAutoZeroChannel();
+      if (ch >= 0 && ch < NUM_CHANNELS) {
+        float sum = 0.0f;
+        int batches = 20;
+        float origLPF[NUM_CHANNELS];
+        for (int i = 0; i < NUM_CHANNELS; i++) {
+          origLPF[i] = powerCalc.lpfAlpha[i];
+          powerCalc.lpfAlpha[i] = 1.0f;
+        }
+        for (int b = 0; b < batches; b++) {
+          sum += powerCalc.runAutoZeroSingle(ch);
+        }
+        for (int i = 0; i < NUM_CHANNELS; i++) {
+          powerCalc.lpfAlpha[i] = origLPF[i];
+        }
+        float avg = sum / batches;
+        powerCalc.setNoiseFloor(ch, avg);
+        nvs.saveNoiseFloor(ch, avg);
+        Serial.printf("  [NVS] ch%d auto-zero complete: %.3f A\n", ch + 1, avg);
+      }
+      powerCalc.cancelAutoZero();
+    }
+
     powerCalc.update(deltaSeconds);
 
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
@@ -189,6 +214,19 @@ void sensorTask(void *pvParameters) {
                      systemData.channels, relays,
                      systemData.events, systemData.eventCount);
 
+      // Persist relay state changes to NVS
+      static bool prevRelay[RELAY_CHANNEL_COUNT] = {false};
+      for (int ch = 0; ch < RELAY_CHANNEL_COUNT; ch++) {
+        bool cur = relays.getState(ch);
+        if (cur != prevRelay[ch]) {
+          nvs.saveRelayState(ch, cur);
+          prevRelay[ch] = cur;
+        }
+      }
+
+      // Log data to LittleFS (every 5 min)
+      logger.log(systemData);
+
       xSemaphoreGive(dataMutex);
     }
 
@@ -203,7 +241,14 @@ void sensorTask(void *pvParameters) {
 
 void setup() {
   Serial.begin(115200);
-  delay(500);
+
+  // Wait for USB CDC serial to enumerate (up to 3s)
+  // Prevents startup banner from being lost on ESP32-S3 USB CDC
+  unsigned long serialTimeout = millis() + 3000;
+  while (!Serial && millis() < serialTimeout) {
+    delay(10);
+  }
+
   Serial.println();
   Serial.println("  =============================================");
   Serial.println("   ESP32-S3 6-Channel Electricity Counter");
@@ -216,8 +261,15 @@ void setup() {
   Serial.printf("  %-19s%s\n", "NVS", "OK"); nvs.begin();
   Serial.printf("  %-19s%s\n", "Status LED", "OK"); statusLED.begin();
   Serial.printf("  %-19s%s\n", "Relays", "OK"); relays.begin();
+
+  // Restore relay states from NVS
+  for (int i = 0; i < RELAY_CHANNEL_COUNT; i++) {
+    bool saved = nvs.loadRelayState(i, false);
+    relays.set(i, saved);
+  }
   Serial.printf("  %-19s%s\n", "Limit Manager", "OK"); limitMgr.begin();
   Serial.printf("  %-19s%s\n", "Power Calculator", "OK"); powerCalc.begin();
+  Serial.printf("  %-19s%s\n", "Data Logger", "OK"); logger.begin();
 
   float vCal = nvs.loadVoltageCalibration();
   powerCalc.voltageCal = vCal;
@@ -225,6 +277,12 @@ void setup() {
     powerCalc.currentCal[ch] = nvs.loadChannelCurrentCal(ch);
   }
   Serial.printf("  %-19svoltage=%.1fV  current=%.1f (ch1)\n", "Calibration", vCal, powerCalc.currentCal[0]);
+
+  for (int ch = 0; ch < NUM_CHANNELS; ch++) {
+    powerCalc.noiseFloor[ch] = nvs.loadNoiseFloor(ch);
+    powerCalc.lpfAlpha[ch] = nvs.loadLpfAlpha(ch);
+  }
+  Serial.printf("  %-19sok\n", "Noise Floor + LPF");
 
   Serial.printf("  %s\n", "Channel Config");
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {
@@ -239,15 +297,12 @@ void setup() {
     systemData.channels[ch].name[MAX_CHANNEL_NAME_LEN - 1] = '\0';
     systemData.channels[ch].currentLimit = cLimit;
     systemData.channels[ch].powerLimit = pLimit;
+    systemData.channels[ch].monthlyKwhLimit = nvs.loadMonthlyKwhLimit(ch);
     systemData.channels[ch].status = STATUS_OK;
-    systemData.channels[ch].relayOn = false;
-    Serial.printf("    Ch%d  %-16s  %.1fA / %.0fW  %s\n",
-      ch+1, name, cLimit, pLimit,
+    systemData.channels[ch].relayOn = ch < RELAY_CHANNEL_COUNT ? relays.getState(ch) : false;
+    Serial.printf("    Ch%d  %-16s  %.1fA / %.0fW / %.1fkWh/mo  %s\n",
+      ch+1, name, cLimit, pLimit, systemData.channels[ch].monthlyKwhLimit,
       ch < RELAY_CHANNEL_COUNT ? "RELAY" : "MONITOR");
-  }
-
-  for (int ch = 0; ch < RELAY_CHANNEL_COUNT; ch++) {
-    systemData.channels[ch].relayOn = false;
   }
 
   dataMutex = xSemaphoreCreateMutex();
@@ -358,6 +413,26 @@ static void handleSerialCommand(const String &cmd) {
     if (ch >= 0 && ch < NUM_CHANNELS) {
       limitMgr.resetChannel(ch, relays, systemData.channels);
       Serial.printf("  Channel %d reset\n", ch + 1);
+    }
+  }
+
+  else if (cmd == "reset_name" || cmd.startsWith("reset_name ")) {
+    int ch = -1;
+    if (cmd.length() > 10) {
+      ch = cmd.substring(11).toInt() - 1;
+    }
+    if (ch >= 0 && ch < NUM_CHANNELS) {
+      nvs.clearChannelConfig(ch);
+      strncpy(systemData.channels[ch].name, NVSManager::defaultChannelName(ch), MAX_CHANNEL_NAME_LEN - 1);
+      systemData.channels[ch].name[MAX_CHANNEL_NAME_LEN - 1] = '\0';
+      Serial.printf("  Channel %d name reset to \"%s\"\n", ch + 1, systemData.channels[ch].name);
+    } else {
+      for (int i = 0; i < NUM_CHANNELS; i++) {
+        nvs.clearChannelConfig(i);
+        strncpy(systemData.channels[i].name, NVSManager::defaultChannelName(i), MAX_CHANNEL_NAME_LEN - 1);
+        systemData.channels[i].name[MAX_CHANNEL_NAME_LEN - 1] = '\0';
+      }
+      Serial.println("  All channel names reset to defaults");
     }
   }
 

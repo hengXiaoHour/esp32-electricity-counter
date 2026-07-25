@@ -1,4 +1,5 @@
 #include "websocket_server.h"
+#include <LittleFS.h>
 
 WebSocketServer::WebSocketServer()
   : server(nullptr), ws(nullptr), lastBroadcast(0), started(false) {}
@@ -19,10 +20,6 @@ void WebSocketServer::begin(NVSManager &nvsRef, RelayController &relaysRef,
   sysData = sysDataRef;
   dataMutex = mutexRef;
 
-  if (!LittleFS.begin()) {
-    LittleFS.format();
-    LittleFS.begin();
-  }
 }
 
 void WebSocketServer::startServer() {
@@ -37,20 +34,8 @@ void WebSocketServer::startServer() {
   server = new AsyncWebServer(80);
   server->addHandler(ws);
 
-  server->onNotFound([this](AsyncWebServerRequest *request) {
-    String path = request->url();
-    if (path == "/" || path.isEmpty()) {
-      path = "/index.html";
-    }
-    if (!LittleFS.exists(path)) {
-      request->send(404, "text/plain", "Not found");
-      return;
-    }
-    String contentType = "text/plain";
-    if (path.endsWith(".html")) contentType = "text/html";
-    else if (path.endsWith(".css")) contentType = "text/css";
-    else if (path.endsWith(".js")) contentType = "application/javascript";
-    request->send(LittleFS, path, contentType);
+  server->onNotFound([](AsyncWebServerRequest *request) {
+    request->send(404, "text/plain", "Not found");
   });
 
   // server->begin() needs LwIP initialized + correct task context.
@@ -144,8 +129,10 @@ void WebSocketServer::handleCommand(AsyncWebSocketClient *client, const char *ms
       int end = s.indexOf("\"", ni);
       if (end > ni) {
         String name = s.substring(ni, end);
-        nvs->saveChannelConfig(ch, name.c_str(), 0, 0);
         if (sysData && dataMutex && xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+          float clim = sysData->channels[ch].currentLimit;
+          float plim = sysData->channels[ch].powerLimit;
+          nvs->saveChannelConfig(ch, name.c_str(), clim, plim);
           strncpy(sysData->channels[ch].name, name.c_str(), MAX_CHANNEL_NAME_LEN - 1);
           sysData->channels[ch].name[MAX_CHANNEL_NAME_LEN - 1] = '\0';
           xSemaphoreGive(*dataMutex);
@@ -225,6 +212,55 @@ void WebSocketServer::handleCommand(AsyncWebSocketClient *client, const char *ms
       }
     }
 
+  } else if (s.indexOf("\"cmd\":\"get_logs\"") >= 0) {
+    int di = s.indexOf("\"date\":\"");
+    if (di >= 0) {
+      di += 8;
+      int end = s.indexOf("\"", di);
+      String date = s.substring(di, end);
+      String path = String(LOG_DIR) + "/" + date;
+      if (!path.endsWith(".csv")) path += ".csv";
+      if (LittleFS.exists(path)) {
+        File f = LittleFS.open(path, "r");
+        String csv;
+        while (f.available()) csv += (char)f.read();
+        f.close();
+        csv.replace("\\", "\\\\");
+        csv.replace("\"", "\\\"");
+        csv.replace("\n", "\\n");
+        String resp = "{\"cmd\":\"log_data\",\"date\":\"";
+        resp += date;
+        resp += "\",\"csv\":\"";
+        resp += csv;
+        resp += "\"}";
+        client->text(resp);
+      } else {
+        String resp = "{\"cmd\":\"log_data\",\"date\":\"";
+        resp += date;
+        resp += "\",\"csv\":\"\"}";
+        client->text(resp);
+      }
+    } else {
+      File root = LittleFS.open(LOG_DIR);
+      String files = "[";
+      bool first = true;
+      if (root) {
+        File f;
+        while ((f = root.openNextFile())) {
+          if (!first) files += ",";
+          String fn = f.name();
+          fn.replace(".csv", "");
+          files += "\"" + fn + "\"";
+          first = false;
+          f.close();
+        }
+        root.close();
+      }
+      files += "]";
+      String resp = "{\"cmd\":\"log_list\",\"files\":" + files + "}";
+      client->text(resp);
+    }
+
   } else if (s.indexOf("\"cmd\":\"set_current_cal\"") >= 0) {
     int ch = -1; float val = 0;
     int ci = s.indexOf("\"ch\":");
@@ -237,6 +273,61 @@ void WebSocketServer::handleCommand(AsyncWebSocketClient *client, const char *ms
         sysData->currentCalibration[ch] = val;
         xSemaphoreGive(*dataMutex);
       }
+    }
+
+  } else if (s.indexOf("\"cmd\":\"set_monthly_kwh\"") >= 0) {
+    int ch = -1; float val = 0;
+    int ci = s.indexOf("\"ch\":");
+    if (ci >= 0) ch = s.substring(ci + 5).toInt();
+    int vi = s.indexOf("\"val\":");
+    if (vi >= 0) val = s.substring(vi + 6).toFloat();
+    if (ch >= 0 && ch < NUM_CHANNELS && val > 0) {
+      nvs->saveMonthlyKwhLimit(ch, val);
+      if (sysData && dataMutex && xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        sysData->channels[ch].monthlyKwhLimit = val;
+        xSemaphoreGive(*dataMutex);
+      }
+    }
+
+  } else if (s.indexOf("\"cmd\":\"set_noise_floor\"") >= 0) {
+    int ch = -1;
+    int ci = s.indexOf("\"ch\":");
+    if (ci >= 0) ch = s.substring(ci + 5).toInt();
+    if (ch >= 0 && ch < NUM_CHANNELS) {
+      int vi = s.indexOf("\"val\":");
+      if (vi >= 0) {
+        float val = s.substring(vi + 6).toFloat();
+        powerCalc->setNoiseFloor(ch, val);
+        nvs->saveNoiseFloor(ch, val);
+        printf("[WS] set_noise_floor: ch=%d val=%.3f\n", ch, val);
+      } else {
+        powerCalc->requestAutoZero(ch);
+        printf("[WS] set_noise_floor: ch=%d auto-zero requested\n", ch);
+      }
+    }
+
+  } else if (s.indexOf("\"cmd\":\"set_lpf_alpha\"") >= 0) {
+    int ch = -1; float val = 1.0f;
+    int ci = s.indexOf("\"ch\":");
+    if (ci >= 0) ch = s.substring(ci + 5).toInt();
+    int vi = s.indexOf("\"val\":");
+    if (vi >= 0) val = s.substring(vi + 6).toFloat();
+    if (ch >= 0 && ch < NUM_CHANNELS && val >= 0.01f && val <= 1.0f) {
+      powerCalc->setLpfAlpha(ch, val);
+      nvs->saveLpfAlpha(ch, val);
+      printf("[WS] set_lpf_alpha: ch=%d val=%.2f\n", ch, val);
+    }
+
+  } else if (s.indexOf("\"cmd\":\"reset_channel_names\"") >= 0) {
+    for (int i = 0; i < NUM_CHANNELS; i++) {
+      nvs->clearChannelConfig(i);
+    }
+    if (sysData && dataMutex && xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+      for (int i = 0; i < NUM_CHANNELS; i++) {
+        strncpy(sysData->channels[i].name, NVSManager::defaultChannelName(i), MAX_CHANNEL_NAME_LEN - 1);
+        sysData->channels[i].name[MAX_CHANNEL_NAME_LEN - 1] = '\0';
+      }
+      xSemaphoreGive(*dataMutex);
     }
   }
 }
@@ -263,6 +354,18 @@ void WebSocketServer::buildJson(const SystemData &data, String &json) {
   json += ",\"currentCalibration\":[";
   for (int i = 0; i < NUM_CHANNELS; i++) {
     json += String(data.currentCalibration[i], 1);
+    if (i < NUM_CHANNELS - 1) json += ",";
+  }
+  json += "]";
+  json += ",\"noiseFloor\":[";
+  for (int i = 0; i < NUM_CHANNELS; i++) {
+    json += String(powerCalc->noiseFloor[i], 3);
+    if (i < NUM_CHANNELS - 1) json += ",";
+  }
+  json += "]";
+  json += ",\"lpfAlpha\":[";
+  for (int i = 0; i < NUM_CHANNELS; i++) {
+    json += String(powerCalc->lpfAlpha[i], 2);
     if (i < NUM_CHANNELS - 1) json += ",";
   }
   json += "]";
@@ -307,6 +410,8 @@ void WebSocketServer::buildChannelJson(const ChannelData &ch, int index, String 
   json += String(ch.currentLimit, 1);
   json += ",\"pl\":";
   json += String(ch.powerLimit, 0);
+  json += ",\"mkwh\":";
+  json += String(ch.monthlyKwhLimit, 1);
   json += "}";
   if (!last) json += ",";
 }

@@ -1,60 +1,53 @@
-# Research: Fix Dashboard Bugs + Red Dark Theme
+# Research: UX/Interface Improvements
 
 ## Current State
 
-Three files in `data/`:
-- `index.html` (97 lines) — contains inline `<style>` and `<script>` blocks that duplicate `style.css` and `script.js` verbatim. Does NOT link to external files.
-- `style.css` (50 lines) — navy-blue theme (`#1a1a2e` bg, `#00d4ff` accent), thick 4px left-border cards, no blink animations.
-- `script.js` (129 lines) — WebSocket client with `updateDashboard()`, `setLimit()`, `resetRelay()`, `sendCal()`. Single global `currCal`.
+Three files in `data/` — externally-hosted WebSocket dashboard, dark/red theme, working features.
 
-### Current JSON Payload Shape (inferred)
-```json
-{
-  "v": 230.0, "wifi": true, "ap": false, "uptime": 3600, "ota": false,
-  "voltageCalibration": 260, "currentCalibration": 100,
-  "ch": [{"n":"Ch1","s":0,"r":true,"a":5.2,"w":1196,"va":1200,"pf":0.997,"kwh":123.456,"cl":10,"pl":2000}, ...],
-  "events": [{"t":1234567890,"c":0,"s":2,"m":"message"}]
-}
-```
+### Current HTML structure (index.html)
+- Single-tier header: `#headerLeft` (title + badge) + `#sysInfo` (voltage, wifi, clock, LED) in one flex row
+- Connection bar below header
+- OTA panel (hidden by default)
+- Channel cards container
+- Event log panel
+- Calibration settings panel
 
-### Architecture
-- Project root: `esp32-electricity-counter.ino` (Arduino C++)
-- `src/` — C++ modules (sensors, core, network, ui, utils)
-- `data/` — LittleFS web dashboard (HTML/CSS/JS)
-- NVS (Preferences) for WiFi creds, channel configs, calibration
+### Current CSS (style.css)
+- Dark theme: `#0c0c10` bg, `#15151a` cards, `#e63946` red accent
+- Cards: 1px border, subtle hover lift, border-color on status classes
+- `#channels` grid: `repeat(auto-fill, minmax(280px, 1fr))`
+- Responsive breakpoints at 480px and 360px
+- `.label` uses `#777` at `.65rem` — low contrast
+
+### Current JS (script.js)
+- `updateDashboard()` renders cards in payload order (no sort)
+- 6 equal-weight stats per card (Current, Power, Apparent, PF, Energy, Relay)
+- 3 inputs + 2 buttons always visible per card (limit, power limit, name, Save, Reset)
+- `resetRelay()` sends immediately on click — no confirmation
+- `setLimit()` sends immediately — no feedback
+- Event log: simple list, last 10 events, no filters
+- No `aria-live` attributes
 
 ## Requirements (from prompt)
 
-1. **Fix file duplication** — index.html links to style.css + script.js, no inline code
-2. **hasRelay support** — channels 1-4 have relays, 5-6 are monitor-only. UI must hide relay indicator + reset button for monitor-only channels; show "Monitoring Only" tag
-3. **Per-channel current calibration** — 6 separate values instead of 1 global. Keep voltage calibration global (single ZMPT101B). Each sends `{cmd:'set_current_cal', ch:i, val:x}`
-4. **Blinking states** — CSS `@keyframes` pulse/blink applied via class toggle (`.blink-yellow`, `.blink-red`) on LED dot AND channel status badges
-5. **OTA status section** — panel/banner that appears during OTA with progress percentage and firmware version
-6. **Theme redesign** — Dark panel with red accent:
-   - Near-black bg (`#0a0a0d`–`#121215`)
-   - Brand red accent (`#e63946`) for header/buttons/borders
-   - Green (`#2ecc71`) for OK status (semantic, distinct from brand red)
-   - Amber for warning, bright red for tripped
-   - Monospace for all numeric readings
-   - 1px border cards with subtle shadow, hover states
-   - Smooth transitions (150-200ms)
-   - Keep responsive grid (`auto-fill`/`auto-fit`, `minmax(280px,1fr)`)
-
-## Approach
-
-- Clean rewrite of all 3 files (preserving functionality)
-- Add `hasRelay: bool` per channel to payload
-- Replace single `currentCalibration: number` with `currentCalibration: number[]` (array of 6)
-- Add `otaProgress?: number` and `firmwareVersion?: string` for OTA panel
-- Add `mono` class in HTML for monospace readings; CSS targets `.mono`
-- No frameworks, no build step
+1. **Two-tier header** — brand/status top, secondary info bottom strip
+2. **Problem channels louder** — sort tripped/warning first, background tint, thicker border, status icons (✓/⚠/✗)
+3. **Reduced card density** — promote Current/Power/Energy, demote Apparent/PF, edit mode toggle
+4. **Edit mode** — read-only display by default, Edit button reveals inputs + Save/Cancel per card
+5. **Reset confirmation** — inline "Confirm Reset?" with 3s timeout before sending
+6. **Save feedback** — pending state, success flash, error timeout (~5s)
+7. **Event log filters** — All/Warnings/Trips filter, per-channel optional
+8. **Accessibility** — aria-live, icons alongside color, higher contrast labels
 
 ## Risks
-- Must not break existing limit-setting, reset, event log, uptime/wifi display
-- Inline JS from index.html currently references `sendCal('set_voltage_cal','voltCal')` — this function signature changes
-- Calibration rows must be populated dynamically (6 channels) — need to ensure they initialize only once
-- Mobile responsive must survive the restyle
+- Sort changes the card index order — `resetRelay(i)` and `setLimit(i)` use the sorted array index; must ensure the index sent to ESP32 matches the original payload index, not the display index
+- Edit mode adds complexity — must track per-card edit state
+- Reset confirmation timer + pending feedback state machine could get complex
+- Must not break: hasRelay, per-channel cal, blink states, OTA panel, connect flow
 
-## Open Questions
-- Confirm: channels 1-4 = hasRelay true, 5-6 = hasRelay false? (Assumed from prompt: relays on GPIO43,44,13,12 = 4 channels)
-- The `off` class currently triggers on `!ch.r` (relay off) — after adding `hasRelay`, should `off` only apply to relay channels that are off, or stay as-is for monitor-only too?
+## Approach
+- Sort the display copy of channels, but keep original index mapping for commands
+- Use `data-orig-index` attribute on cards to map display position → payload index
+- Store edit state in a `Set` of card indices
+- Use `aria-live="polite"` on channels container and event list
+- Use Unicode glyphs (✓ ⚠ ✕) for status icons

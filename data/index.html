@@ -91,13 +91,34 @@
     <div class="panel-header">
       <h3>System Calibration</h3>
     </div>
-    <div class="cal-row" style="max-width: 300px;">
+    <div class="cal-row-single" style="max-width: 300px;">
       <label>Voltage Cal:</label>
       <input type="number" id="voltCal" step="0.1" value="260">
       <button class="btn-sm" onclick="sendVoltageCal()">Set</button>
     </div>
-    <div style="margin-top: 14px; font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">Current Sensor Calibration</div>
-    <div id="currentCalRows" class="cal-grid"></div>
+    <div style="margin-top: 14px; font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">Channel Calibration</div>
+    <div id="calibrationRows" class="cal-grid"></div>
+    <div style="margin-top: 14px;">
+      <button class="btn-sm" onclick="resetChannelNames()" style="color:#e74c3c;">Reset Names to Defaults</button>
+    </div>
+  </div>
+
+  <!-- Data Logs Panel -->
+  <div class="panel-box">
+    <div class="panel-header">
+      <h3>Data Logs</h3>
+      <button class="btn-sm" onclick="fetchLogList()">Refresh</button>
+    </div>
+    <div id="logFileList" class="log-file-list">
+      <span style="color: var(--text-dim); font-size: 0.75rem;">Click Refresh to load available logs.</span>
+    </div>
+    <div id="logViewer" class="log-viewer hidden">
+      <div class="log-viewer-header">
+        <span id="logViewerTitle" class="mono"></span>
+        <button class="btn-sm" onclick="closeLogViewer()">Close</button>
+      </div>
+      <pre id="logContent" class="log-content"></pre>
+    </div>
   </div>
 
 </div>
@@ -121,6 +142,10 @@
       <div class="form-group">
         <label>Power Limit (Watts)</label>
         <input type="number" id="modalChPlim" step="50" placeholder="2200">
+      </div>
+      <div class="form-group">
+        <label>Monthly kWh Budget</label>
+        <input type="number" id="modalChMkwh" step="1" placeholder="48">
       </div>
     </div>
     <div class="modal-footer">

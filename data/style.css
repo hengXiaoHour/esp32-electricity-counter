@@ -193,10 +193,38 @@ body {
 .event-item .tag { padding: 0 4px; border-radius: 2px; font-weight: 700; font-family: var(--font-mono); font-size: 0.65rem; }
 .event-item.warning .tag { background: var(--color-warning-bg); color: var(--color-warning); }
 .event-item.tripped .tag { background: var(--color-danger-bg); color: var(--color-danger); }
-.cal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; margin-top: 10px; }
-.cal-row { display: flex; align-items: center; gap: 8px; }
-.cal-row label { font-size: 0.75rem; color: var(--text-muted); min-width: 50px; font-family: var(--font-mono); }
-.cal-row input { flex: 1; min-width: 0; width: 0; padding: 5px; background: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-main); border-radius: 4px; font-family: var(--font-mono); }
+.cal-grid { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.cal-row-single { display: flex; align-items: center; gap: 8px; }
+.cal-row-single label { font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono); white-space: nowrap; }
+.cal-row-single input { flex: 1; min-width: 0; padding: 5px; background: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-main); border-radius: 4px; font-family: var(--font-mono); }
+.cal-collapse-header {
+  display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;
+  padding: 4px 0; font-size: 0.8rem; font-family: var(--font-mono);
+}
+.cal-collapse-header .arrow { transition: transform 0.2s; font-size: 0.65rem; }
+.cal-collapse-header.expanded .arrow { transform: rotate(90deg); }
+.cal-collapse-body { display: none; flex-direction: column; gap: 6px; padding: 2px 0 6px 22px; border-left: 1px solid var(--border-color); margin-left: 6px; }
+.cal-collapse-body.open { display: flex; }
+.cal-param-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cal-param-row label { font-size: 0.73rem; color: var(--text-muted); min-width: 85px; font-family: var(--font-mono); white-space: nowrap; }
+.cal-param-row input { flex: 0 0 auto; width: 80px; padding: 4px 6px; background: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-main); border-radius: 4px; font-family: var(--font-mono); font-size: 0.8rem; }
+
+/* ============ Data Logs Panel ============ */
+.log-file-list { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.log-file-item {
+  padding: 4px 10px; font-size: 0.75rem; font-family: var(--font-mono);
+  background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 4px;
+  cursor: pointer; color: var(--text-muted); transition: all 0.15s;
+}
+.log-file-item:hover { border-color: var(--color-danger); color: var(--text-main); }
+.log-viewer { border-top: 1px solid var(--border-color); padding-top: 10px; }
+.log-viewer-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.log-viewer-header span { font-size: 0.75rem; color: var(--text-muted); }
+.log-content {
+  background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 4px;
+  padding: 10px; font-size: 0.65rem; max-height: 300px; overflow: auto;
+  white-space: pre; font-family: var(--font-mono); color: var(--text-muted); line-height: 1.6;
+}
 
 /* Toast notification */
 #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--color-success); color: #fff; padding: 10px 20px; border-radius: 8px; font-size: 0.8rem; font-weight: 600; z-index: 1000; opacity: 0; transition: opacity 0.3s; pointer-events: none; }

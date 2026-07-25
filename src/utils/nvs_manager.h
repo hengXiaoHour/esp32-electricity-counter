@@ -24,6 +24,11 @@ public:
                          float &currentLimit, float &powerLimit);
   void saveChannelConfig(uint8_t channel, const char *name,
                          float currentLimit, float powerLimit);
+  void clearChannelConfig(uint8_t channel);
+
+  // Monthly kWh budget
+  float loadMonthlyKwhLimit(uint8_t channel);
+  void saveMonthlyKwhLimit(uint8_t channel, float limit);
 
   // Calibration
   float loadVoltageCalibration();
@@ -32,6 +37,18 @@ public:
   void saveCurrentCalibration(float value); // Legacy
   float loadChannelCurrentCal(uint8_t channel);  // Per-channel
   void saveChannelCurrentCal(uint8_t channel, float value);
+
+  // Relay state persistence
+  void saveRelayState(uint8_t relayIndex, bool on);
+  bool loadRelayState(uint8_t relayIndex, bool defaultValue);
+
+  // Noise floor (amperes) per channel — auto-zero calibration
+  float loadNoiseFloor(uint8_t channel);
+  void saveNoiseFloor(uint8_t channel, float value);
+
+  // LPF alpha per channel — 1.0 = no filtering
+  float loadLpfAlpha(uint8_t channel);
+  void saveLpfAlpha(uint8_t channel, float value);
 
   // Default channel names
   static const char *defaultChannelName(uint8_t channel);
