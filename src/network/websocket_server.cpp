@@ -10,10 +10,12 @@ WebSocketServer::~WebSocketServer() {
 
 void WebSocketServer::begin(NVSManager &nvsRef, RelayController &relaysRef,
                             LimitManager &limitsRef,
-                            SystemData *sysDataRef, SemaphoreHandle_t *mutexRef) {
+                            SystemData *sysDataRef, SemaphoreHandle_t *mutexRef,
+                            PowerCalculator *powerCalcRef) {
   nvs = &nvsRef;
   relays = &relaysRef;
   limits = &limitsRef;
+  powerCalc = powerCalcRef;
   sysData = sysDataRef;
   dataMutex = mutexRef;
 
@@ -170,7 +172,11 @@ void WebSocketServer::handleCommand(AsyncWebSocketClient *client, const char *ms
         }
         xSemaphoreGive(*dataMutex);
       }
-      printf("[WS] reset_relay: ch=%d limits=%.0fA/%.0fW relay=OFF\n",
+      if (powerCalc) {
+        powerCalc->resetEnergy(ch);
+        sysData->channels[ch].energyKWh = 0.0f;
+      }
+      printf("[WS] reset_relay: ch=%d limits=%.0fA/%.0fW relay=OFF energy=0\n",
              ch, DEFAULT_CURRENT_LIMIT_A, DEFAULT_POWER_LIMIT_W);
     }
 

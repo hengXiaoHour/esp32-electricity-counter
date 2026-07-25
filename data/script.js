@@ -385,7 +385,7 @@ function handleResetRelay(idx) {
     
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ cmd: 'reset_relay', ch: idx }));
-      showToast(`Channel ${idx+1}: limits reset, relay OFF`);
+      showToast(`Channel ${idx+1}: limits reset, energy cleared, relay OFF`);
     }
   } else {
     pendingActions[idx] = 'confirm';

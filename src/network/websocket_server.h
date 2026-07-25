@@ -6,6 +6,7 @@
 #include "../utils/nvs_manager.h"
 #include "../core/relay_controller.h"
 #include "../core/limit_manager.h"
+#include "../core/power_calculator.h"
 
 class WebSocketServer {
 public:
@@ -13,7 +14,8 @@ public:
   ~WebSocketServer();
 
   void begin(NVSManager &nvs, RelayController &relays, LimitManager &limits,
-             SystemData *sysData, SemaphoreHandle_t *mutex);
+             SystemData *sysData, SemaphoreHandle_t *mutex,
+             PowerCalculator *powerCalc);
   void startServer();
   void stopServer();
   bool isRunning() const { return started; }
@@ -27,6 +29,7 @@ private:
   NVSManager *nvs;
   RelayController *relays;
   LimitManager *limits;
+  PowerCalculator *powerCalc;
   SystemData *sysData;
   SemaphoreHandle_t *dataMutex;
 

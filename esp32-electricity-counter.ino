@@ -255,7 +255,7 @@ void setup() {
 
   WiFi.onEvent(onWiFiEvent);
 
-  wsServer.begin(nvs, relays, limitMgr, &systemData, &dataMutex);
+  wsServer.begin(nvs, relays, limitMgr, &systemData, &dataMutex, &powerCalc);
   Serial.printf("  %-19s%s\n", "LittleFS", "OK");
 
   wifiMgr.begin(nvs);
