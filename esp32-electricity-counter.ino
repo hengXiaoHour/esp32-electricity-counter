@@ -7,7 +7,7 @@
 #include "src/network/ota_handler.h"
 #include "src/ui/status_led.h"
 #include "src/utils/nvs_manager.h"
-#include "src/core/data_logger.h"
+
 
 NVSManager      nvs;
 PowerCalculator powerCalc;
@@ -216,9 +216,6 @@ void sensorTask(void *pvParameters) {
       }
       if (relayDirty) nvs.commit();
 
-      // Log data to LittleFS (every 5 min)
-      logger.log(systemData);
-
       xSemaphoreGive(dataMutex);
     }
 
@@ -250,16 +247,7 @@ void setup() {
     psramFound() ? "OK" : "N/A");
   Serial.println();
 
-  // === Phase 1: Init LittleFS (needed for calibration storage) ===
   Serial.printf("  %-19s%s\n", "NVS", "OK"); nvs.begin();
-  Serial.printf("  %-19s", "LittleFS");
-  if (LittleFS.begin()) {
-    Serial.println("OK");
-  } else {
-    Serial.println("FORMAT");
-    LittleFS.format();
-    LittleFS.begin();
-  }
 
   // === Phase 2: Init hardware with defaults first ===
   Serial.printf("  %-19s%s\n", "Status LED", "OK"); statusLED.begin();
@@ -283,8 +271,6 @@ void setup() {
   Serial.printf("  %-19svoltage=%.1fV  current=%.1f (ch1)  RMS samples=%d\n",
     "Calibration", powerCalc.voltageCal, powerCalc.currentCal[0], powerCalc.rmsSamples);
   Serial.printf("  %-19sok\n", "Noise Floor + LPF");
-  Serial.printf("  %-19s%s\n", "Data Logger", "OK"); logger.begin();
-
   Serial.printf("  %s\n", "Channel Config");
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {
     char name[MAX_CHANNEL_NAME_LEN];

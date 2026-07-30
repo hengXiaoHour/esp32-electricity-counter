@@ -85,12 +85,6 @@
 #define EVENT_MSG_LEN     64
 
 // ==============================
-// Data Logging
-// ==============================
-#define LOG_DIR "/logs"
-#define LOG_INTERVAL_MS 300000
-
-// ==============================
 // WiFi
 // ==============================
 #define WIFI_RETRY_INTERVAL_MS  10000

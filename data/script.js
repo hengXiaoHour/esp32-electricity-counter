@@ -68,13 +68,7 @@ function connectWS(ip) {
   ws.onmessage = (e) => {
     try {
       const data = JSON.parse(e.data);
-      if (data.cmd === 'log_list') {
-        renderLogList(data.files);
-      } else if (data.cmd === 'log_data') {
-        openLogViewer(data.date, data.csv);
-      } else {
-        updateDashboard(data);
-      }
+      updateDashboard(data);
     } catch(err) { console.error('JSON Parse error', err); }
   };
 }
@@ -561,45 +555,6 @@ function handleResetNvs() {
 }
 
 // ============ Data Logs ============
-
-function fetchLogList() {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ cmd: 'get_logs' }));
-  }
-}
-
-function fetchLogDate(date) {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ cmd: 'get_logs', date: date }));
-  }
-}
-
-function renderLogList(files) {
-  const list = document.getElementById('logFileList');
-  list.innerHTML = '';
-  if (!files || files.length === 0) {
-    list.innerHTML = '<span style="color: var(--text-dim); font-size: 0.75rem;">No logs available.</span>';
-    return;
-  }
-  files.forEach(date => {
-    const btn = document.createElement('span');
-    btn.className = 'log-file-item';
-    btn.textContent = date;
-    btn.onclick = () => fetchLogDate(date);
-    list.appendChild(btn);
-  });
-}
-
-function openLogViewer(date, csv) {
-  document.getElementById('logViewerTitle').textContent = date + '.csv';
-  document.getElementById('logContent').textContent = csv || '(empty)';
-  document.getElementById('logViewer').classList.remove('hidden');
-}
-
-function closeLogViewer() {
-  document.getElementById('logViewer').classList.add('hidden');
-  document.getElementById('logContent').textContent = '';
-}
 
 // Mock Simulation Mode for Local Browser Testing
 function toggleDemoMode(cb) {

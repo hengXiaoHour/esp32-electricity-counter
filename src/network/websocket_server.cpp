@@ -1,5 +1,4 @@
 #include "websocket_server.h"
-#include <LittleFS.h>
 
 WebSocketServer::WebSocketServer()
   : server(nullptr), ws(nullptr), lastBroadcast(0), started(false) {}
@@ -168,55 +167,6 @@ void WebSocketServer::handleCommand(AsyncWebSocketClient *client, const char *ms
         sysData->voltageCalibration = val;
         xSemaphoreGive(*dataMutex);
       }
-    }
-
-  } else if (s.indexOf("\"cmd\":\"get_logs\"") >= 0) {
-    int di = s.indexOf("\"date\":\"");
-    if (di >= 0) {
-      di += 8;
-      int end = s.indexOf("\"", di);
-      String date = s.substring(di, end);
-      String path = String(LOG_DIR) + "/" + date;
-      if (!path.endsWith(".csv")) path += ".csv";
-      if (LittleFS.exists(path)) {
-        File f = LittleFS.open(path, "r");
-        String csv;
-        while (f.available()) csv += (char)f.read();
-        f.close();
-        csv.replace("\\", "\\\\");
-        csv.replace("\"", "\\\"");
-        csv.replace("\n", "\\n");
-        String resp = "{\"cmd\":\"log_data\",\"date\":\"";
-        resp += date;
-        resp += "\",\"csv\":\"";
-        resp += csv;
-        resp += "\"}";
-        client->text(resp);
-      } else {
-        String resp = "{\"cmd\":\"log_data\",\"date\":\"";
-        resp += date;
-        resp += "\",\"csv\":\"\"}";
-        client->text(resp);
-      }
-    } else {
-      File root = LittleFS.open(LOG_DIR);
-      String files = "[";
-      bool first = true;
-      if (root) {
-        File f;
-        while ((f = root.openNextFile())) {
-          if (!first) files += ",";
-          String fn = f.name();
-          fn.replace(".csv", "");
-          files += "\"" + fn + "\"";
-          first = false;
-          f.close();
-        }
-        root.close();
-      }
-      files += "]";
-      String resp = "{\"cmd\":\"log_list\",\"files\":" + files + "}";
-      client->text(resp);
     }
 
   } else if (s.indexOf("\"cmd\":\"set_current_cal\"") >= 0) {
