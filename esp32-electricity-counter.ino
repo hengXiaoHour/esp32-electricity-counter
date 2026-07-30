@@ -216,6 +216,15 @@ void sensorTask(void *pvParameters) {
       }
       if (relayDirty) nvs.commit();
 
+      // Persist energy to NVS every ~5s (60 cycles × 80ms)
+      static uint32_t lastEnergySave = 0;
+      if (millis() - lastEnergySave > 5000) {
+        lastEnergySave = millis();
+        for (int ch = 0; ch < NUM_CHANNELS; ch++) {
+          nvs.saveEnergyKWh(ch, powerCalc.getEnergyKWh(ch));
+        }
+      }
+
       xSemaphoreGive(dataMutex);
     }
 
@@ -252,6 +261,9 @@ void setup() {
   // === Phase 2: Init hardware with defaults first ===
   Serial.printf("  %-19s%s\n", "Status LED", "OK"); statusLED.begin();
   Serial.printf("  %-19s%s\n", "Power Calculator", "OK"); powerCalc.begin();
+  for (int ch = 0; ch < NUM_CHANNELS; ch++) {
+    powerCalc.setEnergyKWh(ch, nvs.loadEnergyKWh(ch));
+  }
 
   // === Phase 3: Load ALL persisted data (overrides defaults) ===
   bool savedRelayStates[RELAY_CHANNEL_COUNT];

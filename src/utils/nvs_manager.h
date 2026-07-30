@@ -52,6 +52,10 @@ public:
   uint16_t loadRmsSamples();
   void saveRmsSamples(uint16_t value);
 
+  // Per-channel energy (kWh) — saved periodically to survive power loss
+  float loadEnergyKWh(uint8_t channel);
+  void saveEnergyKWh(uint8_t channel, float value);
+
   // Commit pending writes to flash (required for persistence across reboot)
   void commit();
 

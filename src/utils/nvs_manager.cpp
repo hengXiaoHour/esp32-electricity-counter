@@ -196,6 +196,18 @@ void NVSManager::commit() {
   prefs.begin("elec-counter", false);
 }
 
+// --- Per-channel energy (kWh) persistence ---
+
+float NVSManager::loadEnergyKWh(uint8_t channel) {
+  String key = channelKey(channel, "kwh");
+  return prefs.getFloat(key.c_str(), 0.0f);
+}
+
+void NVSManager::saveEnergyKWh(uint8_t channel, float value) {
+  String key = channelKey(channel, "kwh");
+  prefs.putFloat(key.c_str(), value);
+}
+
 // --- Factory Reset ---
 
 void NVSManager::clearAll() {

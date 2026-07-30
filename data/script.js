@@ -431,9 +431,15 @@ function handleResetRelay(idx) {
     btn.innerHTML = '&#8634; Reset Counter';
     btn.classList.remove('confirming');
     
+    // Optimistic local reset — animates bar instantly before ESP responds
+    if (latestChannelData && latestChannelData[idx]) {
+      latestChannelData[idx].kwh = 0;
+      renderDashboardCard(idx, latestChannelData[idx]);
+    }
+    
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ cmd: 'reset_relay', ch: idx }));
-      showToast(`Channel ${idx+1}: limits reset, energy cleared, relay OFF`);
+      showToast(`Channel ${idx+1}: energy cleared, relay OFF`);
     }
   } else {
     pendingActions[idx] = 'confirm';
