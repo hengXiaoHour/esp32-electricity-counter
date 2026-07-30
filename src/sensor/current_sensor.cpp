@@ -7,19 +7,19 @@ void CurrentSensor::begin() {
 
 void CurrentSensor::readAll(float *outRMS, uint8_t numChannels) {
   // Buffer: transposed so samples[ch][i] for all ch first, then next i
-  float samples[NUM_CHANNELS][RMS_SAMPLES];
+  float samples[NUM_CHANNELS][MAX_RMS_SAMPLES];
 
   sampleAllChannels(samples);
 
   for (uint8_t ch = 0; ch < numChannels; ch++) {
-    outRMS[ch] = computeRMS(samples[ch], RMS_SAMPLES);
+    outRMS[ch] = computeRMS(samples[ch], MAX_RMS_SAMPLES);
   }
 }
 
-void CurrentSensor::sampleAllChannels(float samples[NUM_CHANNELS][RMS_SAMPLES]) {
+void CurrentSensor::sampleAllChannels(float samples[NUM_CHANNELS][MAX_RMS_SAMPLES]) {
   // Interleaved sampling: one ADC read per channel per cycle
   // This keeps samples evenly spread across the AC waveform
-  for (int i = 0; i < RMS_SAMPLES; i++) {
+  for (int i = 0; i < MAX_RMS_SAMPLES; i++) {
     for (uint8_t ch = 0; ch < NUM_CHANNELS; ch++) {
       samples[ch][i] = (float)analogRead(CURRENT_PINS[ch]);
       delayMicroseconds(ADC_READ_INTERVAL_US);

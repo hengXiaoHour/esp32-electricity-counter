@@ -6,9 +6,9 @@ void VoltageSensor::begin() {
 }
 
 float VoltageSensor::readRMS() {
-  float samples[RMS_SAMPLES];
+  float samples[MAX_RMS_SAMPLES];
   sampleVoltage(samples);
-  float adcRMS = computeRMS(samples, RMS_SAMPLES);
+  float adcRMS = computeRMS(samples, MAX_RMS_SAMPLES);
 
   // Convert ADC units to voltage at the pin
   float voltageRMS = (adcRMS / ADC_MAX_VALUE) * ADC_REFERENCE_V;
@@ -18,7 +18,7 @@ float VoltageSensor::readRMS() {
 }
 
 void VoltageSensor::sampleVoltage(float *samples) {
-  for (int i = 0; i < RMS_SAMPLES; i++) {
+  for (int i = 0; i < MAX_RMS_SAMPLES; i++) {
     samples[i] = (float)analogRead(PIN_VOLTAGE);
     delayMicroseconds(ADC_READ_INTERVAL_US);
   }

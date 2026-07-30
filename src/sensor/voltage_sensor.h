@@ -6,7 +6,7 @@ class VoltageSensor {
 public:
   void begin();
 
-  // Collects RMS_SAMPLES from the voltage pin and returns RMS voltage
+  // Collects MAX_RMS_SAMPLES from the voltage pin and returns RMS voltage
   float readRMS();
 
   // Calibration multiplier (display volts per volt measured)

@@ -19,12 +19,10 @@ public:
   void saveWiFiMode(uint8_t mode);
   uint8_t loadWiFiMode();
 
-  // Per-channel configuration
-  bool loadChannelConfig(uint8_t channel, char *name, size_t nameLen,
-                         float &currentLimit, float &powerLimit);
-  void saveChannelConfig(uint8_t channel, const char *name,
-                         float currentLimit, float powerLimit);
-  void clearChannelConfig(uint8_t channel);
+  // Per-channel name
+  bool loadChannelName(uint8_t channel, char *name, size_t nameLen);
+  void saveChannelName(uint8_t channel, const char *name);
+  void clearChannelName(uint8_t channel);
 
   // Monthly kWh budget
   float loadMonthlyKwhLimit(uint8_t channel);
@@ -50,8 +48,18 @@ public:
   float loadLpfAlpha(uint8_t channel);
   void saveLpfAlpha(uint8_t channel, float value);
 
+  // RMS samples (runtime tunable)
+  uint16_t loadRmsSamples();
+  void saveRmsSamples(uint16_t value);
+
+  // Commit pending writes to flash (required for persistence across reboot)
+  void commit();
+
   // Default channel names
   static const char *defaultChannelName(uint8_t channel);
+
+  // Factory reset: clear all NVS keys
+  void clearAll();
 
 private:
   Preferences prefs;

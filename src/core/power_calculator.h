@@ -31,9 +31,12 @@ public:
   int getAutoZeroChannel() const { return autoZeroChannel; }
   float runAutoZeroSingle(int ch);
 
+  uint16_t rmsSamples;
+  void setRmsSamples(uint16_t n) { if (n >= 100 && n <= MAX_RMS_SAMPLES) rmsSamples = n; }
+
 private:
-  float voltageSamples[RMS_SAMPLES];
-  float currentSamples[NUM_CHANNELS][RMS_SAMPLES];
+  float voltageSamples[MAX_RMS_SAMPLES];
+  float currentSamples[NUM_CHANNELS][MAX_RMS_SAMPLES];
 
   float voltageRMS;
   float currentRMS[NUM_CHANNELS];

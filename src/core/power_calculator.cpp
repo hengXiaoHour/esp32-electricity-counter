@@ -2,6 +2,7 @@
 #include <math.h>
 
 void PowerCalculator::begin() {
+  rmsSamples = MAX_RMS_SAMPLES / 2;
   voltageCal = DEFAULT_VOLTAGE_CALIBRATION;
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {
     currentCal[ch] = DEFAULT_CURRENT_CALIBRATION;
@@ -25,30 +26,30 @@ void PowerCalculator::update(float deltaSeconds) {
 }
 
 void PowerCalculator::collectSamples() {
-  for (int i = 0; i < RMS_SAMPLES; i++) {
+  for (int i = 0; i < rmsSamples; i++) {
     voltageSamples[i] = (float)analogRead(PIN_VOLTAGE);
-    delayMicroseconds(ADC_READ_INTERVAL_US);
 
     for (int ch = 0; ch < NUM_CHANNELS; ch++) {
       currentSamples[ch][i] = (float)analogRead(CURRENT_PINS[ch]);
-      delayMicroseconds(ADC_READ_INTERVAL_US);
     }
+
+    delayMicroseconds(ADC_READ_INTERVAL_US);
   }
 }
 
 void PowerCalculator::computeAll() {
   float vSum = 0.0f;
-  for (int i = 0; i < RMS_SAMPLES; i++) {
+  for (int i = 0; i < rmsSamples; i++) {
     vSum += voltageSamples[i];
   }
-  float vMean = vSum / RMS_SAMPLES;
+  float vMean = vSum / rmsSamples;
 
   float vSumSq = 0.0f;
-  for (int i = 0; i < RMS_SAMPLES; i++) {
+  for (int i = 0; i < rmsSamples; i++) {
     float centered = voltageSamples[i] - vMean;
     vSumSq += centered * centered;
   }
-  float vVariance = vSumSq / RMS_SAMPLES;
+  float vVariance = vSumSq / rmsSamples;
   float vAdcRMS = sqrtf(vVariance > 0.0f ? vVariance : 0.0f);
   float vPinVoltage = (vAdcRMS / ADC_MAX_VALUE) * ADC_REFERENCE_V;
   voltageRMS = vPinVoltage * voltageCal;
@@ -58,7 +59,7 @@ void PowerCalculator::computeAll() {
     float iSumSq = 0.0f;
     float pSum = 0.0f;
 
-    for (int i = 0; i < RMS_SAMPLES; i++) {
+    for (int i = 0; i < rmsSamples; i++) {
       float vCentered = voltageSamples[i] - vMean;
       float iCentered = currentSamples[ch][i];
 
@@ -67,8 +68,8 @@ void PowerCalculator::computeAll() {
       pSum += vCentered * iCentered;
     }
 
-    float iMean = iSum / RMS_SAMPLES;
-    float iMeanSq = iSumSq / RMS_SAMPLES;
+    float iMean = iSum / rmsSamples;
+    float iMeanSq = iSumSq / rmsSamples;
     float iVariance = iMeanSq - iMean * iMean;
     float iAdcRMS = sqrtf(iVariance > 0.0f ? iVariance : 0.0f);
     float iPinVoltage = (iAdcRMS / ADC_MAX_VALUE) * ADC_REFERENCE_V;
@@ -78,12 +79,11 @@ void PowerCalculator::computeAll() {
     if (adjustedRMS < 0.0f) adjustedRMS = 0.0f;
 
     currentRMS[ch] = adjustedRMS;
+    filteredCurrentRMS[ch] = adjustedRMS;
 
-    filteredCurrentRMS[ch] = lpfAlpha[ch] * adjustedRMS + (1.0f - lpfAlpha[ch]) * filteredCurrentRMS[ch];
-
-    float pMean = pSum / RMS_SAMPLES;
-    float pinVoltageScale = ADC_REFERENCE_V / ADC_MAX_VALUE;
-    float pWatts = pMean * pinVoltageScale * voltageCal * currentCal[ch];
+    float pMean = pSum / rmsSamples;
+    float adcToVolt = ADC_REFERENCE_V / ADC_MAX_VALUE;
+    float pWatts = pMean * adcToVolt * adcToVolt * voltageCal * currentCal[ch];
     activePower[ch] = fabsf(pWatts);
 
     float vActual = (vAdcRMS / ADC_MAX_VALUE) * ADC_REFERENCE_V * voltageCal;
@@ -119,7 +119,11 @@ void PowerCalculator::requestAutoZero(int ch) {
 }
 
 float PowerCalculator::runAutoZeroSingle(int ch) {
+  float savedNF = noiseFloor[ch];
+  noiseFloor[ch] = 0.0f;
   collectSamples();
   computeAll();
-  return currentRMS[ch];
+  float rawRMS = currentRMS[ch];
+  noiseFloor[ch] = savedNF;
+  return rawRMS;
 }

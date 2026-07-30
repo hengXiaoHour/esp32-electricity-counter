@@ -93,11 +93,20 @@
     </div>
     <div class="cal-row-single" style="max-width: 300px;">
       <label>Voltage Cal:</label>
-      <input type="number" id="voltCal" step="0.1" value="260">
+      <input type="number" id="voltCal" step="0.1" value="260" oninput="this.dataset.userSet='true'">
       <button class="btn-sm" onclick="sendVoltageCal()">Set</button>
+    </div>
+    <div class="cal-row-single" style="max-width: 300px; margin-top: 8px;">
+      <label>RMS Samples:</label>
+      <input type="number" id="rmsSamples" step="50" min="100" max="2000" value="1000" oninput="this.dataset.userSet='true'">
+      <button class="btn-sm" onclick="setRmsSamples()">Set</button>
+      <span style="font-size: 0.65rem; color: var(--text-dim); margin-left: 6px;">(100-2000)</span>
     </div>
     <div style="margin-top: 14px; font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">Channel Calibration</div>
     <div id="calibrationRows" class="cal-grid"></div>
+    <div style="margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px;">
+      <button id="resetNvsBtn" class="btn-sm" onclick="handleResetNvs()" style="color:#e74c3c;">&#8634; Reset NVS to Defaults</button>
+    </div>
   </div>
 
   <!-- Data Logs Panel -->
@@ -131,14 +140,6 @@
       <div class="form-group">
         <label>Channel Name</label>
         <input type="text" id="modalChName" placeholder="e.g. Living Room AC">
-      </div>
-      <div class="form-group">
-        <label>Current Limit (Amperes)</label>
-        <input type="number" id="modalChClim" step="0.5" placeholder="10.0">
-      </div>
-      <div class="form-group">
-        <label>Power Limit (Watts)</label>
-        <input type="number" id="modalChPlim" step="50" placeholder="2200">
       </div>
       <div class="form-group">
         <label>Monthly kWh Budget</label>

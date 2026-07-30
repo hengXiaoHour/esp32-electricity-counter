@@ -1,7 +1,7 @@
 #include "src/config.h"
 #include "src/core/power_calculator.h"
 #include "src/core/relay_controller.h"
-#include "src/core/limit_manager.h"
+
 #include "src/network/wifi_manager.h"
 #include "src/network/websocket_server.h"
 #include "src/network/ota_handler.h"
@@ -12,7 +12,7 @@
 NVSManager      nvs;
 PowerCalculator powerCalc;
 RelayController relays;
-LimitManager    limitMgr;
+
 WiFiManager     wifiMgr;
 WebSocketServer wsServer;
 OTAHandler      otaHandler;
@@ -69,6 +69,7 @@ static void updateLED() {
 static void updateSharedData() {
   systemData.voltageRMS = powerCalc.getVoltageRMS();
   systemData.voltageCalibration = powerCalc.voltageCal;
+  systemData.rmsSamples = powerCalc.rmsSamples;
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {
     systemData.currentCalibration[ch] = powerCalc.currentCal[ch];
   }
@@ -191,6 +192,7 @@ void sensorTask(void *pvParameters) {
         float avg = sum / batches;
         powerCalc.setNoiseFloor(ch, avg);
         nvs.saveNoiseFloor(ch, avg);
+        nvs.commit();
         Serial.printf("  [NVS] ch%d auto-zero complete: %.3f A\n", ch + 1, avg);
       }
       powerCalc.cancelAutoZero();
@@ -201,28 +203,18 @@ void sensorTask(void *pvParameters) {
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
       updateSharedData();
 
-      float currRMS[NUM_CHANNELS], actPower[NUM_CHANNELS];
-      float pLimit[NUM_CHANNELS], cLimit[NUM_CHANNELS];
-      for (int ch = 0; ch < NUM_CHANNELS; ch++) {
-        currRMS[ch] = powerCalc.getCurrentRMS(ch);
-        actPower[ch] = powerCalc.getActivePower(ch);
-        pLimit[ch] = systemData.channels[ch].powerLimit;
-        cLimit[ch] = systemData.channels[ch].currentLimit;
-      }
-
-      limitMgr.check(currRMS, actPower, pLimit, cLimit,
-                     systemData.channels, relays,
-                     systemData.events, systemData.eventCount);
-
       // Persist relay state changes to NVS
       static bool prevRelay[RELAY_CHANNEL_COUNT] = {false};
+      bool relayDirty = false;
       for (int ch = 0; ch < RELAY_CHANNEL_COUNT; ch++) {
         bool cur = relays.getState(ch);
         if (cur != prevRelay[ch]) {
           nvs.saveRelayState(ch, cur);
           prevRelay[ch] = cur;
+          relayDirty = true;
         }
       }
+      if (relayDirty) nvs.commit();
 
       // Log data to LittleFS (every 5 min)
       logger.log(systemData);
@@ -258,50 +250,55 @@ void setup() {
     psramFound() ? "OK" : "N/A");
   Serial.println();
 
+  // === Phase 1: Init LittleFS (needed for calibration storage) ===
   Serial.printf("  %-19s%s\n", "NVS", "OK"); nvs.begin();
-  Serial.printf("  %-19s%s\n", "Status LED", "OK"); statusLED.begin();
-  Serial.printf("  %-19s%s\n", "Relays", "OK"); relays.begin();
-
-  // Restore relay states from NVS
-  for (int i = 0; i < RELAY_CHANNEL_COUNT; i++) {
-    bool saved = nvs.loadRelayState(i, false);
-    relays.set(i, saved);
+  Serial.printf("  %-19s", "LittleFS");
+  if (LittleFS.begin()) {
+    Serial.println("OK");
+  } else {
+    Serial.println("FORMAT");
+    LittleFS.format();
+    LittleFS.begin();
   }
-  Serial.printf("  %-19s%s\n", "Limit Manager", "OK"); limitMgr.begin();
-  Serial.printf("  %-19s%s\n", "Power Calculator", "OK"); powerCalc.begin();
-  Serial.printf("  %-19s%s\n", "Data Logger", "OK"); logger.begin();
 
-  float vCal = nvs.loadVoltageCalibration();
-  powerCalc.voltageCal = vCal;
+  // === Phase 2: Init hardware with defaults first ===
+  Serial.printf("  %-19s%s\n", "Status LED", "OK"); statusLED.begin();
+  Serial.printf("  %-19s%s\n", "Power Calculator", "OK"); powerCalc.begin();
+
+  // === Phase 3: Load ALL persisted data (overrides defaults) ===
+  bool savedRelayStates[RELAY_CHANNEL_COUNT];
+  for (int i = 0; i < RELAY_CHANNEL_COUNT; i++) {
+    savedRelayStates[i] = nvs.loadRelayState(i, false);
+  }
+
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {
     powerCalc.currentCal[ch] = nvs.loadChannelCurrentCal(ch);
-  }
-  Serial.printf("  %-19svoltage=%.1fV  current=%.1f (ch1)\n", "Calibration", vCal, powerCalc.currentCal[0]);
-
-  for (int ch = 0; ch < NUM_CHANNELS; ch++) {
     powerCalc.noiseFloor[ch] = nvs.loadNoiseFloor(ch);
     powerCalc.lpfAlpha[ch] = nvs.loadLpfAlpha(ch);
   }
+  powerCalc.rmsSamples = nvs.loadRmsSamples();
+  powerCalc.voltageCal = nvs.loadVoltageCalibration();
+
+  Serial.printf("  %-19s%s\n", "Relays", "OK"); relays.begin(savedRelayStates);
+  Serial.printf("  %-19svoltage=%.1fV  current=%.1f (ch1)  RMS samples=%d\n",
+    "Calibration", powerCalc.voltageCal, powerCalc.currentCal[0], powerCalc.rmsSamples);
   Serial.printf("  %-19sok\n", "Noise Floor + LPF");
+  Serial.printf("  %-19s%s\n", "Data Logger", "OK"); logger.begin();
 
   Serial.printf("  %s\n", "Channel Config");
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {
     char name[MAX_CHANNEL_NAME_LEN];
-    float cLimit, pLimit;
-    bool hasConfig = nvs.loadChannelConfig(ch, name, sizeof(name), cLimit, pLimit);
-    if (!hasConfig) {
+    if (!nvs.loadChannelName(ch, name, sizeof(name))) {
       strncpy(name, NVSManager::defaultChannelName(ch), MAX_CHANNEL_NAME_LEN - 1);
       name[MAX_CHANNEL_NAME_LEN - 1] = '\0';
     }
     strncpy(systemData.channels[ch].name, name, MAX_CHANNEL_NAME_LEN - 1);
     systemData.channels[ch].name[MAX_CHANNEL_NAME_LEN - 1] = '\0';
-    systemData.channels[ch].currentLimit = cLimit;
-    systemData.channels[ch].powerLimit = pLimit;
     systemData.channels[ch].monthlyKwhLimit = nvs.loadMonthlyKwhLimit(ch);
     systemData.channels[ch].status = STATUS_OK;
     systemData.channels[ch].relayOn = ch < RELAY_CHANNEL_COUNT ? relays.getState(ch) : false;
-    Serial.printf("    Ch%d  %-16s  %.1fA / %.0fW / %.1fkWh/mo  %s\n",
-      ch+1, name, cLimit, pLimit, systemData.channels[ch].monthlyKwhLimit,
+    Serial.printf("    Ch%d  %-16s  %.1fkWh/mo  %s\n",
+      ch+1, name, systemData.channels[ch].monthlyKwhLimit,
       ch < RELAY_CHANNEL_COUNT ? "RELAY" : "MONITOR");
   }
 
@@ -310,8 +307,7 @@ void setup() {
 
   WiFi.onEvent(onWiFiEvent);
 
-  wsServer.begin(nvs, relays, limitMgr, &systemData, &dataMutex, &powerCalc);
-  Serial.printf("  %-19s%s\n", "LittleFS", "OK");
+  wsServer.begin(nvs, relays, &systemData, &dataMutex, &powerCalc);
 
   wifiMgr.begin(nvs);
   statusLED.setMode(LED_SOLID_RED);
@@ -380,9 +376,8 @@ static void handleSerialCommand(const String &cmd) {
       Serial.printf("  %-16s%.3f kWh\n", "Energy:", powerCalc.getEnergyKWh(ch));
       Serial.printf("  %-16s%s\n", "Status:", s);
       Serial.printf("  %-16s%s\n", "Relay:", systemData.channels[ch].relayOn ? "ON" : "OFF");
-      Serial.printf("  %-16s%.1f A / %.0f W\n", "Limits:",
-        systemData.channels[ch].currentLimit,
-        systemData.channels[ch].powerLimit);
+      Serial.printf("  %-16s%.1f\n", "Current Cal:", powerCalc.currentCal[ch]);
+      Serial.printf("  %-16s%.3f A\n", "Noise Floor:", powerCalc.noiseFloor[ch]);
       Serial.println();
     }
   }
@@ -411,7 +406,6 @@ static void handleSerialCommand(const String &cmd) {
   else if (cmd.startsWith("reset ")) {
     int ch = cmd.substring(6).toInt() - 1;
     if (ch >= 0 && ch < NUM_CHANNELS) {
-      limitMgr.resetChannel(ch, relays, systemData.channels);
       Serial.printf("  Channel %d reset\n", ch + 1);
     }
   }
@@ -422,13 +416,13 @@ static void handleSerialCommand(const String &cmd) {
       ch = cmd.substring(11).toInt() - 1;
     }
     if (ch >= 0 && ch < NUM_CHANNELS) {
-      nvs.clearChannelConfig(ch);
+      nvs.clearChannelName(ch);
       strncpy(systemData.channels[ch].name, NVSManager::defaultChannelName(ch), MAX_CHANNEL_NAME_LEN - 1);
       systemData.channels[ch].name[MAX_CHANNEL_NAME_LEN - 1] = '\0';
       Serial.printf("  Channel %d name reset to \"%s\"\n", ch + 1, systemData.channels[ch].name);
     } else {
       for (int i = 0; i < NUM_CHANNELS; i++) {
-        nvs.clearChannelConfig(i);
+        nvs.clearChannelName(i);
         strncpy(systemData.channels[i].name, NVSManager::defaultChannelName(i), MAX_CHANNEL_NAME_LEN - 1);
         systemData.channels[i].name[MAX_CHANNEL_NAME_LEN - 1] = '\0';
       }
@@ -450,6 +444,75 @@ static void handleSerialCommand(const String &cmd) {
         }
         Serial.printf("  Ch%d energy injected: %.3f kWh\n", ch + 1, kwh);
       }
+    }
+  }
+
+  else if (cmd == "cal") {
+    Serial.println();
+    Serial.printf("  %-20s%d\n", "RMS Samples:", powerCalc.rmsSamples);
+    Serial.printf("  %-20s%.1f\n", "Voltage Cal:", powerCalc.voltageCal);
+    Serial.println("  Current Calibration (A):");
+    for (int ch = 0; ch < NUM_CHANNELS; ch++) {
+      Serial.printf("    Ch%d: %.1f", ch + 1, powerCalc.currentCal[ch]);
+      Serial.printf("  | Noise Floor: %.3f A", powerCalc.noiseFloor[ch]);
+      Serial.println();
+    }
+    Serial.println();
+  }
+
+  else if (cmd.startsWith("rms_samples ")) {
+    int val = cmd.substring(12).toInt();
+    if (val >= 100 && val <= MAX_RMS_SAMPLES) {
+      powerCalc.setRmsSamples(val);
+      nvs.saveRmsSamples(val);
+      nvs.commit();
+      if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        systemData.rmsSamples = val;
+        xSemaphoreGive(dataMutex);
+      }
+      Serial.printf("  RMS samples set to %d\n", val);
+    } else {
+      Serial.printf("  RMS samples must be 100-%d\n", MAX_RMS_SAMPLES);
+    }
+  }
+
+  else if (cmd.startsWith("curr_cal ")) {
+    int sp = cmd.indexOf(' ', 9);
+    if (sp > 0) {
+      int ch = cmd.substring(9, sp).toInt() - 1;
+      float val = cmd.substring(sp + 1).toFloat();
+      if (ch >= 0 && ch < NUM_CHANNELS && val > 0) {
+        powerCalc.currentCal[ch] = val;
+        nvs.saveChannelCurrentCal(ch, val);
+        nvs.commit();
+        if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+          systemData.currentCalibration[ch] = val;
+          xSemaphoreGive(dataMutex);
+        }
+        Serial.printf("  Ch%d current calibration set to %.1f\n", ch + 1, val);
+      }
+    }
+  }
+
+  else if (cmd.startsWith("auto_zero ")) {
+    int ch = cmd.substring(10).toInt() - 1;
+    if (ch >= 0 && ch < NUM_CHANNELS) {
+      powerCalc.requestAutoZero(ch);
+      Serial.printf("  Ch%d auto-zero requested (runs on next sensor cycle)\n", ch + 1);
+    }
+  }
+
+  else if (cmd.startsWith("volt_cal ")) {
+    float val = cmd.substring(9).toFloat();
+    if (val > 0) {
+      powerCalc.voltageCal = val;
+      nvs.saveVoltageCalibration(val);
+      nvs.commit();
+      if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        systemData.voltageCalibration = val;
+        xSemaphoreGive(dataMutex);
+      }
+      Serial.printf("  Voltage calibration set to %.1f\n", val);
     }
   }
 
@@ -482,6 +545,12 @@ static void handleSerialCommand(const String &cmd) {
     Serial.println("    clearwifi           Erase WiFi credentials");
     Serial.println("    reboot              Restart the device");
     Serial.println("    info                Firmware & hardware info");
+    Serial.println("    cal                 Show calibration values");
+    Serial.println("    rms_samples <N>     Set RMS samples (100-2000)");
+    Serial.println("    curr_cal <ch> <val> Set current calibration for channel");
+    Serial.println("    auto_zero <ch>      Auto-zero noise floor for channel");
+    Serial.println("    volt_cal <val>      Set voltage calibration");
+    Serial.println("    nvs_debug           Test NVS write/read cycle");
     Serial.println();
   }
 
@@ -555,9 +624,38 @@ static void handleSerialCommand(const String &cmd) {
     Serial.println("  Type 'reboot' to restart in AP mode");
   }
 
+  else if (cmd == "nvs_debug") {
+    Serial.println("  NVS Debug (cache read):");
+
+    nvs.saveRmsSamples(888);
+    uint16_t rr = nvs.loadRmsSamples();
+    Serial.printf("    Write rms_samp=%d  Read(cache) rms_samp=%d  %s\n",
+      888, rr, (rr == 888) ? "OK" : "FAIL");
+
+    nvs.saveChannelCurrentCal(0, 7.5f);
+    float rc = nvs.loadChannelCurrentCal(0);
+    Serial.printf("    Write ch1_ccal=%.1f  Read(cache) ch1_ccal=%.1f  %s\n",
+      7.5f, rc, (rc == 7.5f) ? "OK" : "FAIL");
+
+    nvs.saveVoltageCalibration(42.5f);
+    float rv = nvs.loadVoltageCalibration();
+    Serial.printf("    Write volt_cal=%.1f  Read(cache) volt_cal=%.1f  %s\n",
+      42.5f, rv, (rv == 42.5f) ? "OK" : "FAIL");
+
+    // Now re-open handle and read from flash
+    nvs.commit();
+    rr = nvs.loadRmsSamples();
+    rc = nvs.loadChannelCurrentCal(0);
+    rv = nvs.loadVoltageCalibration();
+    Serial.println("  NVS Debug (flash read after commit):");
+    Serial.printf("    rms_samp=%d  ch1_ccal=%.1f  volt_cal=%.1f\n",
+      rr, rc, rv);
+  }
+
   else if (cmd == "reboot") {
     Serial.println("  Rebooting...");
-    delay(100);
+    nvs.end();
+    delay(1000);
     ESP.restart();
   }
 

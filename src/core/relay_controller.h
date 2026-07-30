@@ -4,7 +4,7 @@
 
 class RelayController {
 public:
-  void begin();
+  void begin(const bool *initialStates = nullptr);
 
   // Relay index 0-3 corresponds to channels 1-4
   void set(uint8_t relayIndex, bool on);

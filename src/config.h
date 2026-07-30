@@ -42,7 +42,7 @@
 
 // ADC sampling
 #define ADC_READ_INTERVAL_US  40     // 25kHz sampling rate
-#define RMS_SAMPLES           2000   // Samples per RMS calculation (~80ms @ 25kHz)
+#define MAX_RMS_SAMPLES       2000   // Max buffer size for runtime-tunable RMS samples
 #define SAMPLES_PER_CYCLE      500   // ~500 samples per 50Hz cycle at 25kHz
 
 // ==============================
@@ -68,18 +68,15 @@
 #define NUM_RELAYS           4
 #define MAX_CHANNEL_NAME_LEN 24
 
-// Default limits
-#define DEFAULT_CURRENT_LIMIT_A   16.0f
-#define DEFAULT_POWER_LIMIT_W     3500.0f
+// Default monthly kWh limit
 #define DEFAULT_MONTHLY_KWH_LIMIT 48.0f
-#define WARNING_THRESHOLD_PCT     90
 
 // ==============================
 // Timing Constants (milliseconds)
 // ==============================
 #define ENERGY_UPDATE_INTERVAL_MS  1000
-#define WS_UPDATE_INTERVAL_MS      500
-#define SENSOR_CYCLE_INTERVAL_MS   100
+#define WS_UPDATE_INTERVAL_MS      150
+#define SENSOR_CYCLE_INTERVAL_MS   80
 
 // ==============================
 // Event Log
@@ -131,8 +128,6 @@ struct ChannelData {
   float apparentPower;     // VA
   float powerFactor;
   float energyKWh;
-  float currentLimit;
-  float powerLimit;
   float monthlyKwhLimit;
   ChannelStatus status;
   bool relayOn;
@@ -146,6 +141,7 @@ struct SystemData {
   float voltageRMS;
   float voltageCalibration;
   float currentCalibration[NUM_CHANNELS];
+  uint16_t rmsSamples;
   uint32_t uptime;
 
   bool wifiConnected;

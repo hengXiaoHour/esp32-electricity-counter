@@ -1,4 +1,33 @@
 #include "nvs_manager.h"
+#include <LittleFS.h>
+
+static const char *CAL_DIR = "/cal";
+
+static void ensureCalDir() {
+  if (!LittleFS.exists(CAL_DIR)) {
+    LittleFS.mkdir(CAL_DIR);
+  }
+}
+
+static float readCalFloat(const char *key, float def) {
+  String path = String(CAL_DIR) + "/" + key;
+  File f = LittleFS.open(path, "r");
+  if (!f) return def;
+  String s = f.readStringUntil('\n');
+  f.close();
+  s.trim();
+  if (s.length() == 0) return def;
+  return s.toFloat();
+}
+
+static void writeCalFloat(const char *key, float value) {
+  ensureCalDir();
+  String path = String(CAL_DIR) + "/" + key;
+  File f = LittleFS.open(path, "w");
+  if (!f) return;
+  f.print(String(value, 6));
+  f.close();
+}
 
 void NVSManager::begin() {
   prefs.begin("elec-counter", false);
@@ -60,41 +89,24 @@ String NVSManager::channelKey(uint8_t channel, const char *suffix) {
   return key;
 }
 
-bool NVSManager::loadChannelConfig(uint8_t channel, char *name, size_t nameLen,
-                                   float &currentLimit, float &powerLimit) {
+bool NVSManager::loadChannelName(uint8_t channel, char *name, size_t nameLen) {
   String keyName = channelKey(channel, "name");
-  String keyClim = channelKey(channel, "clim");
-  String keyPlim = channelKey(channel, "plim");
-
   String savedName = prefs.getString(keyName.c_str(), "");
   if (savedName.length() > 0) {
     savedName.toCharArray(name, nameLen);
   }
-
-  currentLimit = prefs.getFloat(keyClim.c_str(), DEFAULT_CURRENT_LIMIT_A);
-  powerLimit = prefs.getFloat(keyPlim.c_str(), DEFAULT_POWER_LIMIT_W);
-
   return savedName.length() > 0;
 }
 
-void NVSManager::saveChannelConfig(uint8_t channel, const char *name,
-                                   float currentLimit, float powerLimit) {
+void NVSManager::saveChannelName(uint8_t channel, const char *name) {
   String keyName = channelKey(channel, "name");
-  String keyClim = channelKey(channel, "clim");
-  String keyPlim = channelKey(channel, "plim");
-
   prefs.putString(keyName.c_str(), name);
-  prefs.putFloat(keyClim.c_str(), currentLimit);
-  prefs.putFloat(keyPlim.c_str(), powerLimit);
-  Serial.printf("  [NVS] ch%d config: name=\"%s\" clim=%.1fA plim=%.0fW\n",
-    channel + 1, name, currentLimit, powerLimit);
+  Serial.printf("  [NVS] ch%d name: \"%s\"\n", channel + 1, name);
 }
 
-void NVSManager::clearChannelConfig(uint8_t channel) {
+void NVSManager::clearChannelName(uint8_t channel) {
   prefs.remove(channelKey(channel, "name").c_str());
-  prefs.remove(channelKey(channel, "clim").c_str());
-  prefs.remove(channelKey(channel, "plim").c_str());
-  Serial.printf("  [NVS] ch%d config cleared (name, clim, plim)\n", channel + 1);
+  Serial.printf("  [NVS] ch%d name cleared\n", channel + 1);
 }
 
 // --- Monthly kWh Limit ---
@@ -110,34 +122,38 @@ void NVSManager::saveMonthlyKwhLimit(uint8_t channel, float limit) {
   Serial.printf("  [NVS] ch%d monthly kWh limit: %.1f kWh\n", channel + 1, limit);
 }
 
-// --- Calibration ---
+// --- Calibration (LittleFS-backed, one file per key) ---
 
 float NVSManager::loadVoltageCalibration() {
-  return prefs.getFloat("volt_cal", DEFAULT_VOLTAGE_CALIBRATION);
+  return readCalFloat("volt_cal", DEFAULT_VOLTAGE_CALIBRATION);
 }
 
 void NVSManager::saveVoltageCalibration(float value) {
-  prefs.putFloat("volt_cal", value);
+  writeCalFloat("volt_cal", value);
   Serial.printf("  [NVS] saved voltage calibration: %.1f\n", value);
 }
 
 float NVSManager::loadCurrentCalibration() {
-  return prefs.getFloat("curr_cal", DEFAULT_CURRENT_CALIBRATION);
+  return readCalFloat("curr_cal", DEFAULT_CURRENT_CALIBRATION);
 }
 
 void NVSManager::saveCurrentCalibration(float value) {
-  prefs.putFloat("curr_cal", value);
+  writeCalFloat("curr_cal", value);
   Serial.printf("  [NVS] saved current calibration: %.1f\n", value);
 }
 
 float NVSManager::loadChannelCurrentCal(uint8_t channel) {
-  String key = channelKey(channel, "ccal");
-  return prefs.getFloat(key.c_str(), loadCurrentCalibration());
+  char key[16];
+  snprintf(key, sizeof(key), "ch%u_ccal", channel + 1);
+  float v = readCalFloat(key, NAN);
+  if (isnan(v)) v = loadCurrentCalibration();
+  return v;
 }
 
 void NVSManager::saveChannelCurrentCal(uint8_t channel, float value) {
-  String key = channelKey(channel, "ccal");
-  prefs.putFloat(key.c_str(), value);
+  char key[16];
+  snprintf(key, sizeof(key), "ch%u_ccal", channel + 1);
+  writeCalFloat(key, value);
   Serial.printf("  [NVS] ch%d current calibration: %.1f\n", channel + 1, value);
 }
 
@@ -156,26 +172,45 @@ bool NVSManager::loadRelayState(uint8_t relayIndex, bool defaultValue) {
   return prefs.getUChar(key.c_str(), defaultValue ? 1 : 0) != 0;
 }
 
-// --- Noise Floor (zero calibration) ---
+// --- Noise Floor ---
 
 float NVSManager::loadNoiseFloor(uint8_t channel) {
-  return prefs.getFloat(channelKey(channel, "nf").c_str(), 0.0f);
+  char key[16];
+  snprintf(key, sizeof(key), "ch%u_nf", channel + 1);
+  return readCalFloat(key, 0.0f);
 }
 
 void NVSManager::saveNoiseFloor(uint8_t channel, float value) {
-  prefs.putFloat(channelKey(channel, "nf").c_str(), value);
+  char key[16];
+  snprintf(key, sizeof(key), "ch%u_nf", channel + 1);
+  writeCalFloat(key, value);
   Serial.printf("  [NVS] ch%d noise floor: %.3f A\n", channel + 1, value);
 }
 
 // --- LPF Alpha ---
 
 float NVSManager::loadLpfAlpha(uint8_t channel) {
-  return prefs.getFloat(channelKey(channel, "lpf").c_str(), 1.0f);
+  char key[16];
+  snprintf(key, sizeof(key), "ch%u_lpf", channel + 1);
+  return readCalFloat(key, 1.0f);
 }
 
 void NVSManager::saveLpfAlpha(uint8_t channel, float value) {
-  prefs.putFloat(channelKey(channel, "lpf").c_str(), value);
+  char key[16];
+  snprintf(key, sizeof(key), "ch%u_lpf", channel + 1);
+  writeCalFloat(key, value);
   Serial.printf("  [NVS] ch%d LPF alpha: %.2f\n", channel + 1, value);
+}
+
+// --- RMS Samples ---
+
+uint16_t NVSManager::loadRmsSamples() {
+  return (uint16_t)readCalFloat("rms_samp", (float)MAX_RMS_SAMPLES / 2);
+}
+
+void NVSManager::saveRmsSamples(uint16_t value) {
+  writeCalFloat("rms_samp", (float)value);
+  Serial.printf("  [NVS] RMS samples: %d\n", value);
 }
 
 // --- Default Names ---
@@ -187,4 +222,29 @@ const char *NVSManager::defaultChannelName(uint8_t channel) {
   };
   if (channel >= NUM_CHANNELS) return "Unknown";
   return names[channel];
+}
+
+// --- Commit ---
+
+void NVSManager::commit() {
+  prefs.end();
+  prefs.begin("elec-counter", false);
+}
+
+// --- Factory Reset ---
+
+void NVSManager::clearAll() {
+  prefs.clear();
+  File dir = LittleFS.open(CAL_DIR);
+  if (dir) {
+    File f;
+    while ((f = dir.openNextFile())) {
+      String p = String(CAL_DIR) + "/" + f.name();
+      LittleFS.remove(p);
+      f.close();
+    }
+    dir.close();
+  }
+  LittleFS.rmdir(CAL_DIR);
+  Serial.println("  [NVS] ALL keys cleared — defaults will load on next boot");
 }

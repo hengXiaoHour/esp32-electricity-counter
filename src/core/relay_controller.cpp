@@ -1,10 +1,11 @@
 #include "relay_controller.h"
 
-void RelayController::begin() {
+void RelayController::begin(const bool *initialStates) {
   for (uint8_t i = 0; i < NUM_RELAYS; i++) {
     pinMode(RELAY_PINS[i], OUTPUT);
-    digitalWrite(RELAY_PINS[i], !RELAY_ACTIVE_STATE);  // Start OFF
-    states[i] = false;
+    bool on = initialStates ? initialStates[i] : false;
+    digitalWrite(RELAY_PINS[i], on ? RELAY_ACTIVE_STATE : !RELAY_ACTIVE_STATE);
+    states[i] = on;
   }
 }
 

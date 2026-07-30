@@ -162,16 +162,16 @@ function updateDashboard(data) {
   // Render Events
   if (data.events) renderEvents(data.events);
 
-  // Sync voltage calibration from ESP32 (only if input not focused)
+  // Sync voltage calibration from ESP32 (don't overwrite while user is typing/setting)
   const voltCalInput = document.getElementById('voltCal');
-  if (voltCalInput && document.activeElement !== voltCalInput && typeof data.voltageCalibration === 'number') {
+  if (voltCalInput && document.activeElement !== voltCalInput && !voltCalInput.dataset.userSet && typeof data.voltageCalibration === 'number') {
     voltCalInput.value = data.voltageCalibration.toFixed(1);
   }
 
-  // Sync calibration values from ESP32 (don't overwrite while typing)
+  // Sync calibration values from ESP32 (don't overwrite while user is typing)
   const syncField = (id, val, decimals) => {
     const inp = document.getElementById(id);
-    if (inp && document.activeElement !== inp && typeof val === 'number') inp.value = val.toFixed(decimals);
+    if (inp && document.activeElement !== inp && !inp.dataset.userSet && typeof val === 'number') inp.value = val.toFixed(decimals);
   };
   if (Array.isArray(data.currentCalibration)) {
     data.currentCalibration.forEach((v, i) => syncField(`currCal_${i}`, v, 1));
@@ -179,8 +179,10 @@ function updateDashboard(data) {
   if (Array.isArray(data.noiseFloor)) {
     data.noiseFloor.forEach((v, i) => syncField(`nf_${i}`, v, 3));
   }
-  if (Array.isArray(data.lpfAlpha)) {
-    data.lpfAlpha.forEach((v, i) => syncField(`lpf_${i}`, v, 2));
+
+  const rmsInput = document.getElementById('rmsSamples');
+  if (rmsInput && typeof data.rmsSamples === 'number' && !rmsInput.dataset.userSet) {
+    rmsInput.value = data.rmsSamples;
   }
 
   // Initialize collapsible calibration sections once
@@ -189,7 +191,6 @@ function updateDashboard(data) {
     data.ch.forEach((_, idx) => {
       const currCal = (data.currentCalibration && data.currentCalibration[idx]) || 100;
       const nf = (data.noiseFloor && data.noiseFloor[idx]) || 0;
-      const lpf = (data.lpfAlpha && data.lpfAlpha[idx]) || 1;
 
       const header = document.createElement('div');
       header.className = 'cal-collapse-header';
@@ -205,18 +206,13 @@ function updateDashboard(data) {
       body.innerHTML = `
         <div class="cal-param-row">
           <label>Current Cal:</label>
-          <input type="number" id="currCal_${idx}" step="0.1" value="${currCal}">
+          <input type="number" id="currCal_${idx}" step="0.1" value="${currCal}" oninput="this.dataset.userSet='true'">
           <button class="btn-sm" onclick="sendCurrentCal(${idx})">Set</button>
         </div>
         <div class="cal-param-row">
           <label>Noise Floor:</label>
-          <input type="number" id="nf_${idx}" step="0.001" value="${nf}">
+          <input type="number" id="nf_${idx}" step="0.001" value="${nf}" oninput="this.dataset.userSet='true'">
           <button class="btn-sm" onclick="autoZeroChannel(${idx})" style="color:#e67e22;">Auto-Zero</button>
-        </div>
-        <div class="cal-param-row">
-          <label>LPF Alpha:</label>
-          <input type="number" id="lpf_${idx}" step="0.05" min="0.01" max="1" value="${lpf}">
-          <button class="btn-sm" onclick="setLpfAlpha(${idx})">Set</button>
         </div>
       `;
 
@@ -267,7 +263,7 @@ function createChannelCardElement(idx) {
     </div>
     <div class="ch-submetrics">
       <span>PF: <strong class="val-pf mono">1.00</strong></span>
-      <span class="limit-text mono">Max: -- A / -- W</span>
+      <span class="limit-text mono">Limit: -- kWh/mo</span>
     </div>
     <div class="card-actions">
       <button class="btn-sm btn-edit" onclick="openEditModal(${idx})">Edit</button>
@@ -320,8 +316,6 @@ function updateChannelCardElement(card, ch, idx) {
   const powerVal = typeof ch.w === 'number' ? ch.w : 0;
   const kwhVal = typeof ch.kwh === 'number' ? ch.kwh : 0;
   const pfVal = typeof ch.pf === 'number' ? ch.pf : 1.0;
-  const currentLimit = typeof ch.cl === 'number' ? ch.cl : 10;
-  const powerLimit = typeof ch.pl === 'number' ? ch.pl : 2200;
   const monthlyKwhLimit = typeof ch.mkwh === 'number' ? ch.mkwh : 48;
 
   const valA = card.querySelector('.val-a');
@@ -383,8 +377,6 @@ function openEditModal(idx) {
   
   document.getElementById('modalTitle').textContent = `Configure Channel ${idx + 1}`;
   document.getElementById('modalChName').value = ch.n || `Channel ${idx + 1}`;
-  document.getElementById('modalChClim').value = typeof ch.cl === 'number' ? ch.cl : 10;
-  document.getElementById('modalChPlim').value = typeof ch.pl === 'number' ? ch.pl : 2200;
   document.getElementById('modalChMkwh').value = typeof ch.mkwh === 'number' ? ch.mkwh : 48;
   
   document.getElementById('editModal').classList.remove('hidden');
@@ -409,21 +401,13 @@ function saveModalSettings() {
   if (activeEditChIdx === null) return;
   const idx = activeEditChIdx;
   
-  const clim = parseFloat(document.getElementById('modalChClim').value);
-  const plim = parseFloat(document.getElementById('modalChPlim').value);
   const name = document.getElementById('modalChName').value.trim();
-
   const mkwh = parseFloat(document.getElementById('modalChMkwh').value);
 
   if (ws && ws.readyState === WebSocket.OPEN) {
-    if (!isNaN(clim)) ws.send(JSON.stringify({ cmd: 'set_limit', ch: idx, val: clim }));
-    if (!isNaN(plim)) ws.send(JSON.stringify({ cmd: 'set_power_limit', ch: idx, val: plim }));
     if (!isNaN(mkwh)) ws.send(JSON.stringify({ cmd: 'set_monthly_kwh', ch: idx, val: mkwh }));
     if (name) ws.send(JSON.stringify({ cmd: 'set_name', ch: idx, name: name }));
   } else if (isDemoMode && latestChannelData[idx]) {
-    // Immediate UI feedback in demo mode
-    if (!isNaN(clim)) latestChannelData[idx].cl = clim;
-    if (!isNaN(plim)) latestChannelData[idx].pl = plim;
     if (!isNaN(mkwh)) latestChannelData[idx].mkwh = mkwh;
     if (name) latestChannelData[idx].n = name;
   }
@@ -504,6 +488,7 @@ function resetChannelNames() {
 function sendVoltageCal() {
   const val = parseFloat(document.getElementById('voltCal').value);
   if (isNaN(val)) return showToast('Invalid voltage calibration');
+  delete document.getElementById('voltCal').dataset.userSet;
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ cmd: 'set_voltage_cal', val }));
     showToast(`Voltage cal set to ${val.toFixed(1)}`);
@@ -515,6 +500,7 @@ function sendVoltageCal() {
 function sendCurrentCal(idx) {
   const val = parseFloat(document.getElementById(`currCal_${idx}`).value);
   if (isNaN(val)) return showToast('Invalid current calibration');
+  delete document.getElementById(`currCal_${idx}`).dataset.userSet;
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ cmd: 'set_current_cal', ch: idx, val }));
     showToast(`Ch${idx+1} current cal set to ${val.toFixed(1)}`);
@@ -524,6 +510,8 @@ function sendCurrentCal(idx) {
 }
 
 function autoZeroChannel(idx) {
+  const nf = document.getElementById(`nf_${idx}`);
+  if (nf) delete nf.dataset.userSet;
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ cmd: 'set_noise_floor', ch: idx }));
     showToast(`Ch${idx+1} auto-zero started (2s)...`);
@@ -532,14 +520,43 @@ function autoZeroChannel(idx) {
   }
 }
 
-function setLpfAlpha(idx) {
-  const val = parseFloat(document.getElementById(`lpf_${idx}`).value);
-  if (isNaN(val) || val < 0.01 || val > 1) return showToast('LPF alpha must be 0.01-1.0');
+function setRmsSamples() {
+  const inp = document.getElementById('rmsSamples');
+  const val = parseInt(inp.value);
+  if (isNaN(val) || val < 100 || val > 2000) return showToast('RMS Samples must be 100-2000');
+  delete inp.dataset.userSet;
   if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ cmd: 'set_lpf_alpha', ch: idx, val }));
-    showToast(`Ch${idx+1} LPF alpha set to ${val.toFixed(2)}`);
+    ws.send(JSON.stringify({ cmd: 'set_rms_samples', val }));
+    showToast(`RMS Samples set to ${val}`);
   } else {
     showToast('Not connected');
+  }
+}
+
+function handleResetNvs() {
+  const btn = document.getElementById('resetNvsBtn');
+  if (btn.dataset.confirm === 'true') {
+    delete btn.dataset.confirm;
+    btn.textContent = '\u21ba Reset NVS to Defaults';
+    delete document.getElementById('rmsSamples').dataset.userSet;
+    delete document.getElementById('voltCal').dataset.userSet;
+    for (let i = 0; i < 6; i++) {
+      const nf = document.getElementById(`nf_${i}`);
+      if (nf) delete nf.dataset.userSet;
+      const cc = document.getElementById(`currCal_${i}`);
+      if (cc) delete cc.dataset.userSet;
+    }
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ cmd: 'reset_nvs_defaults' }));
+      showToast('NVS reset to defaults — values will reload from ESP32');
+    }
+  } else {
+    btn.dataset.confirm = 'true';
+    btn.textContent = 'Confirm?';
+    setTimeout(() => {
+      delete btn.dataset.confirm;
+      btn.textContent = '\u21ba Reset NVS to Defaults';
+    }, 3000);
   }
 }
 
@@ -604,10 +621,10 @@ function startDemoMode() {
     const mockData = {
       v: 228.4 + (Math.random() * 3 - 1.5),
       ch: [
-        { n: "Living Room AC", a: 4.8 + Math.random(), w: 1080 + Math.random()*20, kwh: 12.4, pf: 0.95, cl: 10, pl: 2200, mkwh: 48, s: 0, r: true },
-        { n: "Kitchen Oven", a: 8.2 + Math.random(), w: 1870 + Math.random()*30, kwh: 3.8, pf: 0.99, cl: 10, pl: 2000, mkwh: 48, s: 1, r: true },
-        { n: "Water Heater", a: 0.0, w: 0.0, kwh: 5.1, pf: 0.0, cl: 15, pl: 3500, mkwh: 48, s: 2, r: false },
-        { n: "Server Rack", a: 1.2 + Math.random()*0.1, w: 270 + Math.random()*5, kwh: 48.2, pf: 0.92, cl: 5, pl: 1000, mkwh: 48, s: 0, r: true }
+        { n: "Living Room AC", a: 4.8 + Math.random(), w: 1080 + Math.random()*20, kwh: 12.4, pf: 0.95, mkwh: 48, s: 0, r: true },
+        { n: "Kitchen Oven", a: 8.2 + Math.random(), w: 1870 + Math.random()*30, kwh: 3.8, pf: 0.99, mkwh: 48, s: 1, r: true },
+        { n: "Water Heater", a: 0.0, w: 0.0, kwh: 5.1, pf: 0.0, mkwh: 48, s: 2, r: false },
+        { n: "Server Rack", a: 1.2 + Math.random()*0.1, w: 270 + Math.random()*5, kwh: 48.2, pf: 0.92, mkwh: 48, s: 0, r: true }
       ],
       events: demoEvents
     };
