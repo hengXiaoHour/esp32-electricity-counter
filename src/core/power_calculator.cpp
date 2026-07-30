@@ -84,7 +84,9 @@ void PowerCalculator::computeAll() {
     float pMean = pSum / rmsSamples;
     float adcToVolt = ADC_REFERENCE_V / ADC_MAX_VALUE;
     float pWatts = pMean * adcToVolt * adcToVolt * voltageCal * currentCal[ch];
-    activePower[ch] = fabsf(pWatts);
+    float noisePower = voltageRMS * noiseFloor[ch];
+    activePower[ch] = fabsf(pWatts) - noisePower;
+    if (activePower[ch] < 0.0f) activePower[ch] = 0.0f;
 
     float vActual = (vAdcRMS / ADC_MAX_VALUE) * ADC_REFERENCE_V * voltageCal;
     float iActual = filteredCurrentRMS[ch];
