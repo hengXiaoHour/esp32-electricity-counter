@@ -1,33 +1,4 @@
 #include "nvs_manager.h"
-#include <LittleFS.h>
-
-static const char *CAL_DIR = "/cal";
-
-static void ensureCalDir() {
-  if (!LittleFS.exists(CAL_DIR)) {
-    LittleFS.mkdir(CAL_DIR);
-  }
-}
-
-static float readCalFloat(const char *key, float def) {
-  String path = String(CAL_DIR) + "/" + key;
-  File f = LittleFS.open(path, "r");
-  if (!f) return def;
-  String s = f.readStringUntil('\n');
-  f.close();
-  s.trim();
-  if (s.length() == 0) return def;
-  return s.toFloat();
-}
-
-static void writeCalFloat(const char *key, float value) {
-  ensureCalDir();
-  String path = String(CAL_DIR) + "/" + key;
-  File f = LittleFS.open(path, "w");
-  if (!f) return;
-  f.print(String(value, 6));
-  f.close();
-}
 
 void NVSManager::begin() {
   prefs.begin("elec-counter", false);
@@ -122,38 +93,36 @@ void NVSManager::saveMonthlyKwhLimit(uint8_t channel, float limit) {
   Serial.printf("  [NVS] ch%d monthly kWh limit: %.1f kWh\n", channel + 1, limit);
 }
 
-// --- Calibration (LittleFS-backed, one file per key) ---
+// --- Calibration (NVS-backed) ---
 
 float NVSManager::loadVoltageCalibration() {
-  return readCalFloat("volt_cal", DEFAULT_VOLTAGE_CALIBRATION);
+  return prefs.getFloat("volt_cal", DEFAULT_VOLTAGE_CALIBRATION);
 }
 
 void NVSManager::saveVoltageCalibration(float value) {
-  writeCalFloat("volt_cal", value);
+  prefs.putFloat("volt_cal", value);
   Serial.printf("  [NVS] saved voltage calibration: %.1f\n", value);
 }
 
 float NVSManager::loadCurrentCalibration() {
-  return readCalFloat("curr_cal", DEFAULT_CURRENT_CALIBRATION);
+  return prefs.getFloat("curr_cal", DEFAULT_CURRENT_CALIBRATION);
 }
 
 void NVSManager::saveCurrentCalibration(float value) {
-  writeCalFloat("curr_cal", value);
+  prefs.putFloat("curr_cal", value);
   Serial.printf("  [NVS] saved current calibration: %.1f\n", value);
 }
 
 float NVSManager::loadChannelCurrentCal(uint8_t channel) {
-  char key[16];
-  snprintf(key, sizeof(key), "ch%u_ccal", channel + 1);
-  float v = readCalFloat(key, NAN);
-  if (isnan(v)) v = loadCurrentCalibration();
+  String key = channelKey(channel, "ccal");
+  float v = prefs.getFloat(key.c_str(), NAN);
+  if (isnan(v)) return loadCurrentCalibration();
   return v;
 }
 
 void NVSManager::saveChannelCurrentCal(uint8_t channel, float value) {
-  char key[16];
-  snprintf(key, sizeof(key), "ch%u_ccal", channel + 1);
-  writeCalFloat(key, value);
+  String key = channelKey(channel, "ccal");
+  prefs.putFloat(key.c_str(), value);
   Serial.printf("  [NVS] ch%d current calibration: %.1f\n", channel + 1, value);
 }
 
@@ -175,41 +144,37 @@ bool NVSManager::loadRelayState(uint8_t relayIndex, bool defaultValue) {
 // --- Noise Floor ---
 
 float NVSManager::loadNoiseFloor(uint8_t channel) {
-  char key[16];
-  snprintf(key, sizeof(key), "ch%u_nf", channel + 1);
-  return readCalFloat(key, 0.0f);
+  String key = channelKey(channel, "nf");
+  return prefs.getFloat(key.c_str(), 0.0f);
 }
 
 void NVSManager::saveNoiseFloor(uint8_t channel, float value) {
-  char key[16];
-  snprintf(key, sizeof(key), "ch%u_nf", channel + 1);
-  writeCalFloat(key, value);
+  String key = channelKey(channel, "nf");
+  prefs.putFloat(key.c_str(), value);
   Serial.printf("  [NVS] ch%d noise floor: %.3f A\n", channel + 1, value);
 }
 
 // --- LPF Alpha ---
 
 float NVSManager::loadLpfAlpha(uint8_t channel) {
-  char key[16];
-  snprintf(key, sizeof(key), "ch%u_lpf", channel + 1);
-  return readCalFloat(key, 1.0f);
+  String key = channelKey(channel, "lpf");
+  return prefs.getFloat(key.c_str(), 1.0f);
 }
 
 void NVSManager::saveLpfAlpha(uint8_t channel, float value) {
-  char key[16];
-  snprintf(key, sizeof(key), "ch%u_lpf", channel + 1);
-  writeCalFloat(key, value);
+  String key = channelKey(channel, "lpf");
+  prefs.putFloat(key.c_str(), value);
   Serial.printf("  [NVS] ch%d LPF alpha: %.2f\n", channel + 1, value);
 }
 
 // --- RMS Samples ---
 
 uint16_t NVSManager::loadRmsSamples() {
-  return (uint16_t)readCalFloat("rms_samp", (float)MAX_RMS_SAMPLES / 2);
+  return (uint16_t)prefs.getFloat("rms_samp", (float)MAX_RMS_SAMPLES / 2);
 }
 
 void NVSManager::saveRmsSamples(uint16_t value) {
-  writeCalFloat("rms_samp", (float)value);
+  prefs.putFloat("rms_samp", (float)value);
   Serial.printf("  [NVS] RMS samples: %d\n", value);
 }
 
@@ -235,16 +200,5 @@ void NVSManager::commit() {
 
 void NVSManager::clearAll() {
   prefs.clear();
-  File dir = LittleFS.open(CAL_DIR);
-  if (dir) {
-    File f;
-    while ((f = dir.openNextFile())) {
-      String p = String(CAL_DIR) + "/" + f.name();
-      LittleFS.remove(p);
-      f.close();
-    }
-    dir.close();
-  }
-  LittleFS.rmdir(CAL_DIR);
   Serial.println("  [NVS] ALL keys cleared — defaults will load on next boot");
 }
