@@ -435,6 +435,17 @@ function handleResetRelay(idx) {
     if (latestChannelData && latestChannelData[idx]) {
       latestChannelData[idx].kwh = 0;
     }
+    if (card) {
+      const valKwh = card.querySelector('.val-kwh');
+      if (valKwh) valKwh.textContent = '0.00';
+      const barPct = card.querySelector('.bar-pct');
+      if (barPct) barPct.textContent = '0%';
+      const fill = card.querySelector('.bar-fill');
+      if (fill) {
+        fill.style.width = '0%';
+        fill.className = 'progress-fill';
+      }
+    }
     
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ cmd: 'reset_relay', ch: idx }));
