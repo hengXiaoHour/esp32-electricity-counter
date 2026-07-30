@@ -431,10 +431,9 @@ function handleResetRelay(idx) {
     btn.innerHTML = '&#8634; Reset Counter';
     btn.classList.remove('confirming');
     
-    // Optimistic local reset — animates bar instantly before ESP responds
+    // Optimistic: zero kWh locally so bar animates before ESP responds
     if (latestChannelData && latestChannelData[idx]) {
       latestChannelData[idx].kwh = 0;
-      renderDashboardCard(idx, latestChannelData[idx]);
     }
     
     if (ws && ws.readyState === WebSocket.OPEN) {
