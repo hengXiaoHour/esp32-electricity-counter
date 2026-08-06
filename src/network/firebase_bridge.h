@@ -5,9 +5,11 @@
 #include "../core/power_calculator.h"
 
 // How often the snapshot is pushed to `/latest` and commands are polled.
-// Kept at 500 ms balances cloud smoothness with WiFi/HTTP overhead.
-#define FIREBASE_PUSH_INTERVAL_MS 500
-#define FIREBASE_COMMAND_POLL_MS 500
+// A TLS round-trip takes ~150-300 ms on WiFi, so 1 s cadence is snappy for
+// the cloud dashboard while barely touching the WebSocket broadcast loop
+// (which keeps its own 150 ms cadence on the shared radio).
+#define FIREBASE_PUSH_INTERVAL_MS 1000
+#define FIREBASE_COMMAND_POLL_MS 1000
 
 class LimitManager;
 class NVSManager;
@@ -51,7 +53,8 @@ private:
   PowerCalculator *powerCalc;
   LimitManager *limitMgr;
 
-  FirebaseData fbdo;
+  FirebaseData fbdo;     // /latest push (own persistent TLS connection)
+  FirebaseData fbCmd;    // /commands poll (separate, keeps its own connection)
   FirebaseAuth auth;
   FirebaseConfig config;
 

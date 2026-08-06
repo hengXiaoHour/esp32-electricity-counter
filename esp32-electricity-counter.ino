@@ -323,7 +323,10 @@ void setup() {
   otaHandler.begin("esp32-elec-counter");
   Serial.printf("  %-19s%s\n", "OTA", "OK");
 
-  xTaskCreatePinnedToCore(networkTask, "network", 8192, NULL, 1, NULL, 0);
+  // Firmware helper tasks. networkTask keeps priority 2 so its WebSocket
+  // broadcast always preempts firebaseTask (priority 1). Firebase's blocking
+  // HTTPS/TLS work must never delay the 150 ms broadcast loop on Core 0.
+  xTaskCreatePinnedToCore(networkTask, "network", 8192, NULL, 2, NULL, 0);
   xTaskCreatePinnedToCore(sensorTask, "sensor", 8192, NULL, 2, NULL, 1);
   xTaskCreatePinnedToCore(firebaseTask, "firebase", 8192, NULL, 1, NULL, 0);
 

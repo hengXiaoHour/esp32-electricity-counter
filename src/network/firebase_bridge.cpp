@@ -142,8 +142,10 @@ void FirebaseBridge::start() {
   // oauth2.googleapis.com/token), which needs no API key and still yields a
   // valid RTDB auth identity (satisfies rules "auth != null").
 
-  fbdo.setBSSLBufferSize(4096, 1024);
+  fbdo.setBSSLBufferSize(4096, 4096);
   fbdo.setResponseSize(4096);
+  fbCmd.setBSSLBufferSize(4096, 4096);
+  fbCmd.setResponseSize(4096);
 
   config.token_status_callback = tokenStatusCallback;
   Firebase.reconnectNetwork(false);  // WiFi managed by WiFiManager
@@ -175,10 +177,13 @@ void FirebaseBridge::pushLatest() {
   if (millis() - lastPush < FIREBASE_PUSH_INTERVAL_MS) return;
   lastPush = millis();
 
-  if (xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
-
+  // Snapshot the state under the lock (fast), then RELEASE the mutex before
+  // the blocking HTTPS call. Holding the mutex across setJSON would block
+  // WebSocket broadcasts (same mutex) for the whole TLS round-trip.
   String json;
+  if (xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(20)) != pdTRUE) return;
   buildSystemJson(*sysData, powerCalc, nvs, json);
+  xSemaphoreGive(*dataMutex);
 
   FirebaseJson payload;
   payload.setJsonData(json.c_str());
@@ -192,15 +197,24 @@ void FirebaseBridge::pushLatest() {
       Serial.printf("  [FB] latest push failed: %s\n", fbdo.errorReason().c_str());
     }
   }
-
-  xSemaphoreGive(*dataMutex);
 }
 
 void FirebaseBridge::pollCommands() {
   if (!ready()) return;
 
   FirebaseJson cmds;
-  if (!Firebase.RTDB.getJSON(&fbdo, "/commands", &cmds)) return;
+  if (!Firebase.RTDB.getJSON(&fbCmd, "/commands", &cmds)) {
+    // Empty (null) node is normal, not an error — and must not tear down the
+    // connection (that would force a fresh TLS handshake on the next push).
+    String dt = fbCmd.dataType();
+    if (dt == "null" || dt.length() == 0) return;
+    static uint32_t lastErr = 0;
+    if (millis() - lastErr > 10000) {
+      lastErr = millis();
+      Serial.printf("  [FB] commands poll error: %s\n", fbCmd.errorReason().c_str());
+    }
+    return;
+  }
 
   size_t n = cmds.iteratorBegin();
   for (size_t i = 0; i < n; i++) {
