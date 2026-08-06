@@ -12,14 +12,14 @@
       "src/network",
       "src/ui",
       "src/utils",
-      "data",
+      "frontend",
       "scripts",
       ".workflow",
       "doc/opencode_agent"
     ],
     "source_root": "src/",
     "doc_root": "doc/",
-    "web_files_root": "data/",
+    "web_files_root": "frontend/",
     "cpp_naming": "snake_case",
     "header_guard": "pragma_once",
     "arduino_sketch": "esp32-electricity-counter.ino"

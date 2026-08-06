@@ -40,17 +40,17 @@ Install via Arduino Library Manager:
 
 ## Uploading Dashboard Web Files
 
-The dashboard (HTML/CSS/JS in `data/`) must be uploaded to LittleFS:
+The dashboard (HTML/CSS/JS in `frontend/`) must be uploaded to LittleFS:
 
 ### Using Arduino IDE + ESP32 Sketch Data Upload plugin:
 1. Tools → ESP32 Sketch Data Upload
-2. Select the `data/` folder
+2. Select the `frontend/` folder
 3. Upload
 
 ### Using `arduino-cli` + `mklittlefs`:
 ```bash
 # Build and upload LittleFS image
-mklittlefs -c data/ -p 256 -b 4096 -s 0x180000 littlefs.bin
+mklittlefs -c frontend/ -p 256 -b 4096 -s 0x180000 littlefs.bin
 esptool.py write_flash 0x2D0000 littlefs.bin  # adjust address for your partition
 ```
 

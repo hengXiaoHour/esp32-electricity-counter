@@ -53,7 +53,7 @@ esp32-electricity-counter/
 │       ├── nvs_manager.h            # Preferences wrapper for channel configs, WiFi, cal
 │       └── nvs_manager.cpp
 │
-├── data/                            # Web dashboard files (hosted on PC/phone, NOT on ESP32)
+├── frontend/                        # Web dashboard files (hosted on PC/phone, NOT on ESP32)
 │   ├── index.html                   # Dashboard HTML — includes connection panel for IP input
 │   ├── style.css                    # Dashboard styles — dark/red theme
 │   └── script.js                    # WebSocket client — connects to user-specified ESP32 IP
@@ -75,7 +75,7 @@ esp32-electricity-counter/
 | **C++ sources** | `snake_case.h` / `snake_case.cpp` in `src/` |
 | **Header guards** | `#pragma once` |
 | **Documentation** | `doc/` directory only |
-| **Web files** | `data/` directory for LittleFS |
+| **Web files** | `frontend/` directory (web dashboard assets) |
 | **Naming** | `snake_case` for files, `PascalCase` for classes |
 | **Indentation** | 2 spaces |
 | **Platform** | Arduino IDE / Arduino framework (not ESP-IDF, not PlatformIO) |

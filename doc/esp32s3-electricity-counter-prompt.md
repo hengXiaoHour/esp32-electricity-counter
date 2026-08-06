@@ -81,7 +81,7 @@ Build a complete Arduino IDE (C++) firmware project for an **ESP32-S3** that mon
 
 1. Full PlatformIO-free, Arduino-IDE-compatible `.ino` main file (or clearly split `.ino` + header/source files if that's cleaner — Arduino IDE supports multi-tab sketches)
 2. List of required Arduino Library Manager libraries with exact names to install
-3. `data/` folder contents for LittleFS (dashboard HTML/CSS/JS) if you go that route
+3. `frontend/` folder contents (dashboard HTML/CSS/JS) if you go that route
 4. Clear pin/config `#define` block at the top of the code summarizing all pin assignments from this spec, so it's a single place to adjust hardware mapping
 5. Brief setup instructions: board selection in Arduino IDE, partition scheme needed for OTA + LittleFS, and first-boot Wi-Fi provisioning steps
 6. Explicitly flag any assumptions you make (e.g., relay active-HIGH/LOW, channel-to-relay mapping, calibration defaults) rather than silently guessing

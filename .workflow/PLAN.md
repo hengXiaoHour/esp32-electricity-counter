@@ -1,38 +1,69 @@
-# Plan: v1.2.0 Dashboard Redesign (GRID_ADMIN minimalist, PC + mobile)
+# Plan: Firebase RTDB Bridge + Cloud/Local Dashboard (Option B)
 
-## Source of truth
-Stitch screens in project `15561552837700085916` (user-designed):
-- `minimalist_pc` — dark charcoal, left sidebar (GRID_ADMIN → Dashboard/Analytics/History/Settings), header V/P/I + wifi, channel cards PWR/CUR/ENG + LIMIT bar.
-- `minimalist_mobile` — pure black, top V/P/I status bar, stacked channel cards, bottom nav.
+## Decisions (user-confirmed)
+- **Keep both**: dashboard lets user choose **Cloud** (Firebase) or **Local** (ws://<ip>) in the connect panel.
+- **Auth**: Firebase-ESP-Client library (mobizt) + service-account JWT on the ESP32.
+- **Cadence**: full snapshot pushed to RTDB every **1 s** (WS LAN path stays at 150 ms).
 
-## Files to modify (fw repo `data/`)
-- `data/index.html` — full restructure: connect panel, `#app` shell (sidebar + status bar + 4 pages + mobile bottom nav), edit modal.
-- `data/style.css` — full rewrite: minimalist dark tokens, sidebar layout, mobile bottom-nav breakpoint, channel cards, panels, charts.
-- `data/script.js` — full rewrite keeping WS contract + all command/message field names, DOM-preserving updates, adds: page navigation, live canvas charts, OTA progress handling.
+## Architecture
+```
+Firebase RTDB (esp32-electricity-counter)
+├── latest/            device writes full snapshot every 1s (browser reads)
+└── commands/          browser pushes {cmd,ch,val,name,ts}; device polls+deletes
+```
 
-## Design decisions (user-approved)
-- Implement both PC + mobile as one responsive page (same DOM, CSS switches).
-- Desktop: sidebar pages — Dashboard (6 cards), Analytics (live charts), History (event log), Settings (connection + ntfy + calibration + about).
-- Mobile: bottom nav — Dashboard / Charts / History / Settings (4 tabs; minor extension of 3-tab mockup for functional completeness).
-- Preserve status semantics: ok=green, warning=amber, tripped=red pulsing, off=grey/dim.
-- 6 channels (system has 6, mockups show 3).
-- Branding: GRID_ADMIN. Sign Out = disconnect. Support = info toast.
+Browser: `ref('latest').on('value')` → normalize `{0:..}` arrays → `updateDashboard(data)`.
+Commands: `commands.push({cmd,...})`. Device: list children → execute → remove.
 
-## WS contract (must not change)
-In: v, ota, otaProgress, voltageCalibration, currentCalibration[6], noiseFloor[6], rmsSamples, firmwareVersion, lastMonth, epoch, ch[6]{n,a,w,kwh,pf,mkwh,s}, events[{t,c,s,m}], ntfy{topic,enabled}.
-Out commands: set_voltage_cal, set_current_cal, set_noise_floor, set_rms_samples, set_ntfy_topic, set_ntfy_enabled, set_monthly_kwh, set_name, reset_counter, reset_ch_to_default, reset_nvs_defaults, reset_channel_names.
+## Files to Create
+- `src/network/firebase_bridge.h` — `FirebaseBridge` class (start, update, poll commands)
+- `src/network/firebase_bridge.cpp` — impl (Firebase-ESP-Client RTDB)
+- `src/network/firebase_config.h` — **gitignored**: `FIREBASE_API_KEY`, `FIREBASE_DB_URL`, `FIREBASE_SA_EMAIL`, `FIREBASE_SA_KEY` (PEM)
+- `src/network/firebase_config.example.h` — committed template with placeholders
+- `firebase.json` — hosting config (public: `frontend/`, rewrites)
+- `database.rules.json` — RTDB security rules
+- `frontend/config.example.js` — dashboard Firebase web-app config template
+- `frontend/config.js` — **gitignored** dashboard Firebase config (apiKey, dbURL, appId)
 
-## Implementation steps
-1. `data/index.html` — new structure (IDs preserved: esp32Ip, demoMode, connectStatus, connectPanel, headerVoltage, totalPower, totalCurrent, todayDate, deviceTime, connStatus, fwVersion, otaPanel/otaProgress/otaPercent/otaVersion, channels, eventList, eventCount, ntfyTopic, ntfyEnabled, voltCal, rmsSamples, calibrationRows, resetNvsBtn, editModal + modal* IDs, connectedIp).
-2. `data/style.css` — tokens + responsive layout.
-3. `data/script.js` — logic + charts + OTA + showPage.
-4. Verify: serve data/ locally, run demo mode via headless check (no test framework exists; manual browser check + JS syntax check with node).
-5. Commit v1.2.0.
+## Files to Modify
+- `esp32-electricity-counter.ino` — start FirebaseBridge in networkTask; call update + command poll
+- `src/network/websocket_server.cpp` — extract `handleCommand()` body into a shared `processCommand(json)` so both WS + Firebase use it
+- `src/network/websocket_server.h` — expose shared command handler
+- `frontend/index.html` — connect panel: Cloud/Local tabs/choice; load config.js + Firebase SDK
+- `frontend/script.js` — Cloud mode (Firebase connect, latest listener, array normalization, commands.push); keep Local WS + demo modes
+- `frontend/sw.js` — add Firebase SDK files to cache shell
+- `.gitignore` — add `firebase_config.h`, `frontend/config.js`, `.firebase/`
+- `README.md` — Firebase setup + deploy instructions (doc-sync later)
 
-## Test strategy
-- `node --check data/script.js` for syntax.
-- Serve with python http.server; verify demo mode via quick DOM-less sanity (optional).
-- Manual: user opens in browser, Connect → Demo.
+## Implementation Steps
+1. **Scaffold Firebase hosting + RTDB** (CLI)
+   - `firebase init hosting` → public `frontend/`, SPA rewrite
+   - `firebase init database` → create `database.rules.json`
+   - Verify: `firebase deploy --only hosting` serves index.html over HTTPS
+2. **Firmware — Firebase-ESP-Client install + compile**
+   - `arduino-cli lib install "Firebase-ESP-Client"`
+   - Add `firebase_config.h` (example + real), `firebase_bridge.{h,cpp}`
+   - Refactor `handleCommand` → shared `processCommand()`
+   - networkTask: `fb.begin()`; every 1s `fb.setJSON(latest)`; every 500ms poll+execute `commands/`
+   - Verify: `arduino-cli compile` PASS; flash ≤ 1310720
+   - **Risk gate**: if lib pushes flash >100%, fall back to minimal REST+secret approach (documented)
+3. **Dashboard — Cloud mode in JS**
+   - Connect panel: "Cloud (Firebase)" / "Local (ESP32 IP)" / "Demo" choice
+   - `config.js` initFirebase; `latest` listener → normalize arrays → `updateDashboard`
+   - `sendCommand()` → `commands.push(...)` (reuse all existing send* functions)
+   - Keep WS + demo paths unchanged
+   - Verify: `node --check frontend/script.js`; headless Chrome demo harness with a fake RTDB
+4. **Rules + deploy**
+   - `database.rules.json`: `latest` read public / write `auth!=null`; `commands` read+write public
+   - `firebase deploy` (hosting + database)
+   - Verify: install PWA on phone/desktop from https URL (Lighthouse-style checks via headless Chrome)
+
+## Test Strategy
+- `tests/test_cal_sync.py` regression (existing)
+- Firmware: compile gate (flash/RAM budget)
+- JS: `node --check`, headless Chrome harness with Firebase emulator or mocked RTDB
+- Firebase emulator (local) for dashboard dev before real deploy
 
 ## Rollback
-- git checkout data/ from pre-existing working tree (already modified — reverted by user-kept HEAD state).
+- `git revert` firmware + dashboard changes; Firebase project can be deleted via CLI/console.
+- WS path remains intact throughout — dashboard never loses LAN functionality.
