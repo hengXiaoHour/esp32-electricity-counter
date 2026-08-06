@@ -29,13 +29,22 @@
 
     <div class="connect-row">
       <input type="text" id="esp32Ip" placeholder="192.168.1.x" spellcheck="false" autocomplete="off">
-      <button class="btn-primary" onclick="handleConnect()">Connect</button>
+      <button class="btn-primary" onclick="connectLocal()">Local</button>
+    </div>
+
+    <div class="connect-row">
+      <button class="btn-outline" onclick="connectCloud()">&#9729; Cloud</button>
+      <button class="btn-outline" onclick="startDemoMode()">Demo</button>
     </div>
 
     <div id="connectStatus" class="connect-status disconnected">Ready to connect</div>
 
     <div class="demo-toggle">
-      <label for="demoMode"><input type="checkbox" id="demoMode" onchange="toggleDemoMode(this)"> Run Mock Demo Mode</label>
+      <span>Cloud = Firebase RTDB &middot; Local = WebSocket to ESP32 &middot; Demo = mock data</span>
+    </div>
+
+    <div id="installRow" class="hidden install-row">
+      <button class="btn-outline" id="installBtn" onclick="promptInstall()">&#8595; Install App</button>
     </div>
   </div>
 </div>
@@ -204,7 +213,7 @@
             <label>Month:</label>
             <span id="lastMonth" class="mono conn-ip">--</span>
           </div>
-          <div class="hint">ESP32 Counter dashboard &middot; ESP32-S3 6-channel electricity monitor &middot; WebSocket live updates</div>
+          <div class="hint">ESP32 Counter dashboard &middot; ESP32-S3 6-channel electricity monitor &middot; WebSocket + Firebase Cloud live updates</div>
         </div>
       </section>
 
@@ -263,6 +272,9 @@
   </div>
 </div>
 
+<script src="config.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script src="script.js"></script>
 <script>
 if ('serviceWorker' in navigator && window.isSecureContext) {

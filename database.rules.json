@@ -1,0 +1,18 @@
+{
+  /* ESP32 Electricity Counter — Realtime Database Security Rules
+     latest/   : device writes the live snapshot (via Firebase Auth service account),
+                 anyone may read (public dashboard).
+     commands/ : anyone may push commands (fire-and-forget queue). The device
+                 reads, executes, and deletes them. Writes are limited to small
+                 JSON command objects. */
+  "rules": {
+    "latest": {
+      ".read": true,
+      ".write": "auth != null"
+    },
+    "commands": {
+      ".read": true,
+      ".write": true
+    }
+  }
+}

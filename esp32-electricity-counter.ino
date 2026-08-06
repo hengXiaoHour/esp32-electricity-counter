@@ -4,6 +4,7 @@
 
 #include "src/network/wifi_manager.h"
 #include "src/network/websocket_server.h"
+#include "src/network/firebase_bridge.h"
 #include "src/network/ota_handler.h"
 #include "src/network/ntfy_notifier.h"
 #include "src/ui/status_led.h"
@@ -18,6 +19,7 @@ NtfyNotifier    ntfyNotifier;
 
 WiFiManager     wifiMgr;
 WebSocketServer wsServer;
+FirebaseBridge  fbBridge;
 OTAHandler      otaHandler;
 StatusLED       statusLED;
 
@@ -91,6 +93,7 @@ void networkTask(void *pvParameters) {
   while (true) {
     wifiMgr.loop();
     wsServer.loop();
+    fbBridge.loop();
     ntfyNotifier.loop();
     otaHandler.loop();
 
@@ -130,7 +133,7 @@ void networkTask(void *pvParameters) {
       }
     }
 
-    // Start webserver after WiFi connects or AP starts
+    // Start webserver + Firebase after WiFi connects or AP starts
     {
       static bool serverStarted = false;
       if (!serverStarted && !wsServer.isRunning()) {
@@ -138,8 +141,9 @@ void networkTask(void *pvParameters) {
           serverStarted = true;
           wsServer.startServer();
           Serial.printf("  %-19s%s\n", "WebSocket", "STARTED");
+          if (wifiMgr.isConnected()) fbBridge.start();
           Serial.println();
-          Serial.println("  Core 0: Network (WiFi, WebSocket, OTA)");
+          Serial.println("  Core 0: Network (WiFi, WebSocket, Firebase, OTA)");
           Serial.println("  Core 1: Sensor (ADC, Power, Limits)");
           Serial.println("  Type 'help' for commands");
           Serial.print("> ");
@@ -151,6 +155,8 @@ void networkTask(void *pvParameters) {
       wsServer.broadcastData(systemData);
       xSemaphoreGive(dataMutex);
     }
+    // pushLatest() takes the mutex itself (throttled to 1 s).
+    fbBridge.pushLatest();
 
     vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(20));
   }
@@ -293,6 +299,7 @@ void setup() {
   WiFi.onEvent(onWiFiEvent);
 
   wsServer.begin(nvs, &systemData, &dataMutex, &powerCalc, &limitMgr);
+  fbBridge.begin(nvs, &systemData, &dataMutex, &powerCalc, &limitMgr);
 
   wifiMgr.begin(nvs);
   statusLED.setMode(LED_SOLID_RED);

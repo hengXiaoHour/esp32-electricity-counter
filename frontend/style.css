@@ -65,6 +65,9 @@ body {
 .connect-status.connected { color: var(--ok); }
 .connect-status.disconnected { color: var(--trip); }
 .demo-toggle { margin-top: 18px; padding-top: 16px; border-top: 1px dashed var(--border); font-size: 0.75rem; color: var(--text-2); display: flex; align-items: center; justify-content: center; gap: 8px; }
+.install-row { margin-top: 14px; display: flex; justify-content: center; }
+.install-row.hidden { display: none; }
+.install-row .btn-outline { width: 100%; }
 
 /* ============ App Shell ============ */
 #app { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; transition: grid-template-columns 0.25s ease; }

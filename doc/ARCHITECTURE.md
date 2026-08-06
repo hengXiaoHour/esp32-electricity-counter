@@ -13,6 +13,9 @@ esp32-electricity-counter/
 ├── esp32-electricity-counter.ino    # Arduino sketch entry point (setup + loop + FreeRTOS tasks)
 ├── .gitignore
 ├── README.md                        # Setup instructions
+├── firebase.json                    # Firebase Hosting config (public = frontend/, SPA rewrite)
+├── .firebaserc                      # Firebase project alias (default = esp32-electricity-counter)
+├── database.rules.json              # RTDB security rules (latest/ + commands/)
 │
 ├── doc/                             # Documentation
 │   ├── ARCHITECTURE.md              # THIS FILE — project structure (locked)
@@ -38,8 +41,14 @@ esp32-electricity-counter/
 │   ├── network/
 │   │   ├── wifi_manager.h           # WiFi connect + fallback AP + captive portal
 │   │   ├── wifi_manager.cpp
-│   │   ├── websocket_server.h       # AsyncWebSocket, JSON broadcast, command parsing
+│   │   ├── websocket_server.h       # AsyncWebSocket, JSON broadcast, delegates commands
 │   │   ├── websocket_server.cpp
+│   │   ├── command_processor.h      # Shared command parser (WS + Firebase): set_name, cal, ...
+│   │   ├── command_processor.cpp
+│   │   ├── firebase_bridge.h        # Firebase RTDB bridge: /latest push + /commands poll
+│   │   ├── firebase_bridge.cpp      # buildSystemJson shared JSON builder + FirebaseBridge
+│   │   ├── firebase_config.h        # REAL Firebase credentials (gitignored, placeholders now)
+│   │   ├── firebase_config.example.h# Committed credential template
 │   │   ├── ntfy_notifier.h          # ntfy.sh push notifications (WiFiClientSecure POST)
 │   │   ├── ntfy_notifier.cpp
 │   │   ├── ota_handler.h            # ArduinoOTA setup
@@ -53,10 +62,15 @@ esp32-electricity-counter/
 │       ├── nvs_manager.h            # Preferences wrapper for channel configs, WiFi, cal
 │       └── nvs_manager.cpp
 │
-├── frontend/                        # Web dashboard files (hosted on PC/phone, NOT on ESP32)
-│   ├── index.html                   # Dashboard HTML — includes connection panel for IP input
+├── frontend/                        # Web dashboard — PWA hosted on Firebase Hosting (NOT on ESP32)
+│   ├── index.html                   # Dashboard HTML — Cloud / Local / Demo connect panel
 │   ├── style.css                    # Dashboard styles — dark/red theme
-│   └── script.js                    # WebSocket client — connects to user-specified ESP32 IP
+│   ├── script.js                    # WebSocket + Firebase RTDB client, 3 connection modes
+│   ├── config.js                    # Firebase web config (gitignored; copy from example)
+│   ├── config.example.js            # Committed config template
+│   ├── manifest.json                # PWA manifest
+│   ├── sw.js                        # Service worker (network-first + cache fallback)
+│   └── icons/                       # PWA icons
 │
 ├── .workflow/                        # AI agent workflow state
 │   ├── RESEARCH.md
@@ -75,7 +89,7 @@ esp32-electricity-counter/
 | **C++ sources** | `snake_case.h` / `snake_case.cpp` in `src/` |
 | **Header guards** | `#pragma once` |
 | **Documentation** | `doc/` directory only |
-| **Web files** | `frontend/` directory (web dashboard assets) |
+| **Web files** | `frontend/` directory (PWA hosted on Firebase Hosting) |
 | **Naming** | `snake_case` for files, `PascalCase` for classes |
 | **Indentation** | 2 spaces |
 | **Platform** | Arduino IDE / Arduino framework (not ESP-IDF, not PlatformIO) |
@@ -83,9 +97,16 @@ esp32-electricity-counter/
 
 ## Dual-Core Architecture
 
-- **Core 0** (priority 1): Networking + WebSocket + OTA
+- **Core 0** (priority 1): Networking + WebSocket + Firebase RTDB bridge + OTA
 - **Core 1** (priority 2): ADC sampling + power math + limit checking + buzzer alerts
 - Shared `SystemData` struct protected by FreeRTOS `SemaphoreHandle_t`
+
+## Cloud Bridge (Firebase RTDB)
+
+- Device (service-account JWT auth) writes its full snapshot to `/latest` every 1 s.
+- Dashboard (any browser) reads `/latest` and pushes commands to `/commands`.
+- Device polls `/commands` every 500 ms, executes each queued command via the shared `processCommand()`, and deletes it.
+- Same JSON schema (`buildSystemJson`) is used for both WebSocket broadcasts and the `/latest` RTDB snapshot.
 
 ## Lock Enforcement
 

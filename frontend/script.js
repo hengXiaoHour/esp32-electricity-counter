@@ -4,11 +4,16 @@ let userDisconnect = false;
 let activeEditChIdx = null;
 let latestChannelData = [];
 let pendingActions = {};
-let isDemoMode = false;
 let demoInterval = null;
 let lastEventKey = '';
 let lastToastEventKey = '';
 let chartBuf = {};
+let connMode = 'local';            // 'local' | 'cloud' | 'demo'
+let cloudDb = null;
+let cloudLatestRef = null;
+let lastDataTs = 0;
+let cloudWatchdog = null;
+const CLOUD_STALE_MS = 10000;
 const CHART_MAX = 240;
 const CHART_DEFS = {
   'V': { label: 'Voltage (V)', color: '#3b82f6' },
@@ -17,6 +22,35 @@ const CHART_DEFS = {
 };
 
 const NUM_CHANNELS = 6;
+
+// ============ PWA install prompt ============
+let deferredInstallPrompt = null;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  const row = document.getElementById('installRow');
+  if (row) row.classList.remove('hidden');
+});
+
+window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null;
+  const row = document.getElementById('installRow');
+  if (row) row.classList.add('hidden');
+  showToast('App installed — launch it from your home screen');
+});
+
+function promptInstall() {
+  if (!deferredInstallPrompt) return;
+  deferredInstallPrompt.prompt();
+  deferredInstallPrompt.userChoice.then((choice) => {
+    if (choice.outcome === 'accepted') {
+      const row = document.getElementById('installRow');
+      if (row) row.classList.add('hidden');
+    }
+    deferredInstallPrompt = null;
+  });
+}
 
 // Initial Setup
 (function init() {
@@ -58,27 +92,127 @@ function toggleSidebar() {
 }
 
 // ============ Connection ============
-function handleConnect() {
-  if (isDemoMode) {
-    startDemoMode();
-    return;
-  }
+function connectLocal() {
   const ip = document.getElementById('esp32Ip').value.trim();
   if (!ip) return;
   currentIP = ip;
+  connMode = 'local';
   try { localStorage.setItem('esp32monitor_ip', ip); } catch (e) {}
   setConnectStatus('Connecting to ' + ip + '...', 'connecting');
   connectWS(ip);
 }
 
+function handleConnect() {
+  connectLocal();
+}
+
 function handleDisconnect() {
   userDisconnect = true;
   if (demoInterval) clearInterval(demoInterval);
+  if (cloudWatchdog) clearInterval(cloudWatchdog);
+  if (cloudLatestRef && cloudDb) { cloudLatestRef.off(); cloudLatestRef = null; }
   if (ws) {
     ws.close();
     ws = null;
   }
+  connMode = 'local';
   showConnectPanel();
+}
+
+// ============ Cloud (Firebase RTDB) mode ============
+function connectCloud() {
+  setConnectStatus('Connecting to Firebase...', 'connecting');
+  try {
+    if (!window.firebase || !window.FB_CONFIG || !window.FB_CONFIG.databaseURL) {
+      throw new Error('config.js missing \u2014 create it from config.example.js');
+    }
+    if (!cloudDb) {
+      firebase.initializeApp({ databaseURL: window.FB_CONFIG.databaseURL });
+      cloudDb = firebase.database();
+    }
+    connMode = 'cloud';
+    lastDataTs = Date.now();
+    cloudLatestRef = cloudDb.ref('latest');
+    cloudLatestRef.on('value', (snap) => {
+      const val = snap.val();
+      if (!val) return;
+      lastDataTs = Date.now();
+      updateDashboard(normalizeSnapshot(val));
+    });
+
+    const ipEl = document.getElementById('connectedIp');
+    if (ipEl) ipEl.textContent = 'Firebase RTDB';
+    document.getElementById('connStatus').textContent = 'Connected';
+    const cs2 = document.getElementById('connStatus2');
+    if (cs2) cs2.textContent = 'Connected';
+    const wifi = document.querySelector('.wifi');
+    if (wifi) wifi.setAttribute('class', 'wifi lv0');
+    showDashboard();
+    startCloudWatchdog();
+  } catch (err) {
+    setConnectStatus('Cloud connect failed: ' + err.message, 'disconnected');
+  }
+}
+
+// RTDB stores arrays as objects with numeric keys \u2014 convert back.
+function toArray(obj) {
+  if (Array.isArray(obj)) return obj;
+  if (!obj || typeof obj !== 'object') return [];
+  const out = [];
+  for (const k in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, k) && /^\d+$/.test(k)) {
+      out[parseInt(k, 10)] = obj[k];
+    }
+  }
+  return out;
+}
+
+function normalizeSnapshot(val) {
+  const norm = Object.assign({}, val);
+  if (val.ch) norm.ch = toArray(val.ch);
+  if (val.currentCalibration) norm.currentCalibration = toArray(val.currentCalibration);
+  if (val.noiseFloor) norm.noiseFloor = toArray(val.noiseFloor);
+  if (val.events) norm.events = toArray(val.events);
+  return norm;
+}
+
+function startCloudWatchdog() {
+  clearInterval(cloudWatchdog);
+  cloudWatchdog = setInterval(() => {
+    if (connMode !== 'cloud') { clearInterval(cloudWatchdog); return; }
+    const stale = (Date.now() - lastDataTs) > CLOUD_STALE_MS;
+    const cs1 = document.getElementById('connStatus');
+    const cs2 = document.getElementById('connStatus2');
+    if (stale) {
+      if (cs1) cs1.textContent = 'Offline \u2014 no data';
+      if (cs2) cs2.textContent = 'Offline \u2014 no data';
+    } else {
+      if (cs1) cs1.textContent = 'Connected';
+      if (cs2) cs2.textContent = 'Connected';
+    }
+  }, 2000);
+}
+
+// Route a command to the active transport (WS / Firebase / demo).
+function sendCommand(obj) {
+  if (connMode === 'demo') {
+    if (obj.cmd === 'set_name' && latestChannelData[obj.ch]) latestChannelData[obj.ch].n = obj.name;
+    if (obj.cmd === 'set_monthly_kwh' && latestChannelData[obj.ch]) latestChannelData[obj.ch].mkwh = obj.val;
+    if (obj.cmd === 'reset_counter' && latestChannelData[obj.ch]) {
+      latestChannelData[obj.ch].kwh = 0;
+      zeroSubCardDisplay(obj.ch);
+    }
+    return Promise.resolve();
+  }
+  if (connMode === 'cloud' && cloudDb) {
+    return cloudDb.ref('commands').push(obj).then(() => undefined);
+  }
+  if (connMode === 'local' && ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(obj));
+    return Promise.resolve();
+  }
+  showToast('Not connected');
+  return Promise.reject(new Error('Not connected'));
 }
 
 function connectWS(ip) {
@@ -97,13 +231,13 @@ function connectWS(ip) {
     showDashboard();
   };
   ws.onclose = () => {
-    if (!userDisconnect) {
+    if (!userDisconnect && connMode === 'local') {
       setConnectStatus('Disconnected \u2014 check IP address', 'disconnected');
       showConnectPanel();
     }
   };
   ws.onerror = () => {
-    setConnectStatus('Connection error', 'disconnected');
+    if (connMode === 'local') setConnectStatus('Connection error', 'disconnected');
   };
   ws.onmessage = (e) => {
     try {
@@ -490,9 +624,7 @@ function closeEditModal() {
 function resetModalToDefaults() {
   if (activeEditChIdx === null) return;
   const idx = activeEditChIdx;
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ cmd: 'reset_ch_to_default', ch: idx }));
-  }
+  sendCommand({ cmd: 'reset_ch_to_default', ch: idx });
   closeEditModal();
   showToast(`Channel ${idx + 1} reset to defaults`);
 }
@@ -504,13 +636,8 @@ function saveModalSettings() {
   const name = document.getElementById('modalChName').value.trim();
   const mkwh = parseFloat(document.getElementById('modalChMkwh').value);
 
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    if (!isNaN(mkwh)) ws.send(JSON.stringify({ cmd: 'set_monthly_kwh', ch: idx, val: mkwh }));
-    if (name) ws.send(JSON.stringify({ cmd: 'set_name', ch: idx, name: name }));
-  } else if (isDemoMode && latestChannelData[idx]) {
-    if (!isNaN(mkwh)) latestChannelData[idx].mkwh = mkwh;
-    if (name) latestChannelData[idx].n = name;
-  }
+  if (!isNaN(mkwh)) sendCommand({ cmd: 'set_monthly_kwh', ch: idx, val: mkwh });
+  if (name) sendCommand({ cmd: 'set_name', ch: idx, name: name });
 
   closeEditModal();
 }
@@ -543,13 +670,7 @@ function zeroSubCardDisplay(idx) {
 }
 
 function sendResetCounter(idx) {
-  if (latestChannelData && latestChannelData[idx]) {
-    latestChannelData[idx].kwh = 0;
-  }
-  zeroSubCardDisplay(idx);
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ cmd: 'reset_counter', ch: idx }));
-  }
+  sendCommand({ cmd: 'reset_counter', ch: idx });
 }
 
 function handleResetChannel(idx) {
@@ -639,35 +760,26 @@ function sendVoltageCal() {
   const val = parseFloat(document.getElementById('voltCal').value);
   if (isNaN(val)) return showToast('Invalid voltage calibration');
   delete document.getElementById('voltCal').dataset.userSet;
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ cmd: 'set_voltage_cal', val }));
+  sendCommand({ cmd: 'set_voltage_cal', val }).then(() => {
     showToast(`Voltage cal set to ${val.toFixed(1)}`);
-  } else {
-    showToast('Not connected');
-  }
+  });
 }
 
 function sendCurrentCal(idx) {
   const val = parseFloat(document.getElementById(`currCal_${idx}`).value);
   if (isNaN(val)) return showToast('Invalid current calibration');
   delete document.getElementById(`currCal_${idx}`).dataset.userSet;
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ cmd: 'set_current_cal', ch: idx, val }));
+  sendCommand({ cmd: 'set_current_cal', ch: idx, val }).then(() => {
     showToast(`Ch${idx + 1} current cal set to ${val.toFixed(1)}`);
-  } else {
-    showToast('Not connected');
-  }
+  });
 }
 
 function autoZeroChannel(idx) {
   const nf = document.getElementById(`nf_${idx}`);
   if (nf) delete nf.dataset.userSet;
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ cmd: 'set_noise_floor', ch: idx }));
+  sendCommand({ cmd: 'set_noise_floor', ch: idx }).then(() => {
     showToast(`Ch${idx + 1} auto-zero started (2s)...`);
-  } else {
-    showToast('Not connected');
-  }
+  });
 }
 
 function setRmsSamples() {
@@ -675,35 +787,27 @@ function setRmsSamples() {
   const val = parseInt(inp.value);
   if (isNaN(val) || val < 100 || val > 2000) return showToast('RMS Samples must be 100-2000');
   delete inp.dataset.userSet;
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ cmd: 'set_rms_samples', val }));
+  sendCommand({ cmd: 'set_rms_samples', val }).then(() => {
     showToast(`RMS Samples set to ${val}`);
-  } else {
-    showToast('Not connected');
-  }
+  });
 }
 
 function sendNtfyTopic() {
   const inp = document.getElementById('ntfyTopic');
   const topic = inp.value.trim();
   delete inp.dataset.userSet;
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ cmd: 'set_ntfy_topic', val: topic }));
+  sendCommand({ cmd: 'set_ntfy_topic', val: topic }).then(() => {
     showToast(topic ? `ntfy topic set to "${topic}"` : 'ntfy topic cleared');
-  } else {
-    showToast('Not connected');
-  }
+  });
 }
 
 function sendNtfyEnabled(cb) {
   const on = cb.checked;
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ cmd: 'set_ntfy_enabled', val: on }));
+  sendCommand({ cmd: 'set_ntfy_enabled', val: on }).then(() => {
     showToast(on ? 'Push notifications enabled' : 'Push notifications disabled');
-  } else {
+  }).catch(() => {
     cb.checked = !on;
-    showToast('Not connected');
-  }
+  });
 }
 
 function handleResetNvs() {
@@ -719,10 +823,9 @@ function handleResetNvs() {
       const cc = document.getElementById(`currCal_${i}`);
       if (cc) delete cc.dataset.userSet;
     }
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ cmd: 'reset_nvs_defaults' }));
+    sendCommand({ cmd: 'reset_nvs_defaults' }).then(() => {
       showToast('NVS reset to defaults \u2014 values will reload from ESP32');
-    }
+    });
   } else {
     btn.dataset.confirm = 'true';
     btn.textContent = 'Confirm?';
@@ -734,11 +837,9 @@ function handleResetNvs() {
 }
 
 // ============ Mock Demo Mode ============
-function toggleDemoMode(cb) {
-  isDemoMode = cb.checked;
-}
-
 function startDemoMode() {
+  connMode = 'demo';
+  if (ws) { ws.close(); ws = null; }
   showDashboard();
   const ipEl = document.getElementById('connectedIp');
   if (ipEl) ipEl.textContent = 'Demo';

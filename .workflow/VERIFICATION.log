@@ -323,3 +323,15 @@ Lint: PASS — node --check data/script.js OK; C++ compiles -Wall clean
 - Root cause: label fade used visibility:hidden which keeps layout space; invisible brand-text pushed the centered button off-screen
 - Fix: collapse hiding back to display:none; width slide animation unaffected (grid-template-columns transition)
 - Verified via headless Chrome: menuX=17 on-screen, nav/footer icons centered at x=22; vision-verified screenshot clean, no clipping
+2026-08-06 — Firebase Cloud bridge: firmware integration + dashboard Cloud mode
+- Refactored websocket_server.cpp handleCommand -> shared processCommand() (command_processor.{h,cpp}); buildJson -> shared buildSystemJson() (firebase_bridge.cpp)
+- FirebaseBridge wired into .ino: begin() in setup, start() on WiFi STA connect, loop() + pushLatest() in networkTask
+- FIXED: pushLatest() double-take on dataMutex (was called inside the locked broadcast block) -> moved call outside mutex
+- Build: PASS — arduino-cli esp32:esp32:esp32s3 FlashSize=4M,PartitionScheme=no_fs: 1,454,701 B (71% / 2,031,616), RAM 114,840 B. Clean, no warnings.
+- Dashboard Cloud mode: frontend/config.js (gitignored) + config.example.js; index.html connect panel -> Cloud/Local/Demo buttons; Firebase compat SDK 10.12.2 via gstatic CDN
+- script.js: connMode transport, sendCommand() routing (WS/Firebase push/demo), connectCloud() on('value') /latest listener + normalizeSnapshot() toArray() for RTDB object-arrays, cloud watchdog (stale>10s -> Offline), all 10 command senders routed through sendCommand
+- Deployed: firebase deploy --only hosting -> https://esp32-electricity-counter.web.app verified (HTTPS/HSTS, config.js served, sw.js no-cache, SDK scripts referenced)
+- RTDB path verified via REST: /latest public read (null = no device yet), anonymous POST /commands works (browser push path), read-back + DELETE OK
+- .gitignore: firebase_config.h, frontend/config.js, .firebase/, build artifacts
+- README + ARCHITECTURE.md updated (no_fs partition, Firebase setup, cloud flow)
+- BLOCKED on: service-account private key -> firebase_config.h (currently placeholders, bridge inert) + dashboard flash

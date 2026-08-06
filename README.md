@@ -16,9 +16,9 @@ Each channel has an independent monthly kWh limit. When a channel reaches 100% o
 ## Arduino IDE Setup
 
 1. **Board:** Tools → Board → ESP32 Arduino → `ESP32S3 Dev Module`
-2. **Partition Scheme:** Tools → Partition Scheme → `Huge APP (3MB No OTA/1MB SPIFFS)` **or** `8M with spiffs (3MB APP/1.5MB SPIFFS)` for OTA
-3. **Flash Size:** 16MB (if available) or 8MB
-4. **PSRAM:** Enabled (if your board has PSRAM)
+2. **Partition Scheme:** Tools → Partition Scheme → `No FS 4MB (2MB APP with OTA)` — REQUIRED. The firmware (with the Firebase library) does not fit the default 1.25MB APP partition.
+3. **Flash Size:** 4MB (matches the onboard XMC embedded flash)
+4. **PSRAM:** Enabled (2MB PSRAM on this board)
 
 ## Required Libraries
 
@@ -29,6 +29,22 @@ Install via Arduino Library Manager:
 | `Adafruit NeoPixel` | ≥1.15 |
 | `ESP Async WebServer` | ≥3.11 |
 | `AsyncTCP` | ≥1.1 |
+| `Firebase Arduino Client Library for ESP8266 and ESP32` | ≥4.4.17 |
+
+## Firebase Cloud Setup (Cloud dashboard mode)
+
+The dashboard supports a **Cloud** mode over Firebase Realtime Database (reachable from anywhere, no port-forwarding), alongside the LAN **WebSocket** mode.
+
+1. Create a Firebase project (e.g. `esp32-electricity-counter`) and a Realtime Database instance (us-central1).
+2. Deploy the RTDB rules + hosting from this repo:
+   ```bash
+   firebase deploy
+   ```
+3. **Device credentials** — Firebase Console → Project Settings → Service Accounts → *Generate new private key*. Fill the values into `src/network/firebase_config.h` (copy from `src/network/firebase_config.example.h`; this file is gitignored).
+4. **Dashboard config** — copy `frontend/config.js` from `frontend/config.example.js` (gitignored) and verify `databaseURL` matches your RTDB instance.
+5. Re-upload the firmware (Firebase starts automatically when WiFi connects) and open the dashboard: pick **Cloud** on the connect screen.
+
+Data flow: the device pushes its live snapshot to `/latest` every 1 s (service-account auth); the dashboard subscribes to it; commands are fire-and-forget pushes to `/commands` that the device polls and executes.
 
 ## First Boot — WiFi Setup
 
@@ -38,21 +54,18 @@ Install via Arduino Library Manager:
 4. Enter your WiFi SSID/password and click Save
 5. The device reboots and connects. Find its IP on your router or check Serial output.
 
-## Uploading Dashboard Web Files
+## Dashboard
 
-The dashboard (HTML/CSS/JS in `frontend/`) must be uploaded to LittleFS:
+The dashboard lives in `frontend/` and is deployed to **Firebase Hosting** (https://esp32-electricity-counter.web.app) — it is *not* served from the device:
 
-### Using Arduino IDE + ESP32 Sketch Data Upload plugin:
-1. Tools → ESP32 Sketch Data Upload
-2. Select the `frontend/` folder
-3. Upload
-
-### Using `arduino-cli` + `mklittlefs`:
 ```bash
-# Build and upload LittleFS image
-mklittlefs -c frontend/ -p 256 -b 4096 -s 0x180000 littlefs.bin
-esptool.py write_flash 0x2D0000 littlefs.bin  # adjust address for your partition
+firebase deploy --only hosting   # after changing frontend/ files
 ```
+
+Three connection modes on the connect screen:
+- **Cloud** — Firebase RTDB (`/latest` + `/commands`), works from anywhere
+- **Local** — WebSocket directly to `ws://<esp32-ip>/ws` on your LAN
+- **Demo** — mock data, no device required
 
 ## OTA Updates
 
@@ -66,7 +79,7 @@ The RGB LED turns blue during OTA. The dashboard shows OTA progress.
 
 The firmware runs on two FreeRTOS cores:
 
-- **Core 0** — Networking: WiFi management, WebSocket server, OTA handler
+- **Core 0** — Networking: WiFi management, WebSocket server, Firebase RTDB bridge, OTA handler
 - **Core 1** — Sensing: ADC sampling, power calculation, limit checking, buzzer alerts
 
 Shared data between cores is protected by a mutex (`SemaphoreHandle_t`).
