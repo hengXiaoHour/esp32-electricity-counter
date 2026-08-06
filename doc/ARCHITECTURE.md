@@ -33,20 +33,22 @@ esp32-electricity-counter/
 │   ├── core/
 │   │   ├── power_calculator.h       # Combined V-I sampling, real/apparent power, PF, kWh
 │   │   ├── power_calculator.cpp
-│   │   ├── relay_controller.h       # Relay switching with active-LOW config
-│   │   ├── relay_controller.cpp
-│   │   ├── limit_manager.h          # Warning/trip state machine, event log
+│   │   ├── limit_manager.h          # 100%-limit trip state machine, event log
 │   │   └── limit_manager.cpp
 │   ├── network/
 │   │   ├── wifi_manager.h           # WiFi connect + fallback AP + captive portal
 │   │   ├── wifi_manager.cpp
 │   │   ├── websocket_server.h       # AsyncWebSocket, JSON broadcast, command parsing
 │   │   ├── websocket_server.cpp
+│   │   ├── ntfy_notifier.h          # ntfy.sh push notifications (WiFiClientSecure POST)
+│   │   ├── ntfy_notifier.cpp
 │   │   ├── ota_handler.h            # ArduinoOTA setup
 │   │   └── ota_handler.cpp
 │   ├── ui/
 │   │   ├── status_led.h             # WS2812 with R/G channel swap
-│   │   └── status_led.cpp
+│   │   ├── status_led.cpp
+│   │   ├── buzzer.h                 # Non-blocking active-buzzer beep pattern driver
+│   │   └── buzzer.cpp
 │   └── utils/
 │       ├── nvs_manager.h            # Preferences wrapper for channel configs, WiFi, cal
 │       └── nvs_manager.cpp
@@ -82,7 +84,7 @@ esp32-electricity-counter/
 ## Dual-Core Architecture
 
 - **Core 0** (priority 1): Networking + WebSocket + OTA
-- **Core 1** (priority 2): ADC sampling + power math + limit checking + relay control
+- **Core 1** (priority 2): ADC sampling + power math + limit checking + buzzer alerts
 - Shared `SystemData` struct protected by FreeRTOS `SemaphoreHandle_t`
 
 ## Lock Enforcement

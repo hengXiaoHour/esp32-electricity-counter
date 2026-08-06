@@ -1,0 +1,325 @@
+# Verification Log
+
+Project: esp32-electricity-counter
+Plan: Dual-Counter Changeover Relay Control (.workflow/PLAN.md)
+Date: 2026-08-01
+
+## Step 1 — src/config.h
+Status: PASS
+Build: PASS (compile) | Test: N/A (constants) | Lint: PASS (syntax)
+Notes: Added WARNING_THRESHOLD_PCT 80.0f, CHANGEOVER_PAIR_COUNT 2, NTFY_HOST/NTFY_PORT,
+struct ChangeoverPair + CHANGEOVER_PAIRS table ({0,0,1},{2,2,3}) near relay config section.
+
+## Step 2 — nvs_manager.{h,cpp}
+Status: PASS
+Build: PASS (compile) | Test: N/A | Lint: PASS
+Notes: Added loadNtfyTopic/saveNtfyTopic ("ntfy_topic"), loadNtfyEnabled/saveNtfyEnabled
+("ntfy_enable"), loadLastMonth/saveLastMonth ("last_month"). saveNtfyTopic/saveNtfyEnabled
+log to serial. Existing nvs_debug untouched.
+
+## Step 3 — src/network/ntfy_notifier.{h,cpp} (NEW)
+Status: PASS
+Build: PASS (compile) | Test: N/A (serial log shows push attempt/result) | Lint: PASS
+Notes: begin(enabled,topic), setConfig, notify (volatile pending flag + message), loop().
+loop() sends WiFiClientSecure setInsecure() POST https://ntfy.sh/<topic> JSON body with
+5s connect timeout; clears pending only on 2xx. Added 10s retry backoff so a dead server
+cannot stall networkTask. Serial logs each attempt/result.
+
+## Step 4 — src/core/limit_manager.{h,cpp} (NEW)
+Status: PASS
+Build: PASS (compile) | Test: N/A (manual serial/WS tests per PLAN) | Lint: PASS
+Notes: PairState enum PAIR_CH1/PAIR_CH2/PAIR_CH2_DONE. loop() takes dataMutex, runs
+rolloverIfNeeded (NTP-synced + month change → zero all NUM_CHANNELS energies, saveLastMonth,
+relays back to counter A ON, statuses OK, notified=false, event "Monthly reset"), then
+per-pair state machine. logEvent appends Event with time(nullptr) timestamp, ring-shift
+when full. ntfy->notify fired once on counter B limit (fire & forget).
+
+## Step 5 — src/network/wifi_manager.cpp
+Status: PASS
+Build: PASS (compile) | Test: N/A (time(nullptr) > 2020 after connect) | Lint: PASS
+Notes: configTime(0, 0, "pool.ntp.org", "time.google.com") added right after WiFi.begin()
+in connectToWiFi().
+
+## Step 6 — src/network/websocket_server.{h,cpp}
+Status: PASS
+Build: PASS (compile) | Test: N/A | Lint: PASS
+Notes: set_ntfy_topic ("val":"...") → saveNtfyTopic; set_ntfy_enabled ("val":true/false) →
+saveNtfyEnabled. set_relay/reset_relay reject ch==0||ch==2 with "ignored (changeover pair)".
+buildJson emits "ntfy":{"topic":"...","enabled":true}. buildEventJson already uses ev.t as-is
+(NTP time) — no change needed.
+
+## Step 7 — esp32-electricity-counter.ino
+Status: PASS
+Build: PASS (compile) | Test: N/A | Lint: PASS
+Notes: limitMgr + ntfyNotifier globals; includes added (no .cpp includes, per lesson #1).
+setup(): ntfyNotifier.begin(...) + limitMgr.begin(...) after dataMutex created.
+sensorTask: limitMgr.loop() after mutex update block. networkTask: ntfyNotifier.loop()
+next to wsServer.loop().
+
+## Step 8 — data/script.js + data/index.html
+Status: PASS
+Build: PASS (node --check script.js) | Test: N/A (python3 -m http.server + browser) | Lint: PASS
+Notes: Toast fired once per new event whose message contains "limit reached" (lastToastEventKey
+guard). ntfy Topic input + Enabled checkbox panel added to settings; sendNtfyTopic()/
+sendNtfyEnabled() send set_ntfy_topic/set_ntfy_enabled. Channels 0 & 2 relay buttons render
+disabled "AUTO" (createChannelCardElement + updateChannelCardElement + toggleRelay guard).
+
+## Overall
+Build: PASS — arduino-cli 1.5.1, fqbn esp32:esp32:esp32s3, core 3.3.11
+  Before: 1075025 bytes (82%) flash, 111728 B (34%) RAM
+  After:  1183793 bytes (90%) flash, 112160 B (34%) RAM
+Test: N/A (no pytest/ruff for Arduino; manual serial/WS/manual push test pending on hardware)
+Lint: PASS — node --check data/script.js OK; C++ compiles with -Wall via arduino-cli
+
+Manual test plan (from PLAN.md, to run on hardware):
+- inject 1 50 (limit 48) → relay 1 OFF, event logged, ch1 TRIPPED
+- inject 2 50 → notify once, ch2 WARN, event logged, relay stays OFF
+- Month rollover: set NVS last_month stale → energies zeroed, relays ON
+
+## Hardware verification (2026-08-01, on-device via WebSocket ws://192.168.100.3/ws)
+Status: PASS
+- Changeover state machine: test_inject ch1=50 (limit 49) → Ch1 TRIPPED + relay OFF,
+  then ch2=50 (limit 48) → Ch2 WARN + relay OFF; events logged. Verified via WS JSON
+  ("ch[].s", "ch[].r", "events").
+- NTP sync: configTime in connectToWiFi works; WS now exposes "epoch" (real time,
+  e.g. 1785588149 = 2026-08-01) and "lastMonth" from NVS.
+- Monthly rollover: added temporary WS command "test_force_rollover" (saves lastMonth=202607)
+  to prove the path. Result: ch1 50.095→0.000 kWh, lastMonth 202607→202608, events 2→3
+  ("Monthly reset — counters zeroed, back on counter A"). Rollover only fires on a real
+  month change — a same-month reboot correctly skips it (earlier "no rollover" was
+  expected behavior, not a bug).
+- Temporary diagnostics removed: [LIMIT] dbg serial print; WS "epoch"/"lastMonth" fields
+  and "test_force_rollover" command left in place as useful test/diagnostic hooks.
+- Note: serial console (/dev/ttyACM0, USB-Serial/JTAG) only shows ROM boot text on any
+  port open (CDCOnBoot=cdc re-enumeration resets the board); WebSocket is the reliable
+  diagnostic channel for this build.
+
+## UI update — match new changeover + rollover implementation (2026-08-01)
+Status: PASS
+- data/script.js: added CHANGEOVER_PAIRS constant (mirrors src/config.h {relay,a,b}
+  entries {0,0,1},{2,2,3}) + getPairForChannel()/isChangeoverChannel() helpers and
+  formatMonthYm(). Channels 0-3 (both pair members) now render "AUTO" disabled relay
+  button + "Pair N · Counter X" tag; channels with hasRelay=false render "NO RELAY".
+  Reset Counter button disabled for changeover channels. renderPairSummary() shows per-pair
+  active counter (green=Counter A, warning=Counter B) from chA.r. Toast also fires on
+  "Monthly reset" events. toggleRelay/handleResetRelay guard all changeover channels.
+- data/index.html: header now shows Budget Month (from data.lastMonth) + Device Time
+  (NTP epoch) metrics; control bar shows firmware version; new "Changeover Pairs"
+  summary panel above the channel grid.
+- data/style.css: .pair-tag + .relay-toggle-btn.auto styles.
+- Verified: node --check OK; served via python3 http.server + Playwright demo mode —
+  all 6 cards render, pair summary shows Pair 1 active=Counter A, Pair 2 active=Counter B,
+  AUTO/NO RELAY buttons correct, header metrics (Aug 2026 / 08:03 PM) visible, no layout
+  overlap. Screenshot analyzed via vision subagent.
+- Note: dashboard is hosted on PC/phone (not LittleFS on ESP32 per ARCHITECTURE.md),
+  so data/ changes need no firmware upload. Firmware already broadcasts epoch,
+  lastMonth, firmwareVersion, hasRelay.
+
+## 2026-08-03 11:08 UTC — Plan: Restore Per-Channel Manual Relay Toggle (persisted manual mode)
+
+## 2026-08-03 — Step 1: NVS per-pair manual flag
+- Build: PASS (arduino-cli compile, 1184301 B flash)
+- Test: N/A
+- Lint: PASS
+- Notes: nvs_manager.h: added loadPairManual(uint8_t,bool)/savePairManual(uint8_t,bool).
+  nvs_manager.cpp: keys pair_man_1/pair_man_2 via prefs.getBool/putBool; save logs
+  "[NVS] pair N manual override: ON/OFF". Additive only — existing keys unaffected.
+
+## 2026-08-03 — Step 2: LimitManager manual override
+- Build: PASS (arduino-cli compile, 1184821 B flash)
+- Test: N/A
+- Lint: PASS
+- Notes: limit_manager.h: manual[CHANGEOVER_PAIR_COUNT], public setRelayManual(ch,on) +
+  inline isManual(pairIdx) with bounds guard. limit_manager.cpp: begin() loads manual[] from
+  NVS; setRelayManual() takes dataMutex, maps ch→pair (chA⇒relay ON, chB⇒relay OFF), sets both
+  members' relayOn, persists relay state + manual flag, sets state to PAIR_CH1/PAIR_CH2, logs
+  event; non-pair fallback relays->set(ch,on). loop() skips manual pairs after bounds checks.
+  resetCounter() and rolloverIfNeeded() clear + persist manual[p]=false (auto resumes).
+
+## 2026-08-03 — Step 3: WebSocketServer route set_relay + broadcast manual
+- Build: PASS (arduino-cli compile, 1185105 B flash)
+- Test: N/A
+- Lint: PASS
+- Notes: websocket_server.cpp handleCommand set_relay block replaced — now accepts all
+  ch 0..RELAY_CHANNEL_COUNT-1, routes through limitMgr->setRelayManual() (changeover pairs
+  honored), logs ch+1, sets lastBroadcast=0 to force immediate broadcast; PARSE ERROR kept.
+  buildJson() emits "manual":[true/false per pair] between "ntfy" and "ch" from
+  limitMgr->isManual(p). Removed old ch==0||ch==2 "ignored" rejection.
+
+## 2026-08-03 — Step 4: UI enable per-channel toggle
+- Build: PASS (node --check data/script.js)
+- Test: N/A (browser/Playwright demo pending; logic verified by inspection)
+- Lint: PASS
+- Notes: data/script.js: createChannelCardElement always renders enabled relay button
+  (pair-tag badge kept); updateChannelCardElement removed AUTO branch (hasRelay=false →
+  "NO RELAY", else ON/OFF enabled); toggleRelay removed isChangeoverChannel toast guard and
+  optimistically inverts the pair partner's relayOn (lookup via CHANGEOVER_PAIRS[pair.pair-1],
+  since getPairForChannel returns {pair,role} only); renderPairSummary shows amber "⚙ MANUAL"
+  badge when data.manual[p]===true; demo mock adds manual:[false,true]. Removed now-dead
+  isChangeoverChannel() (last usage was the toggleRelay guard). getPairForChannel kept.
+
+## Final verification
+- Build: PASS — arduino-cli 1.5.1, fqbn esp32:esp32:esp32s3, core 3.3.11
+  After: 1185105 bytes (90%) flash, 112168 B (34%) RAM
+- Test: N/A (no pytest/ruff for Arduino; manual/WS hardware tests per PLAN pending)
+- Lint: PASS — node --check data/script.js OK; C++ compiles with -Wall via arduino-cli
+- Notes: Manual WS tests to run on hardware: set_relay {ch:0,state:false} → relay 1 OFF,
+  ch1 OFF / ch2 ON, manual[0]==true; reboot → still OFF (persisted); reset_relay {ch:0} →
+  back to counter A, manual[0]==false; test_force_rollover → both pairs auto, manual cleared.
+  UI: toggling ch1 flips shared relay, ch2 button reflects opposite state.
+## 2026-08-03 — Step 1: UI revamp (index.html)
+- Build: PASS (no JS; HTML block removed cleanly)
+- Test: N/A
+- Lint: N/A
+- Notes: Removed the #pairSummary panel-box block (Changeover Pairs overview). #channels container and all other panels untouched.
+## 2026-08-03 — Step 2: script.js pair-centric render rewrite
+- Build: PASS (node --check data/script.js)
+- Test: N/A (demo/Playwright verification pending)
+- Lint: PASS
+- Notes: Removed renderPairSummary() + getPairForChannel() + toggleRelay() + createChannelCardElement/updateChannelCardElement. Added NUM_CHANNELS=6, lastManualFlags, createSubCardElement, createPairCardElement, updateSubCardElement, updatePairCardElement (relay button/active indicator/manual badge/dim inactive), toggleRelayPair (optimistic mirror on pair partner), createMonitorCardElement/updateMonitorCardElement (NO RELAY disabled) for ch 4-5. updateDashboard render loop now upserts pair cards then monitor cards; sets lastManualFlags from data.manual. handleResetRelay selector extended to .sub-card[data-ch]. Demo mock still drives updateDashboard.
+## 2026-08-03 — Step 3: style.css pair + sub-card styles
+- Build: PASS (node --check data/script.js; CSS validated by inspection)
+- Test: N/A
+- Lint: N/A
+- Notes: Added .pair-card (info top bar), .pair-active + .active-a/.active-b, .manual-badge, .pair-counters grid (1fr 1fr), .sub-card (+ .inactive, .ch-title, .ch-readings, .load-bar, .ch-submetrics, .card-actions paddings), .sub-header. Appended .pair-counters {grid-template-columns:1fr} to the max-width:600px media query. Kept dead .relay-toggle-btn.auto variant.
+## Final verification — UI revamp complete
+- Build: PASS (node --check data/script.js; Node harness exercised createPairCardElement/createMonitorCardElement)
+- Test: N/A (Playwright demo pending)
+- Lint: PASS
+- Notes: git diff --stat confirms only data/(index.html,script.js,style.css) + .workflow/ changed. src/ and esp32-electricity-counter.ino untouched (pre-existing manual-relay feature diffs left as-is). NOT committed. Dead code removed: renderPairSummary, getPairForChannel, toggleRelay, createChannelCardElement, updateChannelCardElement.
+
+## 2026-08-03 — UI revamp: pair-centric dashboard (main-agent browser verification)
+Status: PASS
+- Playwright headless (chromium 1228) served data/ via python3 http.server + demo mode.
+- Assertions: 2 pair cards, 4 sub-cards (2 per pair), 2 monitoring cards, no console errors.
+- Pair 1 active=Counter 1, Relay ON; Pair 2 active=Counter 4, Relay OFF, MANUAL badge shown (demo manual:[false,true]).
+- Relay toggle test: pair 0 relay button click flipped active "Counter 1" -> "Counter 2" (optimistic shared-relay flip works).
+- node --check data/script.js PASS. grep confirmed no stale refs to removed fns (getPairForChannel/isChangeoverChannel/toggleRelay/renderPairSummary).
+- Vision subagent review of screenshot: layout clean, hierarchy pair->sub-cards clear, monitor cards distinguishable. Minor notes: NAVIGATION/MANUAL badge tight spacing next to active name; 100% budget bar shown green (could be red); a lone monitor card leaves empty right column — cosmetic only.
+
+## 2026-08-05 — Plan: Remove All Relay Features + Buzzer Alert (v1.2.0)
+Task: Strip every relay/changeover/manual feature. Pure 6-channel counter. Per-channel 100% limit trip → TRIPPED + ntfy + buzzer (N beeps = channel no). Active buzzer on pin 13. reset_relay → reset_counter.
+
+## Step 1 — src/config.h
+Status: PASS
+Build: PASS (compile, Step 7) | Test: N/A (constants) | Lint: PASS
+Notes: PIN_BUZZER 13 added (replaces PIN_RELAY_1..4). Removed PIN_RELAY_1..4, Relay Configuration block (RELAY_ACTIVE_STATE/RELAY_CHANNEL_COUNT), Changeover Relay Pairs block (CHANGEOVER_PAIR_COUNT/WARNING_THRESHOLD_PCT/struct ChangeoverPair/CHANGEOVER_PAIRS), NUM_RELAYS, bool relayOn in ChannelData, RELAY_PINS[]. FIRMWARE_VERSION 1.1.0 → 1.2.0.
+
+## Step 2 — src/utils/nvs_manager.{h,cpp}
+Status: PASS
+Build: PASS (compile, Step 7) | Test: N/A | Lint: PASS
+Notes: Removed saveRelayState/loadRelayState (h+cpp) and loadPairManual/savePairManual (h+cpp). last_month and all calibration/energy keys untouched. Orphaned NVS keys relay_*/pair_man_* left on flash (deliberately unread). grep src/utils/ → no relay/pair_man matches.
+
+## Step 3 — src/core/limit_manager.{h,cpp} (relay-free rewrite)
+Status: PASS
+Build: PASS (compile, Step 7) | Test: N/A | Lint: PASS
+Notes: Dropped RelayController include/PairState/setRelayManual/isManual/relays/state[]/notified[]/manual[]. Added Buzzer *buzzer member + bool tripNotified[NUM_CHANNELS] + checkLimits(). begin() = begin(nvs, powerCalc, sysData, mutex, ntfy, buzzer), inits tripNotified=false. loop() takes mutex → rolloverIfNeeded → checkLimits. checkLimits(): energy >= limit (limit>0) → STATUS_TRIPPED; if !tripNotified → logEvent "Monthly limit reached — over budget", ntfy notify ("Ch%d reached its monthly limit (%.1f kWh)", ch+1), buzzer->ring(ch+1). Else STATUS_OK. No 80% WARNING (warned[] dropped). rolloverIfNeeded: NTP guard + month compare, saveLastMonth, zero all 6 energies (powerCalc+sysData), status OK, tripNotified=false, event "Monthly reset — counters zeroed". resetCounter(ch): mutex, resetEnergy, sysData energy 0, status OK, tripNotified=false, saveEnergyKWh, event "Manual reset — counter zeroed". logEvent unchanged (ring buffer, time(nullptr) timestamp).
+
+## Step 3b — src/ui/buzzer.{h,cpp} (NEW)
+Status: PASS
+Build: PASS (compile, Step 7) | Test: N/A | Lint: PASS
+Notes: Non-blocking active-buzzer beep driver. begin(pin): pinMode OUTPUT, LOW, IDLE. ring(beeps): restart-from-first (state=BEEP_ON, beepsRemaining=beeps, pin HIGH). loop(): BEEP_ON (120ms) → LOW/GAP, BEEP_GAP (140ms) → next beep or IDLE. isBusy() = state != IDLE. Constants BEEP_MS 120 / GAP_MS 140. millis-based, driven from sensorTask.
+
+## Step 4 — src/network/websocket_server.{h,cpp}
+Status: PASS
+Build: PASS (compile, Step 7) | Test: N/A | Lint: PASS
+Notes: Removed RelayController include + member + begin param. begin(nvs, sysData, mutex, powerCalc, limitMgr). reset_relay → reset_counter handler KEPT (calls limitMgr->resetCounter, log "[WS] reset_counter: ch=%d counter reset"). set_relay handler removed. buildJson no longer emits "manual". buildChannelJson no longer emits "r"/"hasRelay"; index param dropped. grep src/network → no relay matches.
+
+## Step 5 — esp32-electricity-counter.ino
+Status: PASS
+Build: PASS (compile, Step 7) | Test: N/A | Lint: PASS
+Notes: Removed relay include + global. Added src/ui/buzzer.h include + Buzzer buzzer global. sensorTask: relay-persist block removed; energy-persist block kept; buzzer.loop() after limitMgr.loop(). setup(): savedRelayStates load removed; "Buzzer OK" + buzzer.begin(PIN_BUZZER) added; channel-config print drops RELAY/MONITOR suffix (no relayOn); limitMgr.begin(...,&buzzer); wsServer.begin(nvs,&systemData,&dataMutex,&powerCalc,&limitMgr). status/ch cmds: relayOn "RELAY ON/OFF" tail + "Relay:" print removed. test relay <N> block removed. reset <N> wired to limitMgr.resetCounter(ch) + "Ch%d counter reset". buzz <N> test command added (1-6) + help entry. info cmd: no "Relays:" line.
+
+## Step 6 — src/ui/status_led.h
+Status: PASS
+Build: PASS (compile, Step 7) | Test: N/A | Lint: PASS
+Notes: Comment block updated: dropped WARNING_THRESHOLD_PCT reference; "Blink RED – A channel exceeded its monthly limit"; no (relay cut) wording. STATUS_WARNING enum + LED_BLINK_YELLOW kept (display-only, no firmware trigger).
+
+## Step 7 — Firmware compile (first gate)
+Status: PASS
+Build: PASS — arduino-cli 1.5.1, fqbn esp32:esp32:esp32s3, core 3.3.11, no warnings/errors
+Test: N/A | Lint: PASS (-Wall via arduino-cli)
+Notes: Before (relay build, 2026-08-03): 1185105 B (90%) flash, 112168 B (34%) RAM. After: 1182473 B (90%) flash, 112168 B (34%) RAM. Flash −2632 B, RAM unchanged. Grep: no relay/Relay/RELAY in src/ or .ino (PIN_BUZZER only); no CHANGEOVER/pair/manual in src/ (except "Manual reset" event msg).
+
+## Step 8 — data/index.html
+Status: PASS
+Build: PASS (no JS/HTML change verified by served page) | Test: N/A | Lint: N/A
+Notes: ntfy hint line 111: "when a changeover limit is reached" → "when a channel's monthly kWh limit is reached".
+
+## Step 9 — data/script.js (6-card render rewrite)
+Status: PASS
+Build: PASS (node --check data/script.js) | Test: Playwright (tester) | Lint: PASS
+Notes: Removed optimisticRelays, CHANGEOVER_PAIRS, lastManualFlags, toggleRelayPair, createSubCardElement/createPairCardElement/updatePairCardElement/createMonitorPairCardElement/updateMonitorPairCardElement, openPairModal/openPairEditModal/openMonitorEditModal/openMonitorResetModal, handleResetPair, optimistic-restore + manual-flags sync + pair render loop. Added createChannelCardElement(idx) + updateChannelCardElement(card,ch,idx): .card-header (.ch-title.name-field + .ch-status-badge), .ch-readings (current/power/energy), .load-bar-container (budget bar w/ pct), .ch-submetrics (PF + Limit text), .card-actions (Edit → openEditModal, Reset Counter → handleResetChannel). Render loop upserts 6 cards by data.ch[i]. populateChannelSelect lists all 6. openEditModal(idx)/openResetModal(idx). handleResetChannel(idx) uses pendingActions 2-click confirm → sendResetCounter. sendResetCounter sends {cmd:'reset_counter', ch:idx}. zeroSubCardDisplay selector → .channel-card[data-ch]. renderEvents toast matcher → m.indexOf('limit') !== -1. Demo mock: no manual/r/hasRelay fields.
+
+## Step 10 — data/style.css
+Status: PASS
+Build: PASS (node --check unaffected; CSS verified by inspection) | Test: Playwright (tester) | Lint: N/A
+Notes: Removed .pair-tag, .relay-toggle-btn (.auto/.on/.off + block + comment), Pair-centric Cards block (.pair-card/.pair-active/.manual-badge/.pair-counters/.pair-actions/.sub-card*/.sub-header), @media .pair-counters. Kept .card-actions (reused), .card.ok/warning/tripped::before accent colors. Grep data/ → no changeover/pair/relay/manual/toggleRelay/sub-card.
+
+## Step 11 — UI verification (tester)
+Status: PENDING (handing off to tester subagent)
+
+## Step 12 — Docs (doc-sync)
+Status: PASS
+Build: N/A | Test: N/A | Lint: PASS (grep)
+Notes: README.md, doc/ARCHITECTURE.md, doc/opencode_agent/AGENTS.md updated — relay/changeover/manual references removed,
+active buzzer (GPIO13) + v1.2.0 reflected; lessons.md gains limit-checking-must-be-standalone lesson. No source code touched.
+
+## Overall
+Build: PASS — 1182473 B (90%) flash, 112168 B (34%) RAM
+Test: PENDING — tester subagent (node --check + compile + test_cal_sync.py Playwright regression)
+Lint: PASS — node --check data/script.js OK; C++ compiles -Wall clean
+
+## 2026-08-05 — LED trip blink removed (post-milestone follow-up)
+- Change: `updateLED()` in esp32-electricity-counter.ino no longer maps STATUS_TRIPPED → LED_BLINK_RED (nor WARNING → BLINK_YELLOW). LED stays SOLID_GREEN whenever WiFi is connected. Trip alert = buzzer beeps + ntfy + event log + dashboard badge only.
+- status_led.h comment updated: blink modes are serial `ledtest`-only, not firmware logic.
+- Build: PASS (1,182,409 B flash / 112,168 B RAM).
+
+## 2026-08-05 — Buzzer loops until reset (post-milestone follow-up)
+- limit_manager: one-time ring moved out of checkLimits; new updateBuzzer() runs every loop — while any channel is TRIPPED, beeps continuously (loops through every tripped channel's beep count, highest pattern then next, repeating) until no tripped channels remain. Guards with buzzer->isBusy() so patterns never restart mid-beep.
+- buzzer: added stop() (IDLE + pin LOW). Called from resetCounter() and rolloverIfNeeded() for immediate silence.
+- Build: PASS (1,182,629 B flash / 112,168 B RAM).
+
+## 2026-08-05 — WiFi failsafe: auto-reboot if no link in 10s (post-milestone follow-up)
+- wifi_manager: WIFI_CONNECTING now times out via WIFI_CONNECT_TIMEOUT_MS (10s) → handleConnectTimeout() → ESP.restart(). Success resets the counter.
+- Reboot loop capped: wifiBootFailures (RTC_DATA_ATTR, survives restart, resets on power-cycle) — after WIFI_MAX_BOOT_FAILURES (3) consecutive failed boots, falls back to AP mode so the device stays configurable. startAPMode() clears the counter.
+- connectToWiFi() resets connectStart; timeout checked before the retry branch so reboot wins cleanly. Runtime reconnects also reboot after 10s (energy persisted to NVS every 5s, max 5s loss).
+- Build: PASS (1,182,841 B flash / 112,168 B RAM).
+
+## 2026-08-06 — Noise floor quadrature + LPF actually applied (power_calculator.cpp)
+- Fix 1: noise floor cancellation changed from LINEAR (`rawRMS - noiseFloor`) to QUADRATURE
+  (`sqrt(max(raw^2 - floor^2, 0))`) in computeAll(). Phantom current fully gated when raw < floor.
+- Fix 2: `lpfAlpha` (previously loaded from NVS but dead code) is now applied as a per-sample
+  EMA low-pass in collectSamples() — voltage filtered with lpfAlpha[0] (matched filter keeps
+  cross-correlation real power phase-accurate), each current channel with its own lpfAlpha[ch].
+  alpha = 1.0 (default) = bypass, so behavior unchanged until user tunes it.
+- Auto-zero unaffected: noiseFloor forced to 0 → signalRMS = rawRMS; lpfAlpha forced to 1.0
+  by .ino during auto-zero → samples unfiltered.
+- Build: PASS — PlatformIO espressif32/arduino, 1,047,593 B flash / 111,368 B RAM, -Wall clean
+  (build differs from arduino-cli numbers due to toolchain version). UI/JS untouched.
+
+## 2026-08-06 — Auto-zero noise floor uses median (outlier-robust)
+- .ino auto-zero block: plain mean of 20 batches → MEDIAN of 32 batches (selection sort).
+- One glitch batch (EMI spike / load flick-on / mains dip) can no longer skew the floor.
+- lpfAlpha still forced to 1.0 and noiseFloor to 0 during capture → each batch = raw RMS.
+- Build: PASS — PlatformIO espressif32/arduino, 1,047,665 B flash / 111,368 B RAM, -Wall clean.
+2026-08-06 — v1.2.0 Dashboard Redesign (GRID_ADMIN)
+- Ported user's Stitch designs (minimalist_pc + minimalist_mobile) into data/{index.html,style.css,script.js}
+- Desktop: sidebar pages (Dashboard/Analytics/History/Settings + Support/Sign Out); mobile: 4-tab bottom nav
+- All WS contract fields + command messages preserved (verified against websocket_server.cpp)
+- Live canvas charts (V/P/I totals + 6 per-channel power), OTA progress handling added
+- Verify: node --check OK; headless Chrome end-to-end demo run — 6 cards, 9 charts, events, calibration, header totals, dates all PASS; desktop + mobile screenshots reviewed
+- Fixes during verify: CHART_DEFS TDZ hoisting bug, localStorage file:// guard, toast vs mobile-nav overlap, channel-chart grid orphan, "Budget"->"Monthly" label
+2026-08-06 — v1.2.0 UI follow-ups (session 2)
+- WiFi icon now syncs with real RSSI from ESP32 (firmware already broadcasts rssi every 5s); 4-bar icon w/ opacity transition, tooltip shows dBm; demo mode mocks rssi
+- Branding: GRID_ADMIN + "Real-time" -> "ESP32 Counter" (title, connect card, sidebar); removed Support button; removed fw version from status bar (kept in Settings About)
+- Sidebar: defaults to collapsed (icons-only), smooth grid-template-columns slide + label fade transition
+- Status bar: LED + "Connected" + WiFi on LEFT, V/P/I totals + clock on RIGHT; removed the bullet char from Connected/Demo text
+- Fixed .btn-outline (Disconnect) having no CSS -> themed danger outline button
+- PWA: manifest.json + icons/{icon,maskable,apple-touch-icon}.png + sw.js (network-first, secure-context-only) + apple/theme meta; offline-ready when hosted over HTTPS/localhost
+- Verified via headless Chrome demo harness: wifi level/RSSI title, header totals, layout order, collapse-default, no-bullet all PASS
+2026-08-06 — UI fix: collapsed sidebar hamburger off-screen
+- Bug: sidebar defaulted collapsed, but hamburger button rendered at x=-26 (half off-screen) + stray clipped label chars
+- Root cause: label fade used visibility:hidden which keeps layout space; invisible brand-text pushed the centered button off-screen
+- Fix: collapse hiding back to display:none; width slide animation unaffected (grid-template-columns transition)
+- Verified via headless Chrome: menuX=17 on-screen, nav/footer icons centered at x=22; vision-verified screenshot clean, no clipping

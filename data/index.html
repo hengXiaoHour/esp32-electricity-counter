@@ -3,115 +3,237 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>ESP32 Electricity Monitor</title>
+<title>ESP32 Counter — Electricity Monitor</title>
+<meta name="description" content="6-Channel AC electricity monitor for ESP32-S3">
+<meta name="theme-color" content="#101316">
+<meta name="application-name" content="ESP32 Counter">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ESP32 Counter">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<!-- Connection View -->
+<!-- ============ Connection View ============ -->
 <div id="connectPanel">
   <div class="connect-card">
-    <div class="connect-icon"></div>
-    <h1 class="connect-title">Electricity Monitor</h1>
-    <p class="connect-sub">ESP32-S3 Web Interface</p>
-    
+    <div class="connect-brand">
+      <span class="connect-led"></span>
+      <h1 class="connect-title">ESP32 Counter</h1>
+    </div>
+    <p class="connect-sub">ESP32-S3 &middot; 6-Channel AC Electricity Monitor</p>
+
     <div class="connect-row">
       <input type="text" id="esp32Ip" placeholder="192.168.1.x" spellcheck="false" autocomplete="off">
       <button class="btn-primary" onclick="handleConnect()">Connect</button>
     </div>
-    
+
     <div id="connectStatus" class="connect-status disconnected">Ready to connect</div>
-    
+
     <div class="demo-toggle">
       <label for="demoMode"><input type="checkbox" id="demoMode" onchange="toggleDemoMode(this)"> Run Mock Demo Mode</label>
     </div>
   </div>
 </div>
 
-<!-- Main Dashboard View -->
-<div id="dashboard" class="hidden">
-  
-  <!-- Header Overview Card -->
-  <div class="header-card">
-    <div class="header-brand">
-      <div id="ledStatus" class="led led-ok"></div>
-      <div>
-        <h1>Electricity Monitor</h1>
+<!-- ============ App Shell ============ -->
+<div id="app" class="hidden side-collapsed">
+
+  <!-- Sidebar (desktop) -->
+  <aside id="sidebar">
+    <div class="side-brand">
+      <button id="menuToggle" class="icon-btn" onclick="toggleSidebar()" title="Expand sidebar">&#9776;</button>
+      <div class="brand-text">
+        <span class="brand-title">ESP32 Counter</span>
       </div>
     </div>
-    
-    <div class="summary-metrics">
-      <div class="metric-box">
-        <span class="label">Voltage</span>
-        <span id="headerVoltage" class="value mono">--.- V</span>
+    <nav class="side-nav">
+      <button class="nav-item active" data-page="dashboard" onclick="showPage('dashboard')">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <span class="nav-label">Dashboard</span>
+      </button>
+      <button class="nav-item" data-page="analytics" onclick="showPage('analytics')">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/></svg>
+        <span class="nav-label">Analytics</span>
+      </button>
+      <button class="nav-item" data-page="history" onclick="showPage('history')">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+        <span class="nav-label">History</span>
+      </button>
+      <button class="nav-item" data-page="settings" onclick="showPage('settings')">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h0a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h0a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v0a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>
+        <span class="nav-label">Settings</span>
+      </button>
+    </nav>
+    <div class="side-footer">
+      <button class="nav-item" onclick="handleDisconnect()">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+        <span class="nav-label">Sign Out</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main id="main">
+
+    <!-- Status Bar -->
+    <header id="statusBar">
+      <div class="conn-group">
+        <span id="sysLed" class="led led-ok"></span>
+        <span id="connStatus" class="mono conn-txt">Connected</span>
+        <svg class="wifi lv0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle class="bar" cx="12" cy="20" r="1.2" fill="currentColor" stroke="none"/><path class="bar" d="M9.4 16.4a4.7 4.7 0 0 1 5.2 0"/><path class="bar" d="M6.5 13.2a8.5 8.5 0 0 1 11 0"/><path class="bar" d="M3.5 9.5C7 5.7 17 5.7 20.5 9.5"/></svg>
       </div>
-      <div class="metric-box">
-        <span class="label">Total Power</span>
-        <span id="totalPower" class="value mono">0 W</span>
+      <div class="stat-right">
+        <div class="stat"><span class="stat-label">V</span><span id="headerVoltage" class="stat-value mono">--.-</span></div>
+        <div class="stat"><span class="stat-label">P</span><span id="totalPower" class="stat-value mono">0 W</span></div>
+        <div class="stat"><span class="stat-label">I</span><span id="totalCurrent" class="stat-value mono">0.00 A</span></div>
+        <div class="stat stat-clock"><span id="todayDate" class="mono stat-sub">--</span><span id="deviceTime" class="mono stat-sub">--</span></div>
       </div>
-      <div class="metric-box">
-        <span class="label">Total Current</span>
-        <span id="totalCurrent" class="value mono">0.00 A</span>
+    </header>
+
+    <!-- OTA Upgrade Progress -->
+    <div id="otaPanel" class="hidden">
+      <div class="ota-head">OTA FIRMWARE UPDATE IN PROGRESS</div>
+      <div class="ota-track"><div id="otaProgress" class="ota-fill"></div></div>
+      <div class="ota-meta mono">
+        <span id="otaPercent">0%</span>
+        <span id="otaVersion">v1.0.0</span>
       </div>
     </div>
-  </div>
 
-  <!-- Connection Status Bar -->
-  <div class="control-bar">
-    <span id="connStatus" class="mono" style="color: var(--color-success)">● Connected</span>
-    <button class="btn-outline" onclick="handleDisconnect()">Disconnect</button>
-  </div>
+    <!-- Pages -->
+    <div id="pages">
 
-  <!-- OTA Upgrade Progress -->
-  <div id="otaPanel" class="hidden">
-    <div style="font-size: 0.8rem; font-weight: 700; color: var(--color-info);">OTA FIRMWARE UPDATE IN PROGRESS</div>
-    <div class="ota-track"><div id="otaProgress" class="ota-fill"></div></div>
-    <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--text-muted);" class="mono">
-      <span id="otaPercent">0%</span>
-      <span id="otaVersion">v1.0.0</span>
-    </div>
-  </div>
+      <!-- Dashboard -->
+      <section id="page-dashboard" class="page active">
+        <div id="channels"></div>
+      </section>
 
-  <!-- Dynamic Channel Cards Grid -->
-  <div id="channels"></div>
+      <!-- Analytics -->
+      <section id="page-analytics" class="page">
+        <div class="panel-box">
+          <div class="panel-header">
+            <h3>Live Totals</h3>
+            <span id="chartRange" class="mono dim">--</span>
+          </div>
+          <div id="summaryCharts" class="chart-grid"></div>
+        </div>
+        <div class="panel-box">
+          <div class="panel-header">
+            <h3>Per-Channel Power (W)</h3>
+            <span class="mono dim">live</span>
+          </div>
+          <div id="channelCharts" class="chart-grid ch"></div>
+        </div>
+      </section>
 
-  <!-- Event Log Panel -->
-  <div class="panel-box">
-    <div class="panel-header">
-      <h3>Event Log</h3>
-      <span class="mono" style="font-size: 0.7rem; color: var(--text-dim);" id="eventCount">0 events</span>
-    </div>
-    <div id="eventList">
-      <div class="event-item" style="color: var(--text-dim);">No events logged yet.</div>
-    </div>
-  </div>
+      <!-- History -->
+      <section id="page-history" class="page">
+        <div class="panel-box">
+          <div class="panel-header">
+            <h3>Event Log</h3>
+            <span class="mono dim" id="eventCount">0 events</span>
+          </div>
+          <div id="eventList">
+            <div class="event-item empty">No events logged yet.</div>
+          </div>
+        </div>
+      </section>
 
-  <!-- Calibration Panel -->
-  <div class="panel-box">
-    <div class="panel-header">
-      <h3>System Calibration</h3>
+      <!-- Settings -->
+      <section id="page-settings" class="page">
+        <div class="panel-box">
+          <div class="panel-header"><h3>Connection</h3></div>
+          <div class="cal-row-single">
+            <label>Device:</label>
+            <span id="connectedIp" class="mono conn-ip">--</span>
+          </div>
+          <div class="cal-row-single" style="margin-top:8px;">
+            <label>Status:</label>
+            <span id="connStatus2" class="mono conn-txt">Connected</span>
+          </div>
+          <div style="margin-top:12px;">
+            <button class="btn-outline" onclick="handleDisconnect()">Disconnect</button>
+          </div>
+        </div>
+
+        <div class="panel-box">
+          <div class="panel-header"><h3>Push Notifications (ntfy.sh)</h3></div>
+          <div class="cal-row-single">
+            <label>Topic:</label>
+            <input type="text" id="ntfyTopic" placeholder="e.g. my-elec-counter" spellcheck="false" autocomplete="off" oninput="this.dataset.userSet='true'">
+            <button class="btn-sm" onclick="sendNtfyTopic()">Set</button>
+          </div>
+          <div class="cal-row-single" style="margin-top:8px;">
+            <label><input type="checkbox" id="ntfyEnabled" onchange="sendNtfyEnabled(this)"> Enabled</label>
+          </div>
+          <div class="hint">Alerts are pushed to https://ntfy.sh/&lt;topic&gt; when a channel's monthly kWh limit is reached.</div>
+        </div>
+
+        <div class="panel-box">
+          <div class="panel-header"><h3>System Calibration</h3></div>
+          <div class="cal-row-single">
+            <label>Voltage Cal:</label>
+            <input type="number" id="voltCal" step="0.1" value="260" oninput="this.dataset.userSet='true'">
+            <button class="btn-sm" onclick="sendVoltageCal()">Set</button>
+          </div>
+          <div class="cal-row-single" style="margin-top:8px;">
+            <label>RMS Samples:</label>
+            <input type="number" id="rmsSamples" step="50" min="100" max="2000" value="1000" oninput="this.dataset.userSet='true'">
+            <button class="btn-sm" onclick="setRmsSamples()">Set</button>
+            <span class="hint-inline">(100-2000)</span>
+          </div>
+          <div class="cal-section-title">Channel Calibration</div>
+          <div id="calibrationRows" class="cal-grid"></div>
+          <div class="cal-reset-row">
+            <button id="resetNvsBtn" class="btn-sm btn-danger" onclick="handleResetNvs()">&#8634; Reset NVS to Defaults</button>
+          </div>
+        </div>
+
+        <div class="panel-box">
+          <div class="panel-header"><h3>About</h3></div>
+          <div class="cal-row-single">
+            <label>Firmware:</label>
+            <span id="fwVersion2" class="mono conn-ip">--</span>
+          </div>
+          <div class="cal-row-single" style="margin-top:8px;">
+            <label>Month:</label>
+            <span id="lastMonth" class="mono conn-ip">--</span>
+          </div>
+          <div class="hint">ESP32 Counter dashboard &middot; ESP32-S3 6-channel electricity monitor &middot; WebSocket live updates</div>
+        </div>
+      </section>
+
     </div>
-    <div class="cal-row-single" style="max-width: 300px;">
-      <label>Voltage Cal:</label>
-      <input type="number" id="voltCal" step="0.1" value="260" oninput="this.dataset.userSet='true'">
-      <button class="btn-sm" onclick="sendVoltageCal()">Set</button>
-    </div>
-    <div class="cal-row-single" style="max-width: 300px; margin-top: 8px;">
-      <label>RMS Samples:</label>
-      <input type="number" id="rmsSamples" step="50" min="100" max="2000" value="1000" oninput="this.dataset.userSet='true'">
-      <button class="btn-sm" onclick="setRmsSamples()">Set</button>
-      <span style="font-size: 0.65rem; color: var(--text-dim); margin-left: 6px;">(100-2000)</span>
-    </div>
-    <div style="margin-top: 14px; font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">Channel Calibration</div>
-    <div id="calibrationRows" class="cal-grid"></div>
-    <div style="margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px;">
-      <button id="resetNvsBtn" class="btn-sm" onclick="handleResetNvs()" style="color:#e74c3c;">&#8634; Reset NVS to Defaults</button>
-    </div>
-  </div>
+  </main>
+
+  <!-- Mobile Bottom Nav -->
+  <nav id="mobileNav">
+    <button class="mnav-item active" data-page="dashboard" onclick="showPage('dashboard')">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      <span>Dashboard</span>
+    </button>
+    <button class="mnav-item" data-page="analytics" onclick="showPage('analytics')">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/></svg>
+      <span>Charts</span>
+    </button>
+    <button class="mnav-item" data-page="history" onclick="showPage('history')">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+      <span>History</span>
+    </button>
+    <button class="mnav-item" data-page="settings" onclick="showPage('settings')">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h0a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h0a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v0a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>
+      <span>Settings</span>
+    </button>
+  </nav>
 
 </div>
 
-<!-- Edit Limits Pop Overlay Modal -->
+<!-- ============ Edit Limits Modal ============ -->
 <div id="editModal" class="modal-overlay hidden" onclick="if(event.target === this) closeEditModal()">
   <div class="modal-card">
     <div class="modal-header">
@@ -120,22 +242,36 @@
     </div>
     <div class="modal-body">
       <div class="form-group">
+        <label>Channel</label>
+        <select id="modalChSelect" onchange="onModalChannelChange()"></select>
+      </div>
+      <div class="form-group" id="modalNameGroup">
         <label>Channel Name</label>
         <input type="text" id="modalChName" placeholder="e.g. Living Room AC">
       </div>
-      <div class="form-group">
+      <div class="form-group" id="modalMkwhGroup">
         <label>Monthly kWh Budget</label>
         <input type="number" id="modalChMkwh" step="1" placeholder="48">
       </div>
     </div>
     <div class="modal-footer">
       <button class="btn-sm" onclick="closeEditModal()">Cancel</button>
-      <button class="btn-sm" onclick="resetModalToDefaults()" style="color:#e74c3c;">Reset to Default</button>
-      <button class="btn-primary" style="padding: 6px 14px; font-size: 0.75rem;" onclick="saveModalSettings()">Save Settings</button>
+      <button class="btn-sm" id="modalResetDefaultBtn" onclick="resetModalToDefaults()" style="color:#e74c3c;">Reset to Default</button>
+      <button class="btn-sm btn-danger" id="modalResetCounterBtn" onclick="confirmModalReset()" style="display:none;">&#8634; Reset Counter</button>
+      <button class="btn-primary btn-inline" id="modalSaveBtn" onclick="saveModalSettings()">Save Settings</button>
     </div>
   </div>
 </div>
 
 <script src="script.js"></script>
+<script>
+if ('serviceWorker' in navigator && window.isSecureContext) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('./sw.js').catch(function (err) {
+      console.warn('SW registration failed:', err);
+    });
+  });
+}
+</script>
 </body>
 </html>

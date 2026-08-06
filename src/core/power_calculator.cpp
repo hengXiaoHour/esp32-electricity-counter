@@ -26,11 +26,32 @@ void PowerCalculator::update(float deltaSeconds) {
 }
 
 void PowerCalculator::collectSamples() {
+  float vFiltered = 0.0f;
+  float cFiltered[NUM_CHANNELS];
+  bool vInit = false;
+  bool cInit[NUM_CHANNELS] = {false};
+  float vAlpha = lpfAlpha[0];
+
   for (int i = 0; i < rmsSamples; i++) {
-    voltageSamples[i] = (float)analogRead(PIN_VOLTAGE);
+    float vRaw = (float)analogRead(PIN_VOLTAGE);
+    if (vAlpha < 1.0f) {
+      if (!vInit) { vFiltered = vRaw; vInit = true; }
+      vFiltered += vAlpha * (vRaw - vFiltered);
+      voltageSamples[i] = vFiltered;
+    } else {
+      voltageSamples[i] = vRaw;
+    }
 
     for (int ch = 0; ch < NUM_CHANNELS; ch++) {
-      currentSamples[ch][i] = (float)analogRead(CURRENT_PINS[ch]);
+      float raw = (float)analogRead(CURRENT_PINS[ch]);
+      float alpha = lpfAlpha[ch];
+      if (alpha < 1.0f) {
+        if (!cInit[ch]) { cFiltered[ch] = raw; cInit[ch] = true; }
+        cFiltered[ch] += alpha * (raw - cFiltered[ch]);
+        currentSamples[ch][i] = cFiltered[ch];
+      } else {
+        currentSamples[ch][i] = raw;
+      }
     }
 
     delayMicroseconds(ADC_READ_INTERVAL_US);
@@ -75,11 +96,12 @@ void PowerCalculator::computeAll() {
     float iPinVoltage = (iAdcRMS / ADC_MAX_VALUE) * ADC_REFERENCE_V;
     float rawRMS = iPinVoltage * currentCal[ch];
 
-    float adjustedRMS = rawRMS - noiseFloor[ch];
-    if (adjustedRMS < 0.0f) adjustedRMS = 0.0f;
+    float rawSq = rawRMS * rawRMS;
+    float floorSq = noiseFloor[ch] * noiseFloor[ch];
+    float signalRMS = (rawSq > floorSq) ? sqrtf(rawSq - floorSq) : 0.0f;
 
-    currentRMS[ch] = adjustedRMS;
-    filteredCurrentRMS[ch] = adjustedRMS;
+    currentRMS[ch] = signalRMS;
+    filteredCurrentRMS[ch] = signalRMS;
 
     float pMean = pSum / rmsSamples;
     float adcToVolt = ADC_REFERENCE_V / ADC_MAX_VALUE;

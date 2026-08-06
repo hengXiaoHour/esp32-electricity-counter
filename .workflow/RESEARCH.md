@@ -1,53 +1,54 @@
-# Research: UX/Interface Improvements
+# Research: Remove All Relay Features — Pure 6-Channel Counter
 
 ## Current State
 
-Three files in `data/` — externally-hosted WebSocket dashboard, dark/red theme, working features.
+- ESP32-S3, 6 channels. Relays: GPIO43,44,13,12 (active-LOW) on channels 0-3; channels 4-5 monitoring-only.
+- Changeover pair system (`CHANGEOVER_PAIRS`, `PairState`, `manual[]`, `setRelayManual` in `src/core/limit_manager.*`) force-switches relays between counter A/B based on monthly kWh limits.
+- `relay_controller.{h,cpp}` — 100% relay-specific GPIO driver. `relayOn` field in `ChannelData` broadcast as `"r"` in WS JSON.
+- NVS keys `relay_1..4`, `pair_man_1..2` persist relay state + manual override.
+- WS commands `set_relay` (relay control) + `reset_relay` (actually = counter reset! must be kept/renamed).
+- UI `data/script.js` is pair-centric: pair cards, `toggleRelayPair`, MANUAL badges, `optimisticRelays`, `CHANGEOVER_PAIRS`, `manual[]`, `r`.
+- `power_calculator`, `current_sensor`, `voltage_sensor`, `wifi_manager`, `ota_handler`, `ntfy_notifier`, `status_led.cpp` — ZERO relay references (verified clean).
 
-### Current HTML structure (index.html)
-- Single-tier header: `#headerLeft` (title + badge) + `#sysInfo` (voltage, wifi, clock, LED) in one flex row
-- Connection bar below header
-- OTA panel (hidden by default)
-- Channel cards container
-- Event log panel
-- Calibration settings panel
+## Requirements (user-confirmed)
 
-### Current CSS (style.css)
-- Dark theme: `#0c0c10` bg, `#15151a` cards, `#e63946` red accent
-- Cards: 1px border, subtle hover lift, border-color on status classes
-- `#channels` grid: `repeat(auto-fill, minmax(280px, 1fr))`
-- Responsive breakpoints at 480px and 360px
-- `.label` uses `#777` at `.65rem` — low contrast
+- **Remove ALL relay features completely.** No relays, no changeover pairs, no manual override, no relay control.
+- Firmware becomes a pure measurement device: 6 counters reading sensor input.
+- Dashboard shows 6 independent channel cards (no pair cards / relay buttons).
 
-### Current JS (script.js)
-- `updateDashboard()` renders cards in payload order (no sort)
-- 6 equal-weight stats per card (Current, Power, Apparent, PF, Energy, Relay)
-- 3 inputs + 2 buttons always visible per card (limit, power limit, name, Save, Reset)
-- `resetRelay()` sends immediately on click — no confirmation
-- `setLimit()` sends immediately — no feedback
-- Event log: simple list, last 10 events, no filters
-- No `aria-live` attributes
+## Non-relay behavior that must be PRESERVED
 
-## Requirements (from prompt)
+- Monthly rollover (`rolloverIfNeeded`): NTP-synced month change → zero all 6 energies, `saveLastMonth`, statuses → OK, log "Monthly reset" event. Remove only the relay re-energize loop.
+- `resetCounter`: zero energy + NVS persist + status OK. Remove only the pair-flip block.
+- `logEvent` ring buffer + WS event broadcast + dashboard toast.
+- WS command `reset_relay` → RENAME to `reset_counter` (it is counter reset, not relay control).
+- `test_force_rollover` WS hook (rollover test tool).
+- Calibration panel (set_voltage_cal / set_current_cal / set_noise_floor / set_rms_samples), `test_inject`, `set_monthly_kwh`, ntfy topic/enabled settings, channel names.
+- `ntfy_notifier` class (relay-independent HTTPS push).
 
-1. **Two-tier header** — brand/status top, secondary info bottom strip
-2. **Problem channels louder** — sort tripped/warning first, background tint, thicker border, status icons (✓/⚠/✗)
-3. **Reduced card density** — promote Current/Power/Energy, demote Apparent/PF, edit mode toggle
-4. **Edit mode** — read-only display by default, Edit button reveals inputs + Save/Cancel per card
-5. **Reset confirmation** — inline "Confirm Reset?" with 3s timeout before sending
-6. **Save feedback** — pending state, success flash, error timeout (~5s)
-7. **Event log filters** — All/Warnings/Trips filter, per-channel optional
-8. **Accessibility** — aria-live, icons alongside color, higher contrast labels
+## GAP / Open Question
+
+The WARNING/TRIPPED status machine, LED blink, and ntfy push are **entirely embedded in the changeover-pair machine** — there is NO standalone per-channel limit check today (`WARNING_THRESHOLD_PCT` is dead code, channels 5-6 never warn/trip). Removing relays without a replacement silently kills status/LED/ntfy for all channels.
 
 ## Risks
-- Sort changes the card index order — `resetRelay(i)` and `setLimit(i)` use the sorted array index; must ensure the index sent to ESP32 matches the original payload index, not the display index
-- Edit mode adds complexity — must track per-card edit state
-- Reset confirmation timer + pending feedback state machine could get complex
-- Must not break: hasRelay, per-channel cal, blink states, OTA panel, connect flow
 
-## Approach
-- Sort the display copy of channels, but keep original index mapping for commands
-- Use `data-orig-index` attribute on cards to map display position → payload index
-- Store edit state in a `Set` of card indices
-- Use `aria-live="polite"` on channels container and event list
-- Use Unicode glyphs (✓ ⚠ ✕) for status icons
+1. `ChannelData::relayOn` + WS `"r"` field + `manual[]` + `hasRelay` must be removed together, or the UI silently shows all counters "B / inactive".
+2. `reset_relay` is actually counter-reset — deleting it as "relay code" breaks the Reset Counter button.
+3. GPIO12 is a strapping pin (MTDI) — currently driven by relay_controller. If the relay board stays wired, leaving it floating can change boot strapping. Confirm hardware detached or add explicit pull-down.
+4. Orphaned NVS keys `relay_*`/`pair_man_*` are harmless (unread); do NOT use `clearAll()` (would nuke calibrations). Optionally `prefs.remove()` in begin().
+5. Tests: `tests/test_cal_sync.py` is relay-free but drives the calibration UI — must still pass after the dashboard rewrite (depends on `#demoMode`, `calibrationRows`, `currCal_#`, `nf_#`, `rmsSamples`, `voltCal`, `resetNvsBtn` surviving).
+6. Docs: README.md, ARCHITECTURE.md, AGENTS.md reference relays — update after code.
+7. Last session's in-flight manual-relay feature (uncommitted) is being superseded, not extended.
+
+## Approach Options
+
+- **A (recommended):** Strip to pure measurement + KEEP per-channel limit warnings. Rework `limit_manager` into relay-free manager: per-channel check `energyKWh >= monthlyKwhLimit` → WARNING/TRIPPED status + ntfy + LED + event. Preserves all existing monitoring UX without relays.
+- **B:** Strip to pure measurement only. `limit_manager.loop()` = `rolloverIfNeeded()` alone. No status changes, no ntfy, no LED limit indication. Simplest, smallest flash.
+- **C:** Hybrid — pure measurement, but keep ntfy + monthly rollover + resetCounter + event log; no per-channel limit trip.
+
+## Files Affected
+
+- DELETE: `src/core/relay_controller.{h,cpp}`
+- MODIFY: `src/config.h`, `src/core/limit_manager.{h,cpp}`, `src/network/websocket_server.{h,cpp}`, `src/utils/nvs_manager.{h,cpp}`, `esp32-electricity-counter.ino`
+- REWRITE: `data/script.js` (6 independent cards), `data/style.css`, `data/index.html`
+- UPDATE: `README.md`, `doc/ARCHITECTURE.md`, `doc/opencode_agent/AGENTS.md`, `src/ui/status_led.h` (comment)

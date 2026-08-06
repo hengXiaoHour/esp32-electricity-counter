@@ -1,17 +1,17 @@
 # ESP32-S3 6-Channel AC Electricity Counter
 
-Monitors 6 AC circuits with current sensors, 1 voltage reference, 4 relay outputs, RGB status LED, and a real-time WebSocket dashboard with OTA updates.
+Monitors 6 AC circuits with current sensors, 1 voltage reference, RGB status LED, active buzzer alert, and a real-time WebSocket dashboard with OTA updates.
 
 ## Hardware Setup
 
 | Component | Pins |
 |---|---|
-| CT sensors (ch1-6) | GPIO2, 16, 4, 5, 6, 7 |
+| CT sensors (ch1-6) | GPIO7, 5, 6, 8, 4, 2 |
 | Voltage sensor | GPIO1 |
-| Relays (ch1-4) | GPIO43, 44, 13, 12 |
+| Active buzzer | GPIO13 |
 | RGB LED (WS2812) | GPIO48 |
 
-Channels 1-4 have relays; channels 5-6 are monitoring-only. Relays are active-LOW by default (configurable in `src/config.h`).
+Each channel has an independent monthly kWh limit. When a channel reaches 100% of its limit it trips (RED LED blink) and the buzzer rings N beeps (N = channel number, ch1 = 1 beep … ch6 = 6 beeps).
 
 ## Arduino IDE Setup
 
@@ -67,7 +67,7 @@ The RGB LED turns blue during OTA. The dashboard shows OTA progress.
 The firmware runs on two FreeRTOS cores:
 
 - **Core 0** — Networking: WiFi management, WebSocket server, OTA handler
-- **Core 1** — Sensing: ADC sampling, power calculation, limit checking, relay control
+- **Core 1** — Sensing: ADC sampling, power calculation, limit checking, buzzer alerts
 
 Shared data between cores is protected by a mutex (`SemaphoreHandle_t`).
 

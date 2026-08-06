@@ -3,18 +3,19 @@
 #include <ESPAsyncWebServer.h>
 #include "../config.h"
 #include "../utils/nvs_manager.h"
-#include "../core/relay_controller.h"
 
 #include "../core/power_calculator.h"
+
+class LimitManager;
 
 class WebSocketServer {
 public:
   WebSocketServer();
   ~WebSocketServer();
 
-  void begin(NVSManager &nvs, RelayController &relays,
+  void begin(NVSManager &nvs,
              SystemData *sysData, SemaphoreHandle_t *mutex,
-             PowerCalculator *powerCalc);
+             PowerCalculator *powerCalc, LimitManager *limitMgr);
   void startServer();
   void stopServer();
   bool isRunning() const { return started; }
@@ -26,11 +27,11 @@ private:
   AsyncWebServer *server;
   AsyncWebSocket *ws;
   NVSManager *nvs;
-  RelayController *relays;
 
   PowerCalculator *powerCalc;
   SystemData *sysData;
   SemaphoreHandle_t *dataMutex;
+  LimitManager *limitMgr;
 
   uint32_t lastBroadcast;
   bool started;
@@ -41,6 +42,6 @@ private:
   void handleCommand(AsyncWebSocketClient *client, const char *msg);
 
   void buildJson(const SystemData &data, String &json);
-  void buildChannelJson(const ChannelData &ch, int index, String &json, bool last);
+  void buildChannelJson(const ChannelData &ch, String &json, bool last);
   void buildEventJson(const Event &ev, String &json, bool last);
 };

@@ -27,6 +27,10 @@ void WiFiManager::begin(NVSManager &nvsRef) {
   }
 }
 
+// Consecutive failed-boot counter. Lives in RTC memory so it survives
+// ESP.restart() but resets on power-cycle. Caps the reboot-loop failsafe.
+RTC_DATA_ATTR uint8_t wifiBootFailures = 0;
+
 static uint8_t flapCount = 0;
 
 void WiFiManager::loop() {
@@ -34,10 +38,13 @@ void WiFiManager::loop() {
     if (WiFi.status() == WL_CONNECTED) {
       state = WIFI_CONNECTED;
       flapCount = 0;
+      wifiBootFailures = 0;
       rssi = WiFi.RSSI();
       if (httpServer) {
         stopAPMode();
       }
+    } else if (millis() - connectStart >= WIFI_CONNECT_TIMEOUT_MS) {
+      handleConnectTimeout();
     } else if (millis() - lastRetry >= WIFI_RETRY_INTERVAL_MS) {
       retryCount++;
       if (retryCount >= WIFI_MAX_RETRIES) {
@@ -96,12 +103,30 @@ void WiFiManager::connectToWiFi() {
     return;
   }
   lastRetry = millis();
+  connectStart = millis();
   WiFi.mode(WIFI_STA);
   WiFi.begin(configuredSSID.c_str(), configuredPass.c_str());
+  configTime(0, 0, "pool.ntp.org", "time.google.com");
+}
+
+// Failsafe: if no link after WIFI_CONNECT_TIMEOUT_MS, reboot automatically.
+// Cap the reboot loop at WIFI_MAX_BOOT_FAILURES consecutive failures so a
+// device with wrong/stale credentials still lands in AP mode for reconfig.
+void WiFiManager::handleConnectTimeout() {
+  wifiBootFailures++;
+  Serial.printf("[WiFi] No connection after %d ms (attempt %u) — rebooting...\n",
+                WIFI_CONNECT_TIMEOUT_MS, wifiBootFailures);
+  if (wifiBootFailures >= WIFI_MAX_BOOT_FAILURES) {
+    wifiBootFailures = 0;
+    startAPMode();
+    return;
+  }
+  ESP.restart();
 }
 
 void WiFiManager::startAPMode() {
   state = WIFI_AP_MODE;
+  wifiBootFailures = 0;
 
   WiFi.mode(WIFI_AP);
   WiFi.softAP(AP_SSID, AP_PASS);

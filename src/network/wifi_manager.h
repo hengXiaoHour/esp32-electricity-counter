@@ -36,6 +36,7 @@ private:
   String configuredPass;
   int retryCount;
   uint32_t lastRetry;
+  uint32_t connectStart;
   int8_t rssi;
 
   DNSServer dnsServer;
@@ -45,6 +46,7 @@ private:
   void startAPMode();
   void stopAPMode();
   void checkConnection();
+  void handleConnectTimeout();
 
   // AP config web page handlers
   void handleAPRoot();

@@ -5,11 +5,10 @@
 
 // LED State Machine
 //   Solid GREEN  – WiFi connected, all channels OK
-//   Blink YELLOW – Any channel ≥ WARNING_THRESHOLD_PCT of limit
 //   Solid RED    – WiFi disconnected / AP fallback mode
-//   Blink RED    – A channel tripped (relay cut)
 //   Solid BLUE   – OTA update in progress / booting
 //   OFF          – System off / deep sleep
+//   Blink YELLOW / Blink RED – serial `ledtest` only, not used by firmware logic
 
 enum LedMode : uint8_t {
   LED_OFF = 0,

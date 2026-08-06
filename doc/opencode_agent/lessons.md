@@ -11,3 +11,5 @@
 ## Architecture Lessons
 - Power calculation needs paired V-I samples for real power. Combined sampling (voltage + all current channels per index) gives best accuracy without complex phase alignment.
 - WS2812 R/G swap must be clearly documented with a comment warning not to "fix" it.
+- **Limit checking must be standalone, not embedded in a relay/changeover-pair state machine** (v1.2.0 refactor). When relays were physically detached, the whole per-pair machine (PairState, manual overrides, relayOn bookkeeping) had to be ripped out. A pure 6-channel `checkLimits()` loop over `NUM_CHANNELS` with a per-channel `tripNotified[]` flag is simpler and survives hardware changes. Keep domain logic (limits, alerts) independent of any actuation hardware.
+- **Audible alerts belong in their own module**: the active buzzer lives in `src/ui/buzzer.{h,cpp}` as a non-blocking, millis-based beep driver (`ring(beeps)` + `loop()`), driven from the sensor task — never blocking `delay()`s in the sensing loop.

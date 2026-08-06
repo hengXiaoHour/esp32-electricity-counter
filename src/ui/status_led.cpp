@@ -27,15 +27,15 @@ void StatusLED::loop() {
       break;
 
     case LED_SOLID_GREEN:
-      setPixelColor(0, 255, 0);
+      setPixelColor(0, 10, 0);
       break;
 
     case LED_SOLID_RED:
-      setPixelColor(255, 0, 0);
+      setPixelColor(25, 0, 0);
       break;
 
     case LED_SOLID_BLUE:
-      setPixelColor(0, 0, 255);
+      setPixelColor(0, 0, 25);
       break;
 
     case LED_BLINK_YELLOW:
@@ -44,7 +44,7 @@ void StatusLED::loop() {
         lastToggle = millis();
       }
       if (blinkState) {
-        setPixelColor(255, 255, 0);
+        setPixelColor(25, 25, 0);
       } else {
         setPixelColor(0, 0, 0);
       }

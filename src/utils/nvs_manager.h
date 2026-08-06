@@ -36,10 +36,6 @@ public:
   float loadChannelCurrentCal(uint8_t channel);  // Per-channel
   void saveChannelCurrentCal(uint8_t channel, float value);
 
-  // Relay state persistence
-  void saveRelayState(uint8_t relayIndex, bool on);
-  bool loadRelayState(uint8_t relayIndex, bool defaultValue);
-
   // Noise floor (amperes) per channel — auto-zero calibration
   float loadNoiseFloor(uint8_t channel);
   void saveNoiseFloor(uint8_t channel, float value);
@@ -55,6 +51,16 @@ public:
   // Per-channel energy (kWh) — saved periodically to survive power loss
   float loadEnergyKWh(uint8_t channel);
   void saveEnergyKWh(uint8_t channel, float value);
+
+  // ntfy.sh push notification config
+  String loadNtfyTopic();
+  void saveNtfyTopic(const String &topic);
+  bool loadNtfyEnabled();
+  void saveNtfyEnabled(bool on);
+
+  // Month (YYYYMM) of last energy rollover — monthly reset marker
+  int32_t loadLastMonth();
+  void saveLastMonth(int32_t month);
 
   // Commit pending writes to flash (required for persistence across reboot)
   void commit();

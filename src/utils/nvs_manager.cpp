@@ -126,21 +126,6 @@ void NVSManager::saveChannelCurrentCal(uint8_t channel, float value) {
   Serial.printf("  [NVS] ch%d current calibration: %.1f\n", channel + 1, value);
 }
 
-// --- Relay State ---
-
-void NVSManager::saveRelayState(uint8_t relayIndex, bool on) {
-  String key = "relay_";
-  key += (relayIndex + 1);
-  prefs.putUChar(key.c_str(), on ? 1 : 0);
-  Serial.printf("  [NVS] relay %d state: %s\n", relayIndex + 1, on ? "ON" : "OFF");
-}
-
-bool NVSManager::loadRelayState(uint8_t relayIndex, bool defaultValue) {
-  String key = "relay_";
-  key += (relayIndex + 1);
-  return prefs.getUChar(key.c_str(), defaultValue ? 1 : 0) != 0;
-}
-
 // --- Noise Floor ---
 
 float NVSManager::loadNoiseFloor(uint8_t channel) {
@@ -206,6 +191,37 @@ float NVSManager::loadEnergyKWh(uint8_t channel) {
 void NVSManager::saveEnergyKWh(uint8_t channel, float value) {
   String key = channelKey(channel, "kwh");
   prefs.putFloat(key.c_str(), value);
+}
+
+// --- ntfy.sh push notification ---
+
+String NVSManager::loadNtfyTopic() {
+  return prefs.getString("ntfy_topic", "");
+}
+
+void NVSManager::saveNtfyTopic(const String &topic) {
+  prefs.putString("ntfy_topic", topic);
+  Serial.printf("  [NVS] saved ntfy topic: \"%s\"\n", topic.c_str());
+}
+
+bool NVSManager::loadNtfyEnabled() {
+  return prefs.getBool("ntfy_enable", false);
+}
+
+void NVSManager::saveNtfyEnabled(bool on) {
+  prefs.putBool("ntfy_enable", on);
+  Serial.printf("  [NVS] saved ntfy enabled: %s\n", on ? "true" : "false");
+}
+
+// --- Monthly rollover marker ---
+
+int32_t NVSManager::loadLastMonth() {
+  return prefs.getLong("last_month", 0);
+}
+
+void NVSManager::saveLastMonth(int32_t month) {
+  prefs.putLong("last_month", month);
+  Serial.printf("  [NVS] saved last month: %ld\n", (long)month);
 }
 
 // --- Factory Reset ---

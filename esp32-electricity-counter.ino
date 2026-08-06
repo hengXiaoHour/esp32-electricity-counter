@@ -1,17 +1,20 @@
 #include "src/config.h"
 #include "src/core/power_calculator.h"
-#include "src/core/relay_controller.h"
+#include "src/core/limit_manager.h"
 
 #include "src/network/wifi_manager.h"
 #include "src/network/websocket_server.h"
 #include "src/network/ota_handler.h"
+#include "src/network/ntfy_notifier.h"
 #include "src/ui/status_led.h"
+#include "src/ui/buzzer.h"
 #include "src/utils/nvs_manager.h"
-
 
 NVSManager      nvs;
 PowerCalculator powerCalc;
-RelayController relays;
+Buzzer          buzzer;
+LimitManager    limitMgr;
+NtfyNotifier    ntfyNotifier;
 
 WiFiManager     wifiMgr;
 WebSocketServer wsServer;
@@ -49,20 +52,7 @@ static void updateLED() {
     return;
   }
 
-  bool anyTripped = false;
-  bool anyWarning = false;
-  for (int i = 0; i < NUM_CHANNELS; i++) {
-    if (systemData.channels[i].status == STATUS_TRIPPED) anyTripped = true;
-    if (systemData.channels[i].status == STATUS_WARNING) anyWarning = true;
-  }
-
-  if (anyTripped)
-    statusLED.setMode(LED_BLINK_RED);
-  else if (anyWarning)
-    statusLED.setMode(LED_BLINK_YELLOW);
-  else
-    statusLED.setMode(LED_SOLID_GREEN);
-
+  statusLED.setMode(LED_SOLID_GREEN);
   statusLED.loop();
 }
 
@@ -101,6 +91,7 @@ void networkTask(void *pvParameters) {
   while (true) {
     wifiMgr.loop();
     wsServer.loop();
+    ntfyNotifier.loop();
     otaHandler.loop();
 
     // Serial processing on Core 0
@@ -176,24 +167,34 @@ void sensorTask(void *pvParameters) {
     if (powerCalc.isAutoZeroBusy()) {
       int ch = powerCalc.getAutoZeroChannel();
       if (ch >= 0 && ch < NUM_CHANNELS) {
-        float sum = 0.0f;
-        int batches = 20;
+        const int batches = 32;
+        float floors[batches];
         float origLPF[NUM_CHANNELS];
         for (int i = 0; i < NUM_CHANNELS; i++) {
           origLPF[i] = powerCalc.lpfAlpha[i];
           powerCalc.lpfAlpha[i] = 1.0f;
         }
         for (int b = 0; b < batches; b++) {
-          sum += powerCalc.runAutoZeroSingle(ch);
+          floors[b] = powerCalc.runAutoZeroSingle(ch);
         }
         for (int i = 0; i < NUM_CHANNELS; i++) {
           powerCalc.lpfAlpha[i] = origLPF[i];
         }
-        float avg = sum / batches;
-        powerCalc.setNoiseFloor(ch, avg);
-        nvs.saveNoiseFloor(ch, avg);
+        for (int i = 0; i < batches; i++) {
+          for (int j = i + 1; j < batches; j++) {
+            if (floors[j] < floors[i]) {
+              float t = floors[i]; floors[i] = floors[j]; floors[j] = t;
+            }
+          }
+        }
+        float median = (batches % 2 == 1)
+            ? floors[batches / 2]
+            : (floors[batches / 2 - 1] + floors[batches / 2]) * 0.5f;
+        powerCalc.setNoiseFloor(ch, median);
+        nvs.saveNoiseFloor(ch, median);
         nvs.commit();
-        Serial.printf("  [NVS] ch%d auto-zero complete: %.3f A\n", ch + 1, avg);
+        Serial.printf("  [NVS] ch%d auto-zero complete (median of %d): %.3f A\n",
+          ch + 1, batches, median);
       }
       powerCalc.cancelAutoZero();
     }
@@ -202,19 +203,6 @@ void sensorTask(void *pvParameters) {
 
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
       updateSharedData();
-
-      // Persist relay state changes to NVS
-      static bool prevRelay[RELAY_CHANNEL_COUNT] = {false};
-      bool relayDirty = false;
-      for (int ch = 0; ch < RELAY_CHANNEL_COUNT; ch++) {
-        bool cur = relays.getState(ch);
-        if (cur != prevRelay[ch]) {
-          nvs.saveRelayState(ch, cur);
-          prevRelay[ch] = cur;
-          relayDirty = true;
-        }
-      }
-      if (relayDirty) nvs.commit();
 
       // Persist energy to NVS every ~5s (60 cycles × 80ms)
       static uint32_t lastEnergySave = 0;
@@ -227,6 +215,9 @@ void sensorTask(void *pvParameters) {
 
       xSemaphoreGive(dataMutex);
     }
+
+    limitMgr.loop();
+    buzzer.loop();
 
     updateLED();
     vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(SENSOR_CYCLE_INTERVAL_MS));
@@ -261,16 +252,12 @@ void setup() {
   // === Phase 2: Init hardware with defaults first ===
   Serial.printf("  %-19s%s\n", "Status LED", "OK"); statusLED.begin();
   Serial.printf("  %-19s%s\n", "Power Calculator", "OK"); powerCalc.begin();
+  Serial.printf("  %-19s%s\n", "Buzzer", "OK"); buzzer.begin(PIN_BUZZER);
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {
     powerCalc.setEnergyKWh(ch, nvs.loadEnergyKWh(ch));
   }
 
   // === Phase 3: Load ALL persisted data (overrides defaults) ===
-  bool savedRelayStates[RELAY_CHANNEL_COUNT];
-  for (int i = 0; i < RELAY_CHANNEL_COUNT; i++) {
-    savedRelayStates[i] = nvs.loadRelayState(i, false);
-  }
-
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {
     powerCalc.currentCal[ch] = nvs.loadChannelCurrentCal(ch);
     powerCalc.noiseFloor[ch] = nvs.loadNoiseFloor(ch);
@@ -279,7 +266,6 @@ void setup() {
   powerCalc.rmsSamples = nvs.loadRmsSamples();
   powerCalc.voltageCal = nvs.loadVoltageCalibration();
 
-  Serial.printf("  %-19s%s\n", "Relays", "OK"); relays.begin(savedRelayStates);
   Serial.printf("  %-19svoltage=%.1fV  current=%.1f (ch1)  RMS samples=%d\n",
     "Calibration", powerCalc.voltageCal, powerCalc.currentCal[0], powerCalc.rmsSamples);
   Serial.printf("  %-19sok\n", "Noise Floor + LPF");
@@ -294,18 +280,19 @@ void setup() {
     systemData.channels[ch].name[MAX_CHANNEL_NAME_LEN - 1] = '\0';
     systemData.channels[ch].monthlyKwhLimit = nvs.loadMonthlyKwhLimit(ch);
     systemData.channels[ch].status = STATUS_OK;
-    systemData.channels[ch].relayOn = ch < RELAY_CHANNEL_COUNT ? relays.getState(ch) : false;
-    Serial.printf("    Ch%d  %-16s  %.1fkWh/mo  %s\n",
-      ch+1, name, systemData.channels[ch].monthlyKwhLimit,
-      ch < RELAY_CHANNEL_COUNT ? "RELAY" : "MONITOR");
+    Serial.printf("    Ch%d  %-16s  %.1fkWh/mo\n",
+      ch+1, name, systemData.channels[ch].monthlyKwhLimit);
   }
 
   dataMutex = xSemaphoreCreateMutex();
   Serial.printf("  %-19s%s\n", "Mutex", "OK");
 
+  ntfyNotifier.begin(nvs.loadNtfyEnabled(), nvs.loadNtfyTopic());
+  limitMgr.begin(nvs, powerCalc, &systemData, &dataMutex, &ntfyNotifier, &buzzer);
+
   WiFi.onEvent(onWiFiEvent);
 
-  wsServer.begin(nvs, relays, &systemData, &dataMutex, &powerCalc);
+  wsServer.begin(nvs, &systemData, &dataMutex, &powerCalc, &limitMgr);
 
   wifiMgr.begin(nvs);
   statusLED.setMode(LED_SOLID_RED);
@@ -346,14 +333,13 @@ static void handleSerialCommand(const String &cmd) {
       const char *s = systemData.channels[ch].status == STATUS_OK ? "OK" :
                        systemData.channels[ch].status == STATUS_WARNING ? "WARN" :
                        systemData.channels[ch].status == STATUS_TRIPPED ? "TRIP" : "OFF";
-      Serial.printf("  Ch%d  %-16s %s  %5.2fA  %5.0fW  %5.0fVA  PF=%.3f  %6.3fkWh  %s\n",
+      Serial.printf("  Ch%d  %-16s %s  %5.2fA  %5.0fW  %5.0fVA  PF=%.3f  %6.3fkWh\n",
         ch + 1, systemData.channels[ch].name, s,
         systemData.channels[ch].currentRMS,
         systemData.channels[ch].activePower,
         systemData.channels[ch].apparentPower,
         systemData.channels[ch].powerFactor,
-        systemData.channels[ch].energyKWh,
-        systemData.channels[ch].relayOn ? "RELAY ON" : "RELAY OFF");
+        systemData.channels[ch].energyKWh);
     }
     Serial.printf("  Events: %d\n", systemData.eventCount);
     Serial.println();
@@ -373,7 +359,6 @@ static void handleSerialCommand(const String &cmd) {
       Serial.printf("  %-16s%.3f\n", "Power Factor:", powerCalc.getPowerFactor(ch));
       Serial.printf("  %-16s%.3f kWh\n", "Energy:", powerCalc.getEnergyKWh(ch));
       Serial.printf("  %-16s%s\n", "Status:", s);
-      Serial.printf("  %-16s%s\n", "Relay:", systemData.channels[ch].relayOn ? "ON" : "OFF");
       Serial.printf("  %-16s%.1f\n", "Current Cal:", powerCalc.currentCal[ch]);
       Serial.printf("  %-16s%.3f A\n", "Noise Floor:", powerCalc.noiseFloor[ch]);
       Serial.println();
@@ -390,21 +375,21 @@ static void handleSerialCommand(const String &cmd) {
     Serial.println("  LED test done");
   }
 
-  else if (cmd.startsWith("test relay ")) {
-    int r = cmd.substring(11).toInt() - 1;
-    if (r >= 0 && r < NUM_RELAYS) {
-      Serial.printf("  Relay %d (GPIO%d) test\n", r + 1, RELAY_PINS[r]);
-      Serial.print("    ON ... "); relays.set(r, true); delay(1000); Serial.println("done");
-      Serial.print("    OFF .. "); relays.set(r, false); delay(1000); Serial.println("done");
-      Serial.print("    ON ... "); relays.set(r, true); Serial.println("done");
-      Serial.println("  Relay test done");
-    }
-  }
-
   else if (cmd.startsWith("reset ")) {
     int ch = cmd.substring(6).toInt() - 1;
     if (ch >= 0 && ch < NUM_CHANNELS) {
-      Serial.printf("  Channel %d reset\n", ch + 1);
+      limitMgr.resetCounter((uint8_t)ch);
+      Serial.printf("  Ch%d counter reset\n", ch + 1);
+    }
+  }
+
+  else if (cmd.startsWith("buzz ")) {
+    int n = cmd.substring(5).toInt();
+    if (n >= 1 && n <= 6) {
+      buzzer.ring((uint8_t)n);
+      Serial.printf("  Buzzer ringing %d beeps\n", n);
+    } else {
+      Serial.println("  Usage: buzz <N> (1-6 beeps)");
     }
   }
 
@@ -521,7 +506,6 @@ static void handleSerialCommand(const String &cmd) {
     Serial.printf("  %-16s4 MB Flash, 2 MB PSRAM\n", "Hardware:");
     Serial.printf("  %-16s240 MHz dual-core\n", "CPU:");
     Serial.printf("  %-16s%d\n", "Channels:", NUM_CHANNELS);
-    Serial.printf("  %-16s%d\n", "Relays:", NUM_RELAYS);
     Serial.printf("  %-16s%d-bit, %.1fV ref\n", "ADC:", ADC_RESOLUTION, ADC_REFERENCE_V);
     Serial.println();
   }
@@ -533,8 +517,8 @@ static void handleSerialCommand(const String &cmd) {
     Serial.println("    status              System status overview");
     Serial.println("    ch <N>              Channel details (1-6)");
     Serial.println("    test led            LED color sequence test");
-    Serial.println("    test relay <N>      Relay toggle test (1-4)");
-    Serial.println("    reset <N>           Clear tripped channel");
+    Serial.println("    reset <N>           Reset counter for channel (1-6)");
+    Serial.println("    buzz <N>            Ring buzzer N beeps (1-6)");
     Serial.println("    setwifi sta|ap|auto Set WiFi mode");
     Serial.println("    setwifi ssid <name> Set WiFi network name");
     Serial.println("    setwifi pass <pwd>  Set WiFi password");

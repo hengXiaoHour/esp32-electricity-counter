@@ -1,4 +1,6 @@
 #include "websocket_server.h"
+#include "../core/limit_manager.h"
+#include <time.h>
 
 WebSocketServer::WebSocketServer()
   : server(nullptr), ws(nullptr), lastBroadcast(0), started(false) {}
@@ -8,14 +10,14 @@ WebSocketServer::~WebSocketServer() {
   delete server;
 }
 
-void WebSocketServer::begin(NVSManager &nvsRef, RelayController &relaysRef,
+void WebSocketServer::begin(NVSManager &nvsRef,
                             SystemData *sysDataRef, SemaphoreHandle_t *mutexRef,
-                            PowerCalculator *powerCalcRef) {
+                            PowerCalculator *powerCalcRef, LimitManager *limitMgrRef) {
   nvs = &nvsRef;
-  relays = &relaysRef;
   powerCalc = powerCalcRef;
   sysData = sysDataRef;
   dataMutex = mutexRef;
+  limitMgr = limitMgrRef;
 }
 
 void WebSocketServer::startServer() {
@@ -106,22 +108,14 @@ void WebSocketServer::handleCommand(AsyncWebSocketClient *client, const char *ms
       }
     }
 
-  } else if (s.indexOf("\"cmd\":\"reset_relay\"") >= 0) {
+  } else if (s.indexOf("\"cmd\":\"reset_counter\"") >= 0) {
     int ch = -1;
     int ci = s.indexOf("\"ch\":");
     if (ci >= 0) ch = s.substring(ci + 5).toInt();
-    if (ch >= 0 && ch < NUM_CHANNELS && sysData && dataMutex && nvs && relays) {
-      relays->set(ch, false);
-      if (xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        sysData->channels[ch].relayOn = false;
-        sysData->channels[ch].energyKWh = 0.0f;
-        xSemaphoreGive(*dataMutex);
-      }
-      if (powerCalc) {
-        powerCalc->resetEnergy(ch);
-      }
+    if (ch >= 0 && ch < NUM_CHANNELS && limitMgr) {
+      limitMgr->resetCounter((uint8_t)ch);
       lastBroadcast = 0;
-      printf("[WS] reset_relay: ch=%d relay=OFF energy=0\n", ch);
+      printf("[WS] reset_counter: ch=%d counter reset\n", ch);
     }
 
   } else if (s.indexOf("\"cmd\":\"test_inject\"") >= 0) {
@@ -138,23 +132,6 @@ void WebSocketServer::handleCommand(AsyncWebSocketClient *client, const char *ms
       }
       lastBroadcast = 0;
       printf("[WS] test_inject: ch=%d energy=%.3f kWh\n", ch, val);
-    }
-
-  } else if (s.indexOf("\"cmd\":\"set_relay\"") >= 0) {
-    int ch = -1;
-    int ci = s.indexOf("\"ch\":");
-    if (ci >= 0) ch = s.substring(ci + 5).toInt();
-    int si = s.indexOf("\"state\":");
-    if (ch >= 0 && ch < NUM_CHANNELS && si >= 0 && relays) {
-      bool state = s.substring(si + 8, si + 12) == "true";
-      printf("[WS] set_relay: ch=%d state=%s\n", ch, state ? "ON" : "OFF");
-      relays->set(ch, state);
-      if (sysData && dataMutex && xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        sysData->channels[ch].relayOn = state;
-        xSemaphoreGive(*dataMutex);
-      }
-    } else {
-      printf("[WS] set_relay: PARSE ERROR — raw: %s\n", msg);
     }
 
   } else if (s.indexOf("\"cmd\":\"set_voltage_cal\"") >= 0) {
@@ -230,6 +207,26 @@ void WebSocketServer::handleCommand(AsyncWebSocketClient *client, const char *ms
       }
     }
 
+  } else if (s.indexOf("\"cmd\":\"set_ntfy_topic\"") >= 0) {
+    int vi = s.indexOf("\"val\":\"");
+    if (vi >= 0) {
+      vi += 7;
+      int end = s.indexOf("\"", vi);
+      if (end > vi) {
+        String topic = s.substring(vi, end);
+        nvs->saveNtfyTopic(topic);
+        printf("[WS] set_ntfy_topic: \"%s\"\n", topic.c_str());
+      }
+    }
+
+  } else if (s.indexOf("\"cmd\":\"set_ntfy_enabled\"") >= 0) {
+    int vi = s.indexOf("\"val\":");
+    if (vi >= 0) {
+      bool on = s.substring(vi + 6, vi + 10) == "true";
+      nvs->saveNtfyEnabled(on);
+      printf("[WS] set_ntfy_enabled: %s\n", on ? "true" : "false");
+    }
+
   } else if (s.indexOf("\"cmd\":\"reset_channel_names\"") >= 0 || s.indexOf("\"cmd\":\"reset_ch_to_default\"") >= 0) {
     int ch = -1;
     int ci = s.indexOf("\"ch\":");
@@ -272,6 +269,9 @@ void WebSocketServer::handleCommand(AsyncWebSocketClient *client, const char *ms
     }
     lastBroadcast = 0;
     printf("[WS] reset_nvs_defaults: calibration reset to defaults\n");
+  } else if (s.indexOf("\"cmd\":\"test_force_rollover\"") >= 0) {
+    nvs->saveLastMonth(202607);
+    printf("[WS] test_force_rollover: last_month set to 202607, rollover will fire on next loop\n");
   }
 
   nvs->commit();
@@ -312,10 +312,18 @@ void WebSocketServer::buildJson(const SystemData &data, String &json) {
   json += "]";
   json += ",\"firmwareVersion\":\"";
   json += FIRMWARE_VERSION;
-  json += "\",\"ch\":[";
+  json += "\",\"epoch\":";
+  json += (long)time(nullptr);
+  json += ",\"lastMonth\":";
+  json += nvs->loadLastMonth();
+  json += ",\"ntfy\":{\"topic\":\"";
+  json += nvs->loadNtfyTopic();
+  json += "\",\"enabled\":";
+  json += nvs->loadNtfyEnabled() ? "true" : "false";
+  json += "},\"ch\":[";
 
   for (int i = 0; i < NUM_CHANNELS; i++) {
-    buildChannelJson(data.channels[i], i, json, i == NUM_CHANNELS - 1);
+    buildChannelJson(data.channels[i], json, i == NUM_CHANNELS - 1);
   }
 
   json += "],\"events\":[";
@@ -328,7 +336,7 @@ void WebSocketServer::buildJson(const SystemData &data, String &json) {
   json += "]}";
 }
 
-void WebSocketServer::buildChannelJson(const ChannelData &ch, int index, String &json, bool last) {
+void WebSocketServer::buildChannelJson(const ChannelData &ch, String &json, bool last) {
   json += "{\"n\":\"";
   json += ch.name;
   json += "\",\"a\":";
@@ -343,10 +351,6 @@ void WebSocketServer::buildChannelJson(const ChannelData &ch, int index, String 
   json += String(ch.energyKWh, 3);
   json += ",\"s\":";
   json += ch.status;
-  json += ",\"r\":";
-  json += ch.relayOn ? "true" : "false";
-  json += ",\"hasRelay\":";
-  json += (index < RELAY_CHANNEL_COUNT) ? "true" : "false";
   json += ",\"mkwh\":";
   json += String(ch.monthlyKwhLimit, 1);
   json += "}";
