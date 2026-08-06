@@ -26,30 +26,47 @@ const NUM_CHANNELS = 6;
 // ============ PWA install prompt ============
 let deferredInstallPrompt = null;
 
+function isStandalone() {
+  return window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+}
+
+function showInstallRow() {
+  const row = document.getElementById('installRow');
+  if (row) row.classList.remove('hidden');
+}
+
+function hideInstallRow() {
+  const row = document.getElementById('installRow');
+  if (row) row.classList.add('hidden');
+  const h = document.getElementById('installHint');
+  if (h) h.classList.add('hidden');
+}
+
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   deferredInstallPrompt = e;
-  const row = document.getElementById('installRow');
-  if (row) row.classList.remove('hidden');
+  showInstallRow();
 });
 
 window.addEventListener('appinstalled', () => {
   deferredInstallPrompt = null;
-  const row = document.getElementById('installRow');
-  if (row) row.classList.add('hidden');
+  hideInstallRow();
   showToast('App installed — launch it from your home screen');
 });
 
 function promptInstall() {
-  if (!deferredInstallPrompt) return;
-  deferredInstallPrompt.prompt();
-  deferredInstallPrompt.userChoice.then((choice) => {
-    if (choice.outcome === 'accepted') {
-      const row = document.getElementById('installRow');
-      if (row) row.classList.add('hidden');
-    }
-    deferredInstallPrompt = null;
-  });
+  // Android / installable: use the browser's install prompt.
+  if (deferredInstallPrompt) {
+    deferredInstallPrompt.prompt();
+    deferredInstallPrompt.userChoice.then((choice) => {
+      if (choice.outcome === 'accepted') hideInstallRow();
+      deferredInstallPrompt = null;
+    });
+    return;
+  }
+  // Desktop: beforeinstallprompt doesn't fire on desktop Chrome — show guidance.
+  const h = document.getElementById('installHint');
+  if (h) h.classList.toggle('hidden');
 }
 
 // Initial Setup
@@ -60,6 +77,10 @@ function promptInstall() {
       document.getElementById('esp32Ip').value = savedIP;
     }
   } catch (e) { /* localStorage unavailable (e.g. file://) */ }
+
+  // Show the install control on load (hidden only when already installed).
+  if (isStandalone()) hideInstallRow();
+  else showInstallRow();
 
   // Close modal on Escape key
   window.addEventListener('keydown', (e) => {

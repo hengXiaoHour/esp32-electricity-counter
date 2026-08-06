@@ -68,6 +68,8 @@ body {
 .install-row { margin-top: 14px; display: flex; justify-content: center; }
 .install-row.hidden { display: none; }
 .install-row .btn-outline { width: 100%; }
+.install-hint { margin-top: 10px; font-size: 0.72rem; color: var(--text-2); line-height: 1.5; padding: 8px 10px; background: rgba(255,255,255,0.03); border-radius: 5px; }
+.install-hint.hidden { display: none; }
 
 /* ============ App Shell ============ */
 #app { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; transition: grid-template-columns 0.25s ease; }
