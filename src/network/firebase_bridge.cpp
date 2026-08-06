@@ -151,8 +151,9 @@ void FirebaseBridge::start() {
 
   started = true;
   lastPush = 0;
-  Serial.println("  Firebase bridge started (pushing /latest every "
-                 "1s, polling /commands)");
+  Serial.printf("  Firebase bridge started (pushing /latest every %u ms, "
+                "polling /commands every %u ms)\n",
+                FIREBASE_PUSH_INTERVAL_MS, FIREBASE_COMMAND_POLL_MS);
 }
 
 bool FirebaseBridge::ready() const {
@@ -163,7 +164,7 @@ void FirebaseBridge::loop() {
   if (!started || !Firebase.ready()) return;
 
   // Poll the command queue (coarse cadence, cheap).
-  if (millis() - lastCommandPoll >= 500) {
+  if (millis() - lastCommandPoll >= FIREBASE_COMMAND_POLL_MS) {
     lastCommandPoll = millis();
     pollCommands();
   }
@@ -171,7 +172,7 @@ void FirebaseBridge::loop() {
 
 void FirebaseBridge::pushLatest() {
   if (!started || !ready()) return;
-  if (millis() - lastPush < 1000) return;
+  if (millis() - lastPush < FIREBASE_PUSH_INTERVAL_MS) return;
   lastPush = millis();
 
   if (xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(50)) != pdTRUE) return;

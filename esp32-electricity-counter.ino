@@ -93,7 +93,6 @@ void networkTask(void *pvParameters) {
   while (true) {
     wifiMgr.loop();
     wsServer.loop();
-    fbBridge.loop();
     ntfyNotifier.loop();
     otaHandler.loop();
 
@@ -155,10 +154,21 @@ void networkTask(void *pvParameters) {
       wsServer.broadcastData(systemData);
       xSemaphoreGive(dataMutex);
     }
-    // pushLatest() takes the mutex itself (throttled to 1 s).
-    fbBridge.pushLatest();
 
     vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(20));
+  }
+}
+
+// Firebase bridge runs on its own Core 0 task. Its HTTPS calls are blocking,
+// so keeping them here (never in networkTask) protects the 150 ms WebSocket
+// broadcast cadence — otherwise a slow /latest push or command poll stalls LAN.
+// pushLatest()/loop() are throttled internally to FIREBASE_*_INTERVAL_MS.
+void firebaseTask(void *pvParameters) {
+  TickType_t lastWake = xTaskGetTickCount();
+  while (true) {
+    fbBridge.loop();
+    fbBridge.pushLatest();
+    vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(50));
   }
 }
 
@@ -315,6 +325,7 @@ void setup() {
 
   xTaskCreatePinnedToCore(networkTask, "network", 8192, NULL, 1, NULL, 0);
   xTaskCreatePinnedToCore(sensorTask, "sensor", 8192, NULL, 2, NULL, 1);
+  xTaskCreatePinnedToCore(firebaseTask, "firebase", 8192, NULL, 1, NULL, 0);
 
   Serial.println();
 }

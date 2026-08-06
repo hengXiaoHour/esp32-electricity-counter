@@ -4,6 +4,11 @@
 #include "../config.h"
 #include "../core/power_calculator.h"
 
+// How often the snapshot is pushed to `/latest` and commands are polled.
+// Kept at 500 ms balances cloud smoothness with WiFi/HTTP overhead.
+#define FIREBASE_PUSH_INTERVAL_MS 500
+#define FIREBASE_COMMAND_POLL_MS 500
+
 class LimitManager;
 class NVSManager;
 class SystemData;
@@ -12,8 +17,9 @@ class SystemData;
 // every FIREBASE_PUSH_INTERVAL_MS and polls the `/commands` node for queued
 // dashboard commands. Uses service-account JWT auth (see firebase_config.h).
 //
-// Runs on Core 0 (network task) alongside the WebSocket server. If Firebase
-// credentials are empty/not configured, the bridge is inert (no-op).
+// Runs on its OWN Core 0 task (firebaseTask), NOT inside networkTask: the
+// synchronous HTTPS calls (setJSON/getJSON) would block the WebSocket broadcast
+// loop. If Firebase credentials are empty/not configured, the bridge is inert.
 class FirebaseBridge {
 public:
   FirebaseBridge();
