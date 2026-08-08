@@ -114,7 +114,8 @@ void buildSystemJson(const SystemData &data, PowerCalculator *powerCalc,
 FirebaseBridge::FirebaseBridge()
   : nvs(nullptr), sysData(nullptr), dataMutex(nullptr),
     powerCalc(nullptr), limitMgr(nullptr),
-    started(false), paused(false), lastPush(0), lastCommandPoll(0), otaReq(false) {}
+    started(false), paused(false), lastPush(0), lastCommandPoll(0),
+    lastOtaCheck(0), otaReq(false) {}
 
 void FirebaseBridge::begin(NVSManager &nvsRef,
                            SystemData *sysDataRef, SemaphoreHandle_t *mutexRef,
@@ -137,8 +138,22 @@ bool FirebaseBridge::configured() const {
 bool FirebaseBridge::checkOtaTrigger() {
   if (!started || !Firebase.ready() || paused) return false;
 
+  // Throttle hard: a missing /ota node is the *normal* case, and every GET
+  // on a non-existent node can close the TLS session. Running this on the
+  // same connection as /latest (fbdo) at 50 ms cadence forced a fresh
+  // ~1.3-1.9 s handshake on every push — the exact latency regression we
+  // fixed in 784531e. It now has its own connection (fbOta) and only polls
+  // a few times per minute.
+  if (millis() - lastOtaCheck < FIREBASE_OTA_CHECK_MS) return false;
+  lastOtaCheck = millis();
+
   FirebaseJson data;
-  if (!Firebase.RTDB.getJSON(&fbdo, rtdbPath("ota"), &data)) return false;
+  if (!Firebase.RTDB.getJSON(&fbOta, rtdbPath("ota"), &data)) return false;
+
+  // Missing (null) node is normal — treat it like the empty /commands poll:
+  // do not tear down the connection.
+  String dt = fbOta.dataType();
+  if (dt == "null" || dt.length() == 0) return false;
 
   FirebaseJsonData jd;
   String version, url, md5;
@@ -201,6 +216,8 @@ void FirebaseBridge::start() {
   fbdo.setResponseSize(4096);
   fbCmd.setBSSLBufferSize(4096, 4096);
   fbCmd.setResponseSize(4096);
+  fbOta.setBSSLBufferSize(4096, 4096);
+  fbOta.setResponseSize(4096);
 
   config.token_status_callback = tokenStatusCallback;
   Firebase.reconnectNetwork(false);  // WiFi managed by WiFiManager

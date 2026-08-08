@@ -10,6 +10,10 @@
 // (which keeps its own 150 ms cadence on the shared radio).
 #define FIREBASE_PUSH_INTERVAL_MS 1000
 #define FIREBASE_COMMAND_POLL_MS 1000
+// OTA trigger literature: a missing /ota node is the normal case. Polling it
+// on the publish connection at high cadence tears down fbdo's TLS session
+// (slow pushes). Dedicated fbOta connection + slow cadence.
+#define FIREBASE_OTA_CHECK_MS 10000
 
 class LimitManager;
 class NVSManager;
@@ -71,6 +75,8 @@ private:
 
   FirebaseData fbdo;     // /latest push (own persistent TLS connection)
   FirebaseData fbCmd;    // /commands poll (separate, keeps its own connection)
+  FirebaseData fbOta;    // /ota trigger poll (separate; its empty-read GET must
+                         // never tear down fbdo's TLS session on every loop)
   FirebaseAuth auth;
   FirebaseConfig config;
 
@@ -78,6 +84,7 @@ private:
   bool paused;       // true after OTA is triggered (Firebase I/O suspended)
   uint32_t lastPush;
   uint32_t lastCommandPoll;
+  uint32_t lastOtaCheck;
 
   bool otaReq;       // set by checkOtaTrigger(), cleared by handleOtaRequest()
   String pendingOtaVersion;
