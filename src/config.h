@@ -84,7 +84,7 @@
 #define WIFI_MAX_RETRIES        5
 #define AP_FALLBACK_TIMEOUT_MS  30000
 #define WIFI_CONNECT_TIMEOUT_MS 10000
-#define WIFI_MAX_BOOT_FAILURES  3
+#define WIFI_MAX_BOOT_FAILURES  10
 
 // ==============================
 // Channel Status Enum
