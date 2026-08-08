@@ -13,3 +13,6 @@ frontend/config.js
 build/
 *.bin
 *.elf
+
+# Firebase CLI debug logs
+firebase-debug.log

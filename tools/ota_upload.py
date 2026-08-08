@@ -138,93 +138,49 @@ def rtdb_put(db, path, obj, token):
     return rest("https://{0}{1}".format(db, path), token, method="PUT", data=obj)
 
 
-def publish_to_hosting(binp, version, token):
-    """Publish the frontend + firmware .bin to Firebase Hosting via REST.
+def rtdb_put_json(db, path, json_str, token):
+    """PUT a raw JSON document (e.g. a huge base64 string literal) to RTDB."""
+    return rest("https://{0}{1}".format(db, path), token, method="PUT",
+                data=json_str.encode(), ctype="application/json")
 
-    Bypasses the firebase CLI (whose credentials expire / need a browser re-auth).
-    A Hosting *version* is a full, immutable snapshot of the site, so we build one
-    from scratch: create version -> populateFiles (hash listing) -> upload the
-    bytes that Hosting doesn't have -> FINALIZED -> DEPLOY release. Old firmware
-    bins are pruned so a release stays lean.
 
-        POST  /v1beta1/sites/{site}/versions
-        POST  /v1beta1/sites/{site}/versions/{vid}:populateFiles
-              {"files": {"/path": sha256(gzip9(file))}}
-        POST  {uploadUrl}/{hash}   (gzipped bytes, Authorization header)
-        PATCH /v1beta1/sites/{site}/versions/{vid}?updateMask=status  FINALIZED
-        POST  /v1beta1/sites/{site}/releases?versionName={vid}  body: {}
+def publish_firmware_to_rtdb(binp, dev, token, db):
+    """Store the firmware binary in RTDB as the library's setFile base64 format.
+
+    The device's Firebase.RTDB.downloadOTA reads this node and flashes it
+    through Update, all on the same fbdo TLS session. The stored value is a
+    JSON string of the form "file,base64,<b64>" (or "File,base64,/"fIle..."
+    with pad-length encoded into the signature), exactly what the library
+    writes via setFile/pushFile.
+
+    Path: /devices/<id>/firmware
     """
-    import gzip
+    import base64
 
-    binp = Path(binp)
-    fwdir = ROOT / "frontend" / "firmware"
-    webroot = ROOT / "frontend"
+    raw = binp.read_bytes()
+    b64data = base64.b64encode(raw).decode()
 
-    # Prune old firmware, install the new one into the site.
-    if fwdir.exists():
-        for p in fwdir.glob("*.bin"):
-            p.unlink()
-    fwdir.mkdir(exist_ok=True, parents=True)
-    (fwdir / ("%s.bin" % version)).write_bytes(binp.read_bytes())
+    # Pad-length encoded signature: setFile writes
+    #   n%3==0 -> "file,base64,   n%3==2 -> "File,base64,   n%3==1 -> "fIle,base64,
+    pad = (3 - len(raw) % 3) % 3
+    if pad == 1:
+        sig = '"File,base64,'
+    elif pad == 2:
+        sig = '"fIle,base64,'
+    else:
+        sig = '"file,base64,'
 
-    base = "https://firebasehosting.googleapis.com/v1beta1/sites/%s" % SITE_ID
+    # The raw JSON document (matches what setFile PUTs): a single JSON string
+    # starting with the signature quote and ending with a closing quote.
+    blob = sig + b64data + '"'
 
-    # Hash = sha256 of the gzipped (level 9) bytes — same as firebase-tools.
-    files = {}          # "/rel/path" -> sha256 hex
-    payload = {}        # "/rel/path" -> gzipped bytes
-    by_hash = {}        # sha256 hex -> "/rel/path"
-    for path in sorted(webroot.rglob("*")):
-        if not path.is_file():
-            continue
-        rel = "/" + path.relative_to(webroot).as_posix()
-        gz = gzip.compress(path.read_bytes(), compresslevel=9)
-        h = hashlib.sha256(gz).hexdigest()
-        files[rel] = h
-        payload[rel] = gz
-        by_hash[h] = rel
-
-    c, resp = rest(base + "/versions", token, method="POST", data={"status": "CREATED"})
-    if c != 200:
-        sys.exit("FATAL    hosting create version HTTP {0}: {1}".format(c, resp))
-    vid = resp["name"].rsplit("/", 1)[-1]
-
-    c, r = rest(base + "/versions/%s:populateFiles" % vid, token,
-                method="POST", data={"files": files})
-    if c != 200:
-        sys.exit("FATAL    hosting populateFiles HTTP {0}: {1}".format(c, r))
-    upload_url = r["uploadUrl"]
-
-    uploaded = 0
-    for h in r.get("uploadRequiredHashes", []):
-        path = by_hash.get(h)
-        if path is None:
-            sys.exit("FATAL    hosting upload: no local file matches hash " + h)
-        body = payload[path]
-        req = urllib.request.Request(
-            upload_url + "/" + h, data=body, method="POST",
-            headers={"Content-Type": "application/octet-stream",
-                     "Authorization": "Bearer " + token})
-        try:
-            with urllib.request.urlopen(req, timeout=120) as up:
-                if up.status != 200:
-                    sys.exit("FATAL    hosting upload {0} HTTP {1}".format(path, up.status))
-        except urllib.error.HTTPError as e:
-            sys.exit("FATAL    hosting upload {0} HTTP {1}: {2}".format(path, e.code, e.read()))
-        uploaded += 1
-
-    c, r = rest(base + "/versions/%s?updateMask=status" % vid, token, method="PATCH",
-                data={"status": "FINALIZED"})
-    if c != 200:
-        sys.exit("FATAL    hosting finalize HTTP {0}: {1}".format(c, r))
-    vname = urllib.parse.quote("sites/%s/versions/%s" % (SITE_ID, vid))
-    c, r = rest(base + "/releases?versionName=" + vname, token, method="POST", data={})
-    if c != 200:
-        sys.exit("FATAL    hosting release HTTP {0}: {1}".format(c, r))
-
-    url = "{0}/firmware/{1}.bin".format(SITE_URL, version)
-    ok("published %s (%d files, %s)", url, uploaded,
-       "%d KiB" % (binp.stat().st_size / 1024))
-    return url
+    code, resp = rest("https://{0}{1}".format(db, dev_path(dev, "firmware.json")),
+                      token, method="PUT", data=blob.encode(),
+                      ctype="application/json")
+    if code != 200:
+        sys.exit("FAIL    RTDB firmware write HTTP {0}: {1}".format(code, resp))
+    ok("published firmware to %s (%d KiB base64)",
+       dev_path(dev, "firmware"), len(b64data) // 1024)
 
 
 def bar(pct):
@@ -232,12 +188,25 @@ def bar(pct):
     return "#" * filled + "-" * (20 - filled)
 
 
-def poll_status(args, token):
-    """Tail /ota/status like an Arduino IDE progress bar."""
+def dev_path(dev, node):
+    """RTDB paths are namespaced per board so multiple boards can share one
+    database without clobbering each other."""
+    return "/devices/%s/%s" % (dev, node)
+
+
+def poll_status(args, token, dev):
+    """Tail /devices/<id>/ota/status like an Arduino IDE progress bar.
+
+    NOTE: the device suspends Firebase during the download (to free the ~150KB
+    SSL heap), so /ota/status is only written before/after the transfer. If the
+    status node never appears, don't hang forever — fall through to the boot
+    check, which is the authoritative success signal."""
     last = ""
+    last_seen = time.time()
     while True:
-        code, st = rtdb_get(args.db, "/ota/status.json", token)
+        code, st = rtdb_get(args.db, dev_path(dev, "ota/status.json"), token)
         if code == 200 and isinstance(st, dict) and st.get("state"):
+            last_seen = time.time()
             state, prog = st["state"], int(st.get("progress") or 0)
             if state != last:
                 say("state: " + state)
@@ -251,14 +220,20 @@ def poll_status(args, token):
                 return
             elif state.startswith("failed"):
                 sys.exit("FAIL    device reported: " + state)
+        elif time.time() - last_seen > 45:
+            # No status channel at all (OTA suspends Firebase) — let the boot
+            # check decide. Serial shows the download progress instead.
+            say("no status channel (device suspends Firebase during OTA) - "
+                "watching for reboot")
+            return
         time.sleep(0.8)
 
 
-def wait_boot(args, token, version):
+def wait_boot(args, token, version, dev):
     say("waiting for device to boot into " + version + " ...")
     deadline = time.time() + 90
     while time.time() < deadline:
-        code, d = rtdb_get(args.db, "/latest.json", token)
+        code, d = rtdb_get(args.db, dev_path(dev, "latest.json"), token)
         if code == 200 and isinstance(d, dict) and d.get("firmwareVersion") == version:
             ok("device ONLINE on %s (epoch %s)", version, d.get("epoch"))
             return
@@ -288,6 +263,9 @@ def main():
     ap.add_argument("--key", default=str(DEFAULT_KEY))
     ap.add_argument("--db", default="esp32-electricity-counter-default-rtdb.firebaseio.com")
     ap.add_argument("--no-boot-check", action="store_true")
+    ap.add_argument("--device", default="esp-000000",
+                    help="target board id (/devices/<id>/ota). Must match the "
+                         "chip-unique id shown in the device boot log.")
     args = ap.parse_args()
 
     version = args.version or read_version()
@@ -311,6 +289,7 @@ def main():
         build = Path("/tmp/ota-" + version)
         rc = subprocess.run(
             [os.environ.get("ARDUINO", str(ARDUINO_CLI)), "compile", "--fqbn", FQBN,
+             "--build-property", "compiler.cpp.extra_flags=-DENABLE_OTA_FIRMWARE_UPDATE",
              "--build-path", str(build), "."], cwd=ROOT).returncode
         if rc != 0:
             sys.exit("FATAL    compile failed")
@@ -322,19 +301,21 @@ def main():
     md5 = hashlib.md5(binp.read_bytes()).hexdigest()
     say("md5 = " + md5)
 
-    url = publish_to_hosting(binp, version, token)
+    # Firmware blob to RTDB, then the /ota trigger node.
+    publish_firmware_to_rtdb(binp, args.device, token, args.db)
 
-    say("triggering OTA via RTDB /ota ...")
-    code, resp = rtdb_put(args.db, "/ota.json",
-                          {"version": version, "url": url, "md5": md5,
+    say("triggering OTA via RTDB /devices/%s/ota ..." % args.device)
+    code, resp = rtdb_put(args.db, dev_path(args.device, "ota.json"),
+                          {"version": version, "md5": md5,
                            "ts": int(time.time())}, token)
     if code != 200:
         sys.exit("FAIL    RTDB trigger HTTP {0}: {1}".format(code, resp))
-    ok("triggered update to %s (device flashes itself anywhere in the world)", version)
+    ok("triggered update to %s on %s (device flashes itself anywhere in the world)",
+       version, args.device)
 
-    poll_status(args, token)
+    poll_status(args, token, args.device)
     if not args.no_boot_check:
-        wait_boot(args, token, version)
+        wait_boot(args, token, version, args.device)
 
 
 if __name__ == "__main__":

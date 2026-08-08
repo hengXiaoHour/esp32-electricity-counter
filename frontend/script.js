@@ -158,7 +158,8 @@ function connectCloud() {
     }
     connMode = 'cloud';
     lastDataTs = Date.now();
-    cloudLatestRef = cloudDb.ref('latest');
+    const devPath = 'devices/' + (window.FB_CONFIG.deviceId || 'esp-000000');
+    cloudLatestRef = cloudDb.ref(devPath + '/latest');
     cloudLatestRef.on('value', (snap) => {
       const val = snap.val();
       if (!val) return;
@@ -166,8 +167,9 @@ function connectCloud() {
       updateDashboard(normalizeSnapshot(val));
     });
 
-    // Console responses land under /console/<commandKey>. Print, then delete.
-    cloudConsoleRef = cloudDb.ref('console');
+    // Console responses land under /devices/<id>/console/<commandKey>.
+    // Print, then delete.
+    cloudConsoleRef = cloudDb.ref(devPath + '/console');
     cloudConsoleRef.on('child_added', (snap) => {
       const text = snap.val();
       if (typeof text === 'string' && text.length) appendConsoleOutput(text);
@@ -239,7 +241,8 @@ function sendCommand(obj) {
     return Promise.resolve();
   }
   if (connMode === 'cloud' && cloudDb) {
-    return cloudDb.ref('commands').push(obj).then(() => undefined);
+    const devPath = 'devices/' + (window.FB_CONFIG.deviceId || 'esp-000000');
+    return cloudDb.ref(devPath + '/commands').push(obj).then(() => undefined);
   }
   if (connMode === 'local' && ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(obj));

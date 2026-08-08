@@ -1,31 +1,42 @@
 {
   /* ESP32 Electricity Counter — Realtime Database Security Rules
-     latest/   : device writes the live snapshot (via Firebase Auth service account),
-                 anyone may read (public dashboard).
-     commands/ : anyone may push commands (fire-and-forget queue). The device
-                 reads, executes, and deletes them.
-     ota/      : release metadata + signed firmware URL, written only by an
-                 authenticated owner (the upload script / service account).
-                 The device reads it and writes its progress under /ota/status.
-     console/  : device writes the text output of a console command keyed by the
-                 originating /commands key. The dashboard reads it, prints it in
-                 the terminal panel, then deletes the node. */
+
+     Every board owns its own subtree: /devices/<chip-unique-id>/
+       latest/   : the device writes the live snapshot (via Firebase Auth
+                   service account), anyone may read (public dashboard).
+       commands/ : anyone may push commands (fire-and-forget queue). The device
+                   reads, executes, and deletes them.
+       ota/      : release metadata + signed firmware URL, written only by an
+                   authenticated owner (the upload script / service account).
+                   The device reads it and writes its progress under ota/status.
+       console/  : the device writes the text output of a console command keyed
+                   by the originating commands key. The dashboard reads it,
+                   prints it in the terminal panel, then deletes the node. */
   "rules": {
-    "latest": {
-      ".read": true,
-      ".write": "auth != null"
-    },
-    "commands": {
-      ".read": true,
-      ".write": true
-    },
-    "ota": {
-      ".read": true,
-      ".write": "auth != null"
-    },
-    "console": {
-      ".read": true,
-      ".write": true
+    "devices": {
+      "$device": {
+        ".read": true,
+        ".write": false,
+        "latest": {
+          ".write": "auth != null"
+        },
+        "commands": {
+          ".read": true,
+          ".write": true
+        },
+        "ota": {
+          ".read": true,
+          ".write": "auth != null"
+        },
+        "firmware": {
+          ".read": true,
+          ".write": "auth != null"
+        },
+        "console": {
+          ".read": true,
+          ".write": true
+        }
+      }
     }
   }
 }

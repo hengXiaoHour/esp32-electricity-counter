@@ -1,98 +1,60 @@
-# Plan: Web UI Live Console Terminal
+# Plan: Switch Cloud OTA to Firebase-ESP-Client built-in RTDB downloadOTA
 
-## Goal
-Add a terminal-style console to the Settings tab that works over both Local (WebSocket) and Cloud (Firebase) connections, giving web UI users the same diagnostic power as the serial port.
-
-## Scope
-- **Included**: All read-only commands (`status`, `ch`, `cal`, `info`, `wifi`, `help`) + safe writes (`buzz`, `inject`, `reset`, `reset_name`)
-- **Excluded (local-only)**: `test led`, `nvs_debug`, `reboot`, `setwifi connect/save`, `clearwifi` — too destructive or blocking for remote use
-
----
-
-## Files to Create
-
-| File | Purpose |
-|---|---|
-| `src/network/console_handler.h` | `ConsoleHandler` class — executes text commands, fills response buffer |
-| `src/network/console_handler.cpp` | Implementation of all console commands (extracted from .ino serial handler) |
+## Context
+Hand-rolled `WiFiClientSecure + HTTPClient` download from Firebase Hosting keeps
+failing (ENOMEM / TLS hang with ~96 KB free heap). The installed library
+(v4.4.17) has a proven, chunked, WDT-safe `Firebase.RTDB.downloadOTA()` that
+streams a base64 firmware blob from RTDB over the existing fbdo TLS session.
+Storage bucket is NOT enabled in this project, so RTDB (base64) is the delivery path.
 
 ## Files to Modify
 
-| File | Changes |
-|---|---|
-| `src/network/command_processor.cpp` | Add `console` command case; add optional `String *responseOut` param to `processCommand()` |
-| `src/network/command_processor.h` | Update signature |
-| `src/network/websocket_server.cpp` | Send console response via `client->text()` instead of discarding |
-| `src/network/firebase_bridge.cpp` | Write console response to `/console/` node after executing command |
-| `src/network/firebase_bridge.h` | Minor updates if needed |
-| `esp32-electricity-counter.ino` | Wire `ConsoleHandler` into setup; remove serial command handler (keep serial echo/prompt only) |
-| `database.rules.json` | Add `/console` node rules |
-| `frontend/index.html` | Add "Device Console" panel to Settings page |
-| `frontend/style.css` | Add terminal styles |
-| `frontend/script.js` | Console UI logic (send/receive/display) |
-
----
+- `src/network/cloud_ota.{h,cpp}` — rewrite download path to
+  `Firebase.RTDB.downloadOTA`; keep state/progress/md5 API surface.
+- `src/network/firebase_bridge.cpp` — `handleOtaRequest()` must NOT call
+  `stopWiFiClient()`; trigger the new blocking download instead.
+- `tools/ota_upload.py` — write base64 firmware to RTDB `/devices/<id>/firmware` with
+  the `file,base64,` signature; keep the `/devices/<id>/ota` trigger; drop Hosting publish.
+- `database.rules.json` — allow read of `firmware` node (public) so device can read;
+  writes stay `auth != null` (service account / script).
+- Possibly `.ino` — OTA driver comment stays valid (loop() drives nothing now);
+  verify firebaseTask handles the blocking call.
 
 ## Implementation Steps
-
-### Step 1 — ConsoleHandler class
-- Extract command logic from `handleSerialCommand()` into `ConsoleHandler`
-- Method: `void exec(const String &line, String &out)`
-- Safe subset only: `status`, `ch`, `cal`, `info`, `wifi`, `help`, `buzz`, `inject`, `reset`, `reset_name`
-- Output appended to `String &out` with `\n` separators
-- Unknown → `"Unknown command. Type 'help'.\n"`
-- Need access to: `nvs`, `powerCalc`, `systemData`, `dataMutex`, `buzzer`, `limitMgr`
-
-### Step 2 — processCommand() response support
-- Add `String *responseOut = nullptr` parameter
-- Add `console` case: extract `"line"` field, call `consoleHandler->exec(line, *responseOut)`
-- Existing call sites remain compatible (nullptr = no capture)
-
-### Step 3 — WebSocket response path
-- In `handleCommand()` (websocket_server.cpp), stop discarding `client`
-- After `processCommand()`, if responseOut non-empty → `client->text(jsonEncodedResponse)`
-- JSON format: `{"type":"console","out":"escaped text here"}`
-- Frontend `ws.onmessage` checks `data.type === 'console'` → append to terminal
-
-### Step 4 — Firebase response path
-- In `pollCommands()`, after `processCommand()` returns handled with response
-- Write response to `/console/<key>` via `Firebase.RTDB.setString()`
-- Delete the original command node
-- Add rule: `console: { ".read": true, ".write": "auth != null" }`
-- Frontend subscribes `cloudDb.ref('console').on('child_added')` → append to terminal, then delete node
-
-### Step 5 — Web UI console panel
-- New `<div class="panel-box" id="consolePanel">` in `#page-settings`
-- Output area: `<div id="consoleOutput" class="console-output"></div>`
-- Input row: `<input id="consoleInput" class="console-input" placeholder="Type command...">` + Send button
-- Enter key or button click → `sendCommand({cmd:'console', line: input.value})`
-- Display incoming `type:'console'` messages in output area
-- Auto-scroll to bottom
-
-### Step 6 — Wire + verify
-- Update `.ino`: instantiate `ConsoleHandler`, pass to modules that need it
-- Compile gate: arduino-cli, flash/RAM budget check
-- Runtime test: send `help`, `status`, `buzz 3` via web UI
-- Cloud test: same via Firebase deploy
-
----
-
-## JSON Escaping
-
-Need a helper to escape `"` → `\"`, `\n` → `\\n`, `\` → `\\` for embedding response text in JSON. Add to `console_handler.h` as static utility.
-
----
+1. `cloud_ota.{h,cpp}`:
+   - Add `#include <Firebase_ESP_Client.h>`, keep `Update.h` (library uses it).
+   - Add `bool FirebaseBridge`-owned `downloadRTDB(FirebaseData &fbdo,
+     const String &fwPath, const String &md5)` that calls
+     `Firebase.RTDB.downloadOTA(&fb, fwPath, cb)` blocking with a static callback.
+   - Callback maps status → progress/state strings (keep `getState()`/`getProgress()`
+     working for WebSocket/WS dashboard + web console); on complete store appliedMd5.
+   - Remove HTTPClient / WiFiClientSecure idling code (keep Update for library? library
+     drives Update; we don't call it—remove our Update.use too).
+   - Keep `trigger(version,url,md5)` for internal state.
+   - Verification: compile.
+2. `firebase_bridge.cpp`:
+   - In `handleOtaRequest()`: build fw path `/devices/<id>/firmware`, call
+     `cloudOta.startRefresh...` → actually call `cloudOta.download_rtdb(fbdo,
+     rtdbPath("firmware"), md5)` directly (blocking in firebaseTask). Remove
+     `fbdo.stopWiFiClient()`/`fbCmd.stopWiFiClient()`.
+   - Verification: compile; smoke on serial.
+3. `tools/ota_upload.py`:
+   - Add `publish_firmware_to_rtdb(db, device, bin, token)`: read bin bytes, base64,
+     compute pad sig (`file/File/fIle`), PUT `dev_path(device,"firmware.json")` with
+     JSON string `'"<sig>"...'`; assert HTTP 200.
+   - Keep writing `/devices/<id>/ota` `{version,url,md5,ts}` trigger.
+   - Remove `publish_to_hosting` call path (or stub) — keep URL field optional.
+   - Verification: `python3 tools/ota_upload.py --device esp-a172e0`.
+4. `database.rules.json`:
+   - Add `"firmware": { ".read": true, ".write": "auth != null" }`.
+   - Verify deploy via PUT `.settings/rules.json`.
+5. Build & flash to `esp-a172e0`, then TEST: publish 2.4.21, polka boot; check serial.
 
 ## Test Strategy
-- Compile gate (arduino-cli, flash budget)
-- `node --check script.js`
-- Manual: open web UI (local), type `help`, `status`, `ch 1`, `buzz 2` → verify output
-- Manual: open web UI (cloud), same commands → verify output
-- Edge: unknown command, empty input, very long output (truncation)
-
----
+- Unit: none (embedded). Step-by-step compile then live flash.
+- Live: upload via `ota_upload.py --device esp-a172e0`, watch `/devices/esp-a172e0/ota`,
+  confirm device rebooted to new FW (`/devices/esp-a172e0/latest`).
 
 ## Rollback
-- Revert firmware: `git revert` — serial handler returns, web console panel inert
-- Revert frontend: panel hidden, commands ignored
-- Firebase: `/console` node can be deleted, rules reverted
+- Keep Hosting publish (just don't delete). If RTDB OTA fails, revert to Hosting path
+  (git checkout cloud_ota.*).

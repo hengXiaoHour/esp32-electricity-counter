@@ -5,6 +5,7 @@
 #include "console_handler.h"
 #include "../core/limit_manager.h"
 #include "../utils/nvs_manager.h"
+#include "../utils/device_id.h"
 
 #include <addons/TokenHelper.h>
 #include <addons/RTDBHelper.h>
@@ -13,6 +14,12 @@
 // ---------------------------------------------------------------
 // Shared JSON builder (also used by WebSocketServer)
 // ---------------------------------------------------------------
+// RTDB path namespace for this board. Multiple boards share one Firestore,
+// so every node is scoped under /devices/<chip-unique-id>/ to stop boards
+// from clobbering each other's /latest, /commands and /ota.
+static String rtdbPath(const char *node) {
+  return String("/devices/") + deviceId() + "/" + node;
+}
 void buildSystemJson(const SystemData &data, PowerCalculator *powerCalc,
                      NVSManager *nvs, String &json) {
   json = "{\"v\":";
@@ -107,7 +114,7 @@ void buildSystemJson(const SystemData &data, PowerCalculator *powerCalc,
 FirebaseBridge::FirebaseBridge()
   : nvs(nullptr), sysData(nullptr), dataMutex(nullptr),
     powerCalc(nullptr), limitMgr(nullptr),
-    started(false), lastPush(0), lastCommandPoll(0) {}
+    started(false), paused(false), lastPush(0), lastCommandPoll(0), otaReq(false) {}
 
 void FirebaseBridge::begin(NVSManager &nvsRef,
                            SystemData *sysDataRef, SemaphoreHandle_t *mutexRef,
@@ -128,10 +135,10 @@ bool FirebaseBridge::configured() const {
 }
 
 bool FirebaseBridge::checkOtaTrigger() {
-  if (!started || !Firebase.ready()) return false;
+  if (!started || !Firebase.ready() || paused) return false;
 
   FirebaseJson data;
-  if (!Firebase.RTDB.getJSON(&fbdo, "/ota", &data)) return false;
+  if (!Firebase.RTDB.getJSON(&fbdo, rtdbPath("ota"), &data)) return false;
 
   FirebaseJsonData jd;
   String version, url, md5;
@@ -139,12 +146,38 @@ bool FirebaseBridge::checkOtaTrigger() {
   if (data.get(jd, "url")) url = jd.to<String>();
   if (data.get(jd, "md5")) md5 = jd.to<String>();
 
-  if (version.isEmpty() || url.isEmpty() || md5.isEmpty()) return false;
+  if (version.isEmpty() || md5.isEmpty()) return false;
   if (md5 == cloudOta.getAppliedMd5()) return false;
 
-  Serial.printf("  [FB] OTA trigger: %s -> %s\n", FIRMWARE_VERSION, version.c_str());
-  cloudOta.trigger(version, url, md5);
+  // Stash the request; handleOtaRequest() performs the blocking download.
+  pendingOtaVersion = version;
+  pendingOtaUrl = url;
+  pendingOtaMd5 = md5;
+  otaReq = true;
+
+  Serial.printf("  [FB] OTA requested: %s -> %s (deferred)\n", FIRMWARE_VERSION, version.c_str());
   return true;
+}
+
+void FirebaseBridge::handleOtaRequest() {
+  if (!otaReq) return;
+  otaReq = false;
+  paused = true;
+
+  String version = pendingOtaVersion;
+  String url = pendingOtaUrl;
+  String md5 = pendingOtaMd5;
+
+  Serial.printf("  [FB] OTA download from %s (md5 %s)\n",
+                rtdbPath("firmware").c_str(), md5.c_str());
+
+  // NOTE: do NOT stop the fbdo TLS client here. The library's downloadOTA
+  // streams the base64 firmware blob through the SAME fbdo TCP/TLS session
+  // (it temporarily raises the RX buffer to 16KB during the download).
+  // This is a blocking call; it runs in firebaseTask (Core 0), where the
+  // sensor task (Core 1) and the broadcast task (Core 0, priority 2) keep
+  // running concurrently.
+  cloudOta.download(fbCmd, rtdbPath("firmware"), md5);
 }
 
 void FirebaseBridge::start() {
@@ -175,9 +208,10 @@ void FirebaseBridge::start() {
 
   started = true;
   lastPush = 0;
-  Serial.printf("  Firebase bridge started (pushing /latest every %u ms, "
-                "polling /commands every %u ms)\n",
-                FIREBASE_PUSH_INTERVAL_MS, FIREBASE_COMMAND_POLL_MS);
+  Serial.printf("  Firebase bridge started (pushing %s every %u ms, "
+                "polling %s every %u ms)\n",
+                rtdbPath("latest").c_str(), FIREBASE_PUSH_INTERVAL_MS,
+                rtdbPath("commands").c_str(), FIREBASE_COMMAND_POLL_MS);
 }
 
 bool FirebaseBridge::ready() const {
@@ -185,7 +219,7 @@ bool FirebaseBridge::ready() const {
 }
 
 void FirebaseBridge::loop() {
-  if (!started || !Firebase.ready()) return;
+  if (!started || !Firebase.ready() || paused) return;
 
   // Poll the command queue (coarse cadence, cheap).
   if (millis() - lastCommandPoll >= FIREBASE_COMMAND_POLL_MS) {
@@ -210,7 +244,7 @@ void FirebaseBridge::pushLatest() {
   FirebaseJson payload;
   payload.setJsonData(json.c_str());
 
-  if (Firebase.RTDB.setJSON(&fbdo, "/latest", &payload)) {
+  if (Firebase.RTDB.setJSON(&fbdo, rtdbPath("latest"), &payload)) {
     // ok
   } else {
     static uint32_t lastErrLog = 0;
@@ -225,7 +259,7 @@ void FirebaseBridge::pollCommands() {
   if (!ready()) return;
 
   FirebaseJson cmds;
-  if (!Firebase.RTDB.getJSON(&fbCmd, "/commands", &cmds)) {
+  if (!Firebase.RTDB.getJSON(&fbCmd, rtdbPath("commands"), &cmds)) {
     // Empty (null) node is normal, not an error — and must not tear down the
     // connection (that would force a fresh TLS handshake on the next push).
     String dt = fbCmd.dataType();
@@ -257,7 +291,9 @@ void FirebaseBridge::pollCommands() {
         // Console commands answer with text — publish it under /console/<key>
         // so the cloud dashboard can pick it up (and delete it) by key.
         if (response.length() > 0) {
-          String outPath = "/console/";
+          String outPath = "/devices/";
+          outPath += deviceId();
+          outPath += "/console/";
           outPath += key;
           if (!Firebase.RTDB.setString(&fbdo, outPath, response)) {
             Serial.printf("  [FB] console response write failed: %s\n",
@@ -265,7 +301,9 @@ void FirebaseBridge::pollCommands() {
           }
         }
         // Delete the processed command node.
-        String path = "/commands/";
+        String path = "/devices/";
+        path += deviceId();
+        path += "/commands/";
         path += key;
         Firebase.RTDB.deleteNode(&fbdo, path);
       }

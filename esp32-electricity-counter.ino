@@ -168,9 +168,20 @@ void networkTask(void *pvParameters) {
 void firebaseTask(void *pvParameters) {
   TickType_t lastWake = xTaskGetTickCount();
   while (true) {
+    // checkOtaTrigger() may detect a new firmware version. If it sets the
+    // pending flag, call handleOtaRequest() to free the Firebase SSL heap
+    // BEFORE the OTA download starts — without this, Update.begin() fails
+    // with ENOMEM because the SSL socket eats ~150KB.
+    if (fbBridge.otaRequested()) {
+      fbBridge.handleOtaRequest();
+      // After this, fbBridge is paused. CloudOTA runs in loop() on Core 1.
+      // This task just idles until reboot.
+      while (true) { vTaskDelay(pdMS_TO_TICKS(1000)); }
+    }
+
     fbBridge.loop();
     fbBridge.pushLatest();
-    fbBridge.checkOtaTrigger();  // detects new firmware in RTDB /ota, triggers cloudOta
+    fbBridge.checkOtaTrigger();
     vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(50));
   }
 }
@@ -311,8 +322,10 @@ void setup() {
 
   // Shared text-command engine: drives both the serial console and the web
   // UI console (via processCommand -> WebSocket / Firebase).
+  // Blocking commands (test led, nvs_debug, reboot) are deferred and run from
+  // loop() on Core 1 where blocking is safe (no WDT, no network stall).
   consoleHandler.begin(&nvs, &powerCalc, &systemData, &dataMutex, &buzzer,
-                       &limitMgr, &wifiMgr, &otaHandler);
+                       &limitMgr, &wifiMgr, &otaHandler, &statusLED);
 
   WiFi.onEvent(onWiFiEvent);
 
@@ -347,6 +360,8 @@ void setup() {
 // ==============================
 static void handleSerialCommand(const String &cmd) {
   if (cmd == "test led") {
+    // Blocking LED test — only safe from serial (runs in loop() on Core 1).
+    // The web console uses the non-blocking deferred path via consoleHandler.
     Serial.println("  LED test: GREEN"); statusLED.setMode(LED_SOLID_GREEN); statusLED.loop(); delay(1500);
     Serial.println("  LED test: YELLOW (blink)"); statusLED.setMode(LED_BLINK_YELLOW); for (int i = 0; i < 6; i++) { statusLED.loop(); delay(400); }
     Serial.println("  LED test: RED"); statusLED.setMode(LED_SOLID_RED); statusLED.loop(); delay(1500);
@@ -355,182 +370,42 @@ static void handleSerialCommand(const String &cmd) {
     statusLED.setMode(LED_SOLID_GREEN); statusLED.loop();
     Serial.println("  LED test done");
   }
-
-  else if (cmd.startsWith("rms_samples ")) {
-    int val = cmd.substring(12).toInt();
-    if (val >= 100 && val <= MAX_RMS_SAMPLES) {
-      powerCalc.setRmsSamples(val);
-      nvs.saveRmsSamples(val);
-      nvs.commit();
-      if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        systemData.rmsSamples = val;
-        xSemaphoreGive(dataMutex);
-      }
-      Serial.printf("  RMS samples set to %d\n", val);
-    } else {
-      Serial.printf("  RMS samples must be 100-%d\n", MAX_RMS_SAMPLES);
-    }
-  }
-
-  else if (cmd.startsWith("curr_cal ")) {
-    int sp = cmd.indexOf(' ', 9);
-    if (sp > 0) {
-      int ch = cmd.substring(9, sp).toInt() - 1;
-      float val = cmd.substring(sp + 1).toFloat();
-      if (ch >= 0 && ch < NUM_CHANNELS && val > 0) {
-        powerCalc.currentCal[ch] = val;
-        nvs.saveChannelCurrentCal(ch, val);
-        nvs.commit();
-        if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-          systemData.currentCalibration[ch] = val;
-          xSemaphoreGive(dataMutex);
-        }
-        Serial.printf("  Ch%d current calibration set to %.1f\n", ch + 1, val);
-      }
-    }
-  }
-
-  else if (cmd.startsWith("auto_zero ")) {
-    int ch = cmd.substring(10).toInt() - 1;
-    if (ch >= 0 && ch < NUM_CHANNELS) {
-      powerCalc.requestAutoZero(ch);
-      Serial.printf("  Ch%d auto-zero requested (runs on next sensor cycle)\n", ch + 1);
-    }
-  }
-
-  else if (cmd.startsWith("volt_cal ")) {
-    float val = cmd.substring(9).toFloat();
-    if (val > 0) {
-      powerCalc.voltageCal = val;
-      nvs.saveVoltageCalibration(val);
-      nvs.commit();
-      if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        systemData.voltageCalibration = val;
-        xSemaphoreGive(dataMutex);
-      }
-      Serial.printf("  Voltage calibration set to %.1f\n", val);
-    }
-  }
-
-  else if (cmd == "setwifi sta") {
-    nvs.saveWiFiMode(1);
-    Serial.println("  WiFi mode: STA — will connect to saved SSID on next boot");
-  }
-
-  else if (cmd == "setwifi ap") {
-    nvs.saveWiFiMode(2);
-    Serial.println("  WiFi mode: AP — board will start as access point");
-  }
-
-  else if (cmd == "setwifi auto") {
-    nvs.saveWiFiMode(0);
-    Serial.println("  WiFi mode: AUTO — try STA first, fallback to AP");
-  }
-
-  else if (cmd.startsWith("setwifi ssid ")) {
-    String ssid = cmd.substring(13);
-    ssid.trim();
-    if (ssid.length() > 0) {
-      nvs.saveWiFiSSID(ssid);
-      Serial.printf("  WiFi SSID saved: \"%s\"\n", ssid.c_str());
-    } else {
-      Serial.println("  Usage: setwifi ssid <network name>");
-    }
-  }
-
-  else if (cmd.startsWith("setwifi pass ")) {
-    String pass = cmd.substring(13);
-    pass.trim();
-    nvs.saveWiFiPass(pass);
-    Serial.printf("  WiFi password saved (%d chars)\n", pass.length());
-  }
-
-  else if (cmd == "setwifi connect" || cmd == "setwifi save") {
-    String ssid, pass;
-    nvs.loadWiFi(ssid, pass);
-    if (ssid.length() > 0) {
-      nvs.saveWiFiMode(1);
-      Serial.printf("  Connecting to \"%s\"... rebooting\n", ssid.c_str());
-      delay(100);
-      ESP.restart();
-    } else {
-      Serial.println("  No SSID set. Use 'setwifi ssid <name>' first");
-    }
-  }
-
-  else if (cmd == "clearwifi") {
-    nvs.clearWiFi();
-    nvs.saveWiFiMode(0);
-    Serial.println("  WiFi credentials + mode cleared");
-    Serial.println("  Type 'reboot' to restart in AP mode");
-  }
-
-  else if (cmd == "nvs_debug") {
-    Serial.println("  NVS Debug (cache read):");
-
-    nvs.saveRmsSamples(888);
-    uint16_t rr = nvs.loadRmsSamples();
-    Serial.printf("    Write rms_samp=%d  Read(cache) rms_samp=%d  %s\n",
-      888, rr, (rr == 888) ? "OK" : "FAIL");
-
-    nvs.saveChannelCurrentCal(0, 7.5f);
-    float rc = nvs.loadChannelCurrentCal(0);
-    Serial.printf("    Write ch1_ccal=%.1f  Read(cache) ch1_ccal=%.1f  %s\n",
-      7.5f, rc, (rc == 7.5f) ? "OK" : "FAIL");
-
-    nvs.saveVoltageCalibration(42.5f);
-    float rv = nvs.loadVoltageCalibration();
-    Serial.printf("    Write volt_cal=%.1f  Read(cache) volt_cal=%.1f  %s\n",
-      42.5f, rv, (rv == 42.5f) ? "OK" : "FAIL");
-
-    // Now re-open handle and read from flash
-    nvs.commit();
-    rr = nvs.loadRmsSamples();
-    rc = nvs.loadChannelCurrentCal(0);
-    rv = nvs.loadVoltageCalibration();
-    Serial.println("  NVS Debug (flash read after commit):");
-    Serial.printf("    rms_samp=%d  ch1_ccal=%.1f  volt_cal=%.1f\n",
-      rr, rc, rv);
-  }
-
-  else if (cmd == "reboot") {
-    Serial.println("  Rebooting...");
-    nvs.end();
-    delay(1000);
-    ESP.restart();
-  }
-
   else {
-    // Everything else (status, ch, cal, info, wifi, help, buzz, inject,
-    // reset, reset_name) is handled by the shared ConsoleHandler so the serial
-    // port and the web console stay in lockstep.
+    // All other commands go through the shared ConsoleHandler so the serial
+    // port and the web console stay in lockstep. Blocking commands (nvs_debug,
+    // reboot) are deferred and run from loop().
     String out;
     consoleHandler.exec(cmd, out);
     Serial.println();
     Serial.print(out);
-    if (cmd == "help") {
-      Serial.println("    test led            LED color sequence test");
-      Serial.println("    rms_samples <N>     Set RMS samples (100-2000)");
-      Serial.println("    curr_cal <ch> <val> Set current calibration for channel");
-      Serial.println("    auto_zero <ch>      Auto-zero noise floor for channel");
-      Serial.println("    volt_cal <val>      Set voltage calibration");
-      Serial.println("    setwifi sta|ap|auto Set WiFi mode");
-      Serial.println("    setwifi ssid <name> Set WiFi network name");
-      Serial.println("    setwifi pass <pwd>  Set WiFi password");
-      Serial.println("    setwifi connect     Save + reboot to connect");
-      Serial.println("    clearwifi           Erase WiFi credentials");
-      Serial.println("    nvs_debug           Test NVS write/read cycle");
-      Serial.println("    reboot              Restart the device");
-    }
     Serial.println();
   }
 }
 
 void loop() {
   // Run OTA download in the loopTask context (Core 1). This task is NOT
-  // registered with the task watchdog, so long downloads don't trigger WDT
-  // resets. The IDLE task on Core 0 is fed by the firebaseTask's regular
-  // vTaskDelayUntil yields, so the WDT stays happy on both cores.
-  cloudOta.loop();
-  vTaskDelay(pdMS_TO_TICKS(100));
+  // registered with the task watchdog, so chunked downloads don't trigger
+  // WDT resets. sensorTask (also Core 1, same priority) gets CPU time because
+  // each cloudOta.loop() call returns after one chunk — we batch a few chunks
+  // per yield to keep throughput high while staying preemptible.
+  if (cloudOta.isInProgress()) {
+    for (int i = 0; i < 8; i++) {
+      cloudOta.loop();
+      if (!cloudOta.isInProgress()) break;
+    }
+    vTaskDelay(pdMS_TO_TICKS(5));
+  } else {
+    cloudOta.loop();  // cheap check for new triggers
+    vTaskDelay(pdMS_TO_TICKS(100));
+  }
+
+  // Drive the non-blocking LED test state machine + deferred console commands.
+  consoleHandler.runDeferred();
+  consoleHandler.loop();
+  if (consoleHandler.isLedTestRunning() || consoleHandler.hasDeferred()) {
+    String out = consoleHandler.takePendingOutput();
+    if (out.length() > 0) {
+      Serial.print(out);
+    }
+  }
 }

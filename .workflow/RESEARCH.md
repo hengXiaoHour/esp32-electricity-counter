@@ -1,45 +1,78 @@
-# Research: Web UI Live Console Terminal
+# Research: Switch Cloud OTA to Firebase-ESP-Client's built-in RTDB downloadOTA
 
 ## Current State
 
-### Firmware
-- **Serial commands**: `handleSerialCommand()` in `.ino:342-671` — 24 commands, all output via `Serial.printf()`, no capture possible
-- **Web commands**: `processCommand()` in `command_processor.cpp` — 13 commands, returns `bool`, no text output
-- **WebSocket**: `ws->textAll()` sends snapshots every 150ms; `client->text()` available but unused
-- **Firebase**: writes to `/latest` (1s), polls `/commands` (1s), can write to any node
-- **SystemData**: ~4.1KB struct, no console field
+`cloud_ota.{h,cpp}` hand-rolls the download with `WiFiClientSecure + HTTPClient`:
+- fetches firmware from Firebase Hosting (`https://esp32-electricity-counter.web.app/firmware/<ver>.bin`)
+- `sendRequest("GET")` + `getStreamPtr()` chunked read → `Update.write`
+- md5 verified via `MD5Builder`, `appliedMd5` kept in NVS `ota/appliedMd5`
 
-### Web UI
-- `sendCommand(obj)` — single gateway routing Cloud/Local/Demo
-- `updateDashboard(data)` — single receive sink for all data
-- Settings tab: 4 panels (Connection, Notifications, Calibration, About)
-- Dark theme, `--font-mono` already defined, no terminal styles
+**Why it keeps failing:** `HTTPClient::GET()` buffers the whole 1.4 MB body into RAM
+(~96 KB free heap) → ENOMEM / TLS hang. The `sendRequest`+stream workaround still
+relies on a **second** TLS stack (BearSSL via `WiFiClientSecure`) that the Firebase
+library already manages internally.
 
-## Key Insight
+## Key Finding: the library already does this
 
-Two disjoint command systems exist today. The web console needs a unified path that:
-1. Accepts a text line from the UI
-2. Executes it on the ESP32
-3. Captures the text response
-4. Sends it back through the same transport (WS or Firebase)
+Firebase-ESP-Client v4.4.17 ships a **built-in, streaming, WDT-safe RTDB OTA** path:
 
-## Constraints
-- `test led` blocks 8s with `delay()` — can't run in AsyncTCP context
-- `nvs_debug` is destructive (writes test values to calibration NVS)
-- `reboot`/`setwifi connect` call `ESP.restart()`
-- Output contains `"` and `\n` — must be JSON-escaped
+```
+bool Firebase.RTDB.downloadOTA(FirebaseData *fbdo, <path>, RTDB_DownloadProgressCallback cb = NULL)
+```
+(`src/Firebase.h:1910`, `src/rtdb/FB_RTDB.h:2082`, `examples/RTDB/DownloadFileOTA/`)
 
-## Approach
+- Firmware lives in RTDB as a base64 **string** at a node path (written by the
+  library's `setFile`/`pushFile`). Device GETs it chunk-by-chunk on the SAME fbdo
+  TLS session.
+- `prepareDownloadOTA()` → `Update.begin(size)`; chunks are base64-decoded via
+  `decodeBase64OTA()` and written by `Update.write`; `endDownloadOTA()` → `Update.end()`.
+- All guarded by `OTA_UPDATE_ENABLED`, which is auto-defined when
+  `ENABLE_OTA_FIRMWARE_UPDATE`/`FIREBASE_ENABLE_OTA_FIRMWARE_UPDATE` is set AND
+  RTDB/Storage is enabled (`src/FB_Const.h:53-59`).
+- `RTDB_DownloadStatusInfo` callback: `status` (init/download/complete/error),
+  `progress`, `size`, `elapsedTime`, `errorMsg`.
 
-### Firmware
-1. Extract console output logic from `handleSerialCommand()` into a new `ConsoleHandler` class
-2. Add `processConsoleCommand(const String &line, String &response)` to handle arbitrary text commands
-3. Add a `console` command to `processCommand()` that delegates to the console handler with response capture
-4. WebSocket: send response via `client->text()` to requesting client
-5. Firebase: write response to `/console/` node, then delete command
+### RTDB firmware blob format (what the uploader must write)
 
-### Web UI
-1. New "Device Console" panel in Settings tab (between Calibration and About)
-2. Terminal-style UI: scrollable output div + input row
-3. Send via existing `sendCommand({cmd:'console', line:'...'})`
-4. Receive via new `type:'console'` message handler
+`setFile` stores: JSON string `"file,base64,<b64data>"` with a **pad-length signature**:
+- `n%3==0` → `"file,base64,`
+- `n%3==2` → `"File,base64,`  (s[1]='F')
+- `n%3==1` → `"fIle,base64,`  (s[2]='I')
+
+The device decoder (`FB_Session.cpp:1202`, `payloadOfs=13`) strips the leading
+`"file,base64,` and the trailing quote, so the uploader must produce a JSON string
+literal that starts with that signature and ends with a closing `"`.
+
+### RX buffer
+
+Per the example comment, the library bumps the fbdo RX buffer to 16 kB *during* the
+OTA download and restores the configured size after — so no `stopWiFiClient()` hack is
+needed. Our `setBSSLBufferSize(4096, 4096)` is fine.
+
+## Decision
+
+Replace the hand-rolled HTTPS download with `Firebase.RTDB.downloadOTA()`:
+
+1. **Uploader** (`tools/ota_upload.py`): PUT the base64 firmware to
+   `/devices/<id>/firmware` with the `file,base64,` signature (exact `setFile` format),
+   then write the `/devices/<id>/ota` trigger `{version, md5, ts}` (url kept for logs).
+   → delete Hosting publish of the bin.
+2. **Device** (`cloud_ota.cpp`): `downloadRTDB(fbdo, path, md5)` wraps
+   `Firebase.RTDB.downloadOTA` with a static callback; on complete stores `appliedMd5`
+   and reboots. Runs in firebaseTask (Core 0, 32k stack, not WDT-monitored); the
+   sensor task (Core 1) and broadcast task (Core 0, prio 2) keep running.
+3. **firebase_bridge**: `handleOtaRequest()` stops calling `stopWiFiClient()` (would
+   kill the fbdo TLS session `downloadOTA` needs) and calls the new blocking download.
+
+## Risks
+- RTDB blob is ~2 MB base64 string — single-node value size is fine (REST PUT);
+  device reads it in chunks.
+- md5 is no longer verified byte-for-byte by the device (library does its own
+  `Update.end()` integrity + bootloader check on reboot). `appliedMd5` stored from the
+  trigger so re-triggers are still deduped.
+- `downloadOTA` is blocking → firebaseTask idle loop after it is dead code (device
+  reboots first). Harmless.
+
+## Open Questions
+- Keep or drop Hosting publishing? → **Drop** (OTA no longer needs it; keeps the
+  release lean). Frontend still served separately.

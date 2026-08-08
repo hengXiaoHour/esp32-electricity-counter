@@ -48,9 +48,19 @@ public:
   bool configured() const;
 
   // Check RTDB /ota node for a new firmware version. If found (and not
-  // already applied), triggers the CloudOTA download. Returns true if
-  // an OTA was triggered. Called from firebaseTask.
+  // already applied), requests an OTA (does not start immediately — the
+  // caller must call handleOtaRequest() to free SSL heap first).
   bool checkOtaTrigger();
+
+  // Returns true if an OTA was requested via checkOtaTrigger() but not yet
+  // handled. The firebaseTask calls this, stops Firebase I/O, frees the
+  // SSL socket (~150KB heap), then lets CloudOTA begin the download.
+  bool otaRequested() const { return otaReq; }
+
+  // Frees the Firebase-ESP-Client SSL buffers and triggers the CloudOTA
+  // download. Must be called from firebaseTask (Core 0) BEFORE CloudOTA
+  // starts its HTTPS transfer. After this, pause Firebase until reboot.
+  void handleOtaRequest();
 
 private:
   NVSManager *nvs;
@@ -65,8 +75,14 @@ private:
   FirebaseConfig config;
 
   bool started;
+  bool paused;       // true after OTA is triggered (Firebase I/O suspended)
   uint32_t lastPush;
   uint32_t lastCommandPoll;
+
+  bool otaReq;       // set by checkOtaTrigger(), cleared by handleOtaRequest()
+  String pendingOtaVersion;
+  String pendingOtaUrl;
+  String pendingOtaMd5;
 
   void buildLatestJson(FirebaseJson &json);
   void pollCommands();
