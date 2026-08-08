@@ -2,6 +2,7 @@
 #include "firebase_config.h"
 #include "cloud_ota.h"
 #include "command_processor.h"
+#include "console_handler.h"
 #include "../core/limit_manager.h"
 #include "../utils/nvs_manager.h"
 
@@ -249,9 +250,20 @@ void FirebaseBridge::pollCommands() {
       if (cmd.length() > 0 && cmd[0] != '{') {
         cmd = "{\"" + key + "\":" + value + "}";
       }
+      String response;
       bool handled = processCommand(nvs, sysData, dataMutex, powerCalc, limitMgr,
-                                   cmd.c_str());
+                                   cmd.c_str(), &response);
       if (handled) {
+        // Console commands answer with text — publish it under /console/<key>
+        // so the cloud dashboard can pick it up (and delete it) by key.
+        if (response.length() > 0) {
+          String outPath = "/console/";
+          outPath += key;
+          if (!Firebase.RTDB.setString(&fbdo, outPath, response)) {
+            Serial.printf("  [FB] console response write failed: %s\n",
+                          fbdo.errorReason().c_str());
+          }
+        }
         // Delete the processed command node.
         String path = "/commands/";
         path += key;

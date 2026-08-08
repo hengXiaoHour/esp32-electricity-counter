@@ -78,7 +78,7 @@ esp32-electricity-counter/
 │   └── VERIFICATION.log
 │
 └── scripts/                         # Utility scripts
-    └── deploy.sh
+     └── deploy.py
 ```
 
 ## Conventions

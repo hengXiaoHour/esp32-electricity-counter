@@ -6,7 +6,10 @@
                  reads, executes, and deletes them.
      ota/      : release metadata + signed firmware URL, written only by an
                  authenticated owner (the upload script / service account).
-                 The device reads it and writes its progress under /ota/status. */
+                 The device reads it and writes its progress under /ota/status.
+     console/  : device writes the text output of a console command keyed by the
+                 originating /commands key. The dashboard reads it, prints it in
+                 the terminal panel, then deletes the node. */
   "rules": {
     "latest": {
       ".read": true,
@@ -19,6 +22,10 @@
     "ota": {
       ".read": true,
       ".write": "auth != null"
+    },
+    "console": {
+      ".read": true,
+      ".write": true
     }
   }
 }

@@ -206,6 +206,22 @@
           </div>
         </div>
 
+        <div class="panel-box" id="consolePanel">
+          <div class="panel-header">
+            <h3>Device Console</h3>
+            <button class="btn-sm" onclick="clearConsole()">Clear</button>
+          </div>
+          <div id="consoleOutput" class="console-output mono"></div>
+          <div class="console-row">
+            <span class="console-prompt mono">&gt;</span>
+            <input type="text" id="consoleInput" class="console-input mono" placeholder="Type a command (help)"
+                   spellcheck="false" autocomplete="off" autocapitalize="off"
+                   onkeydown="onConsoleKey(event)">
+            <button class="btn-sm" onclick="sendConsoleCommand()">Send</button>
+          </div>
+          <div class="hint">Runs the device's diagnostic commands remotely. Type <span class="mono">help</span> for the list. Blocking/destructive commands (test led, nvs_debug, reboot, setwifi, clearwifi) remain serial-only.</div>
+        </div>
+
         <div class="panel-box">
           <div class="panel-header"><h3>About</h3></div>
           <div class="cal-row-single">

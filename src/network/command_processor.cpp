@@ -1,5 +1,44 @@
 #include "command_processor.h"
 #include "../core/limit_manager.h"
+#include "console_handler.h"
+
+// Reverses the JSON string escaping applied by the dashboard when it sends a
+// console line (JSON.stringify escapes ", \\ and control chars).
+static String jsonUnescape(const String &s) {
+  String r;
+  r.reserve(s.length());
+  for (size_t i = 0; i < s.length(); i++) {
+    char c = s[i];
+    if (c == '\\' && i + 1 < s.length()) {
+      char n = s[++i];
+      if (n == 'n') r += '\n';
+      else if (n == 't') r += '\t';
+      else if (n == 'r') r += '\r';
+      else r += n;  // covers \" \\ \/
+    } else {
+      r += c;
+    }
+  }
+  return r;
+}
+
+// Extracts the value of a JSON string field, honouring backslash escapes so an
+// embedded \" does not terminate the scan early.
+static bool extractJsonString(const String &s, const char *key, String &outVal) {
+  String needle = String("\"") + key + "\":\"";
+  int i = s.indexOf(needle);
+  if (i < 0) return false;
+  i += needle.length();
+  int end = i;
+  while (end < (int)s.length()) {
+    if (s[end] == '\\') { end += 2; continue; }
+    if (s[end] == '"') break;
+    end++;
+  }
+  if (end > (int)s.length()) return false;
+  outVal = jsonUnescape(s.substring(i, end));
+  return true;
+}
 
 // Shared command handler for both the WebSocket server and the Firebase bridge.
 // Mirrors the command vocabulary of the frontend dashboard:
@@ -9,11 +48,23 @@
 bool processCommand(NVSManager *nvs, SystemData *sysData,
                     SemaphoreHandle_t *dataMutex,
                     PowerCalculator *powerCalc, LimitManager *limitMgr,
-                    const char *msg) {
+                    const char *msg, String *responseOut) {
   bool handled = false;
   String s(msg);
 
-  if (s.indexOf("\"cmd\":\"set_name\"") >= 0) {
+  if (s.indexOf("\"cmd\":\"console\"") >= 0) {
+    String line;
+    if (extractJsonString(s, "line", line)) {
+      if (responseOut) {
+        consoleHandler.exec(line, *responseOut);
+      } else {
+        String discard;
+        consoleHandler.exec(line, discard);
+      }
+      handled = true;
+    }
+
+  } else if (s.indexOf("\"cmd\":\"set_name\"") >= 0) {
     int ch = -1;
     int ci = s.indexOf("\"ch\":");
     if (ci >= 0) ch = s.substring(ci + 5).toInt();

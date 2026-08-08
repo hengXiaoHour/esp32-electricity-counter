@@ -1,6 +1,7 @@
 #include "websocket_server.h"
 #include "../core/limit_manager.h"
 #include "command_processor.h"
+#include "console_handler.h"
 #include "firebase_bridge.h"
 #include <time.h>
 
@@ -88,8 +89,17 @@ void WebSocketServer::onWsEvent(AsyncWebSocket *srv, AsyncWebSocketClient *clien
 }
 
 void WebSocketServer::handleCommand(AsyncWebSocketClient *client, const char *msg) {
-  (void)client;
-  bool handled = processCommand(nvs, sysData, dataMutex, powerCalc, limitMgr, msg);
+  String response;
+  bool handled = processCommand(nvs, sysData, dataMutex, powerCalc, limitMgr,
+                                msg, &response);
+  // Console commands answer with text — ship it back to the requesting client
+  // only (broadcasting it to every client would spam other dashboards).
+  if (client && response.length() > 0) {
+    String out = "{\"type\":\"console\",\"out\":\"";
+    out += consoleJsonEscape(response);
+    out += "\"}";
+    client->text(out);
+  }
   if (handled) lastBroadcast = 0;  // force an immediate refresh
 }
 

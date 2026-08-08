@@ -8,6 +8,7 @@
 #include "src/network/cloud_ota.h"
 #include "src/network/ota_handler.h"
 #include "src/network/ntfy_notifier.h"
+#include "src/network/console_handler.h"
 #include "src/ui/status_led.h"  
 #include "src/ui/buzzer.h"
 #include "src/utils/nvs_manager.h"
@@ -308,6 +309,11 @@ void setup() {
   ntfyNotifier.begin(nvs.loadNtfyEnabled(), nvs.loadNtfyTopic());
   limitMgr.begin(nvs, powerCalc, &systemData, &dataMutex, &ntfyNotifier, &buzzer);
 
+  // Shared text-command engine: drives both the serial console and the web
+  // UI console (via processCommand -> WebSocket / Firebase).
+  consoleHandler.begin(&nvs, &powerCalc, &systemData, &dataMutex, &buzzer,
+                       &limitMgr, &wifiMgr, &otaHandler);
+
   WiFi.onEvent(onWiFiEvent);
 
   wsServer.begin(nvs, &systemData, &dataMutex, &powerCalc, &limitMgr);
@@ -340,56 +346,7 @@ void setup() {
 // Serial Command Handler (testing)
 // ==============================
 static void handleSerialCommand(const String &cmd) {
-  if (cmd == "status") {
-    Serial.println();
-    uint32_t up = millis() / 1000;
-    Serial.printf("  %-16s%02lu:%02lu:%02lu\n", "Uptime:", up/3600, (up%3600)/60, up%60);
-    Serial.printf("  %-16s%s  (RSSI: %d dBm)\n", "WiFi:",
-      wifiMgr.isConnected() ? "CONNECTED" : wifiMgr.isApMode() ? "AP MODE" : "DISCONNECTED",
-      wifiMgr.getRSSI());
-    Serial.printf("  %-16s%.1f V\n", "Voltage:", powerCalc.getVoltageRMS());
-    Serial.printf("  %-16s%s (%d%%)\n", "OTA:",
-      otaHandler.isInProgress() ? "IN PROGRESS" : "IDLE",
-      otaHandler.getProgress());
-    Serial.println();
-    Serial.println("  Channels");
-    for (int ch = 0; ch < NUM_CHANNELS; ch++) {
-      const char *s = systemData.channels[ch].status == STATUS_OK ? "OK" :
-                       systemData.channels[ch].status == STATUS_WARNING ? "WARN" :
-                       systemData.channels[ch].status == STATUS_TRIPPED ? "TRIP" : "OFF";
-      Serial.printf("  Ch%d  %-16s %s  %5.2fA  %5.0fW  %5.0fVA  PF=%.3f  %6.3fkWh\n",
-        ch + 1, systemData.channels[ch].name, s,
-        systemData.channels[ch].currentRMS,
-        systemData.channels[ch].activePower,
-        systemData.channels[ch].apparentPower,
-        systemData.channels[ch].powerFactor,
-        systemData.channels[ch].energyKWh);
-    }
-    Serial.printf("  Events: %d\n", systemData.eventCount);
-    Serial.println();
-  }
-
-  else if (cmd.startsWith("ch ")) {
-    int ch = cmd.substring(3).toInt() - 1;
-    if (ch >= 0 && ch < NUM_CHANNELS) {
-      const char *s = systemData.channels[ch].status == STATUS_OK ? "OK" :
-                       systemData.channels[ch].status == STATUS_WARNING ? "WARN" :
-                       systemData.channels[ch].status == STATUS_TRIPPED ? "TRIP" : "OFF";
-      Serial.println();
-      Serial.printf("  Channel %d  %s\n", ch + 1, systemData.channels[ch].name);
-      Serial.printf("  %-16s%.2f A\n", "Current:", powerCalc.getCurrentRMS(ch));
-      Serial.printf("  %-16s%.1f W\n", "Active Power:", powerCalc.getActivePower(ch));
-      Serial.printf("  %-16s%.1f VA\n", "Apparent:", powerCalc.getApparentPower(ch));
-      Serial.printf("  %-16s%.3f\n", "Power Factor:", powerCalc.getPowerFactor(ch));
-      Serial.printf("  %-16s%.3f kWh\n", "Energy:", powerCalc.getEnergyKWh(ch));
-      Serial.printf("  %-16s%s\n", "Status:", s);
-      Serial.printf("  %-16s%.1f\n", "Current Cal:", powerCalc.currentCal[ch]);
-      Serial.printf("  %-16s%.3f A\n", "Noise Floor:", powerCalc.noiseFloor[ch]);
-      Serial.println();
-    }
-  }
-
-  else if (cmd == "test led") {
+  if (cmd == "test led") {
     Serial.println("  LED test: GREEN"); statusLED.setMode(LED_SOLID_GREEN); statusLED.loop(); delay(1500);
     Serial.println("  LED test: YELLOW (blink)"); statusLED.setMode(LED_BLINK_YELLOW); for (int i = 0; i < 6; i++) { statusLED.loop(); delay(400); }
     Serial.println("  LED test: RED"); statusLED.setMode(LED_SOLID_RED); statusLED.loop(); delay(1500);
@@ -397,74 +354,6 @@ static void handleSerialCommand(const String &cmd) {
     Serial.println("  LED test: BLUE"); statusLED.setMode(LED_SOLID_BLUE); statusLED.loop(); delay(1500);
     statusLED.setMode(LED_SOLID_GREEN); statusLED.loop();
     Serial.println("  LED test done");
-  }
-
-  else if (cmd.startsWith("reset ")) {
-    int ch = cmd.substring(6).toInt() - 1;
-    if (ch >= 0 && ch < NUM_CHANNELS) {
-      limitMgr.resetCounter((uint8_t)ch);
-      Serial.printf("  Ch%d counter reset\n", ch + 1);
-    }
-  }
-
-  else if (cmd.startsWith("buzz ")) {
-    int n = cmd.substring(5).toInt();
-    if (n >= 1 && n <= 6) {
-      buzzer.ring((uint8_t)n);
-      Serial.printf("  Buzzer ringing %d beeps\n", n);
-    } else {
-      Serial.println("  Usage: buzz <N> (1-6 beeps)");
-    }
-  }
-
-  else if (cmd == "reset_name" || cmd.startsWith("reset_name ")) {
-    int ch = -1;
-    if (cmd.length() > 10) {
-      ch = cmd.substring(11).toInt() - 1;
-    }
-    if (ch >= 0 && ch < NUM_CHANNELS) {
-      nvs.clearChannelName(ch);
-      strncpy(systemData.channels[ch].name, NVSManager::defaultChannelName(ch), MAX_CHANNEL_NAME_LEN - 1);
-      systemData.channels[ch].name[MAX_CHANNEL_NAME_LEN - 1] = '\0';
-      Serial.printf("  Channel %d name reset to \"%s\"\n", ch + 1, systemData.channels[ch].name);
-    } else {
-      for (int i = 0; i < NUM_CHANNELS; i++) {
-        nvs.clearChannelName(i);
-        strncpy(systemData.channels[i].name, NVSManager::defaultChannelName(i), MAX_CHANNEL_NAME_LEN - 1);
-        systemData.channels[i].name[MAX_CHANNEL_NAME_LEN - 1] = '\0';
-      }
-      Serial.println("  All channel names reset to defaults");
-    }
-  }
-
-  else if (cmd.startsWith("inject ")) {
-    // inject <ch> <kwh> — set fake energy for testing
-    int sp1 = cmd.indexOf(' ', 7);
-    if (sp1 > 0) {
-      int ch = cmd.substring(7, sp1).toInt() - 1;
-      float kwh = cmd.substring(sp1 + 1).toFloat();
-      if (ch >= 0 && ch < NUM_CHANNELS && kwh >= 0) {
-        powerCalc.setEnergyKWh(ch, kwh);
-        if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-          systemData.channels[ch].energyKWh = kwh;
-          xSemaphoreGive(dataMutex);
-        }
-        Serial.printf("  Ch%d energy injected: %.3f kWh\n", ch + 1, kwh);
-      }
-    }
-  }
-
-  else if (cmd == "cal") {
-    Serial.println();
-    Serial.printf("  %-20s%d\n", "RMS Samples:", powerCalc.rmsSamples);
-    Serial.printf("  %-20s%.1f\n", "Voltage Cal:", powerCalc.voltageCal);
-    Serial.println("  Current Calibration (A):");
-    for (int ch = 0; ch < NUM_CHANNELS; ch++) {
-      Serial.printf("    Ch%d: %.1f", ch + 1, powerCalc.currentCal[ch]);
-      Serial.printf("  | Noise Floor: %.3f A", powerCalc.noiseFloor[ch]);
-      Serial.println();
-    }
-    Serial.println();
   }
 
   else if (cmd.startsWith("rms_samples ")) {
@@ -521,60 +410,6 @@ static void handleSerialCommand(const String &cmd) {
       }
       Serial.printf("  Voltage calibration set to %.1f\n", val);
     }
-  }
-
-  else if (cmd == "info") {
-    Serial.println();
-    Serial.printf("  %-16sESP32-S3 Electricity Counter v1.0\n", "Firmware:");
-    Serial.printf("  %-16s%s %s\n", "Built:", __DATE__, __TIME__);
-    Serial.printf("  %-16s4 MB Flash, 2 MB PSRAM\n", "Hardware:");
-    Serial.printf("  %-16s240 MHz dual-core\n", "CPU:");
-    Serial.printf("  %-16s%d\n", "Channels:", NUM_CHANNELS);
-    Serial.printf("  %-16s%d-bit, %.1fV ref\n", "ADC:", ADC_RESOLUTION, ADC_REFERENCE_V);
-    Serial.println();
-  }
-
-  else if (cmd == "help") {
-    Serial.println();
-    Serial.println("  Commands:");
-    Serial.println("    help                Show available commands");
-    Serial.println("    status              System status overview");
-    Serial.println("    ch <N>              Channel details (1-6)");
-    Serial.println("    test led            LED color sequence test");
-    Serial.println("    reset <N>           Reset counter for channel (1-6)");
-    Serial.println("    buzz <N>            Ring buzzer N beeps (1-6)");
-    Serial.println("    setwifi sta|ap|auto Set WiFi mode");
-    Serial.println("    setwifi ssid <name> Set WiFi network name");
-    Serial.println("    setwifi pass <pwd>  Set WiFi password");
-    Serial.println("    setwifi connect     Save + reboot to connect");
-    Serial.println("    wifi                Show WiFi status");
-    Serial.println("    clearwifi           Erase WiFi credentials");
-    Serial.println("    reboot              Restart the device");
-    Serial.println("    info                Firmware & hardware info");
-    Serial.println("    cal                 Show calibration values");
-    Serial.println("    rms_samples <N>     Set RMS samples (100-2000)");
-    Serial.println("    curr_cal <ch> <val> Set current calibration for channel");
-    Serial.println("    auto_zero <ch>      Auto-zero noise floor for channel");
-    Serial.println("    volt_cal <val>      Set voltage calibration");
-    Serial.println("    nvs_debug           Test NVS write/read cycle");
-    Serial.println();
-  }
-
-  else if (cmd == "wifi") {
-    String ssid, pass;
-    nvs.loadWiFi(ssid, pass);
-    uint8_t mode = nvs.loadWiFiMode();
-    const char *modeStr[] = {"AUTO", "STA", "AP"};
-    Serial.println();
-    Serial.printf("  %-16s%s\n", "Mode:", mode <= 2 ? modeStr[mode] : "?");
-    Serial.printf("  %-16s\"%s\"\n", "SSID:", ssid.c_str());
-    Serial.printf("  %-16s%s\n", "Status:",
-      wifiMgr.isConnected() ? "CONNECTED" : wifiMgr.isApMode() ? "AP MODE" : "DISCONNECTED");
-    Serial.printf("  %-16s%d dBm\n", "RSSI:", wifiMgr.getRSSI());
-    Serial.printf("  %-16s%s\n", "IP:", WiFi.localIP().toString().c_str());
-    if (wifiMgr.isApMode())
-      Serial.printf("  %-16s%s\n", "AP IP:", WiFi.softAPIP().toString().c_str());
-    Serial.println();
   }
 
   else if (cmd == "setwifi sta") {
@@ -666,7 +501,28 @@ static void handleSerialCommand(const String &cmd) {
   }
 
   else {
-    Serial.println("  Unknown. Type 'help' for commands");
+    // Everything else (status, ch, cal, info, wifi, help, buzz, inject,
+    // reset, reset_name) is handled by the shared ConsoleHandler so the serial
+    // port and the web console stay in lockstep.
+    String out;
+    consoleHandler.exec(cmd, out);
+    Serial.println();
+    Serial.print(out);
+    if (cmd == "help") {
+      Serial.println("    test led            LED color sequence test");
+      Serial.println("    rms_samples <N>     Set RMS samples (100-2000)");
+      Serial.println("    curr_cal <ch> <val> Set current calibration for channel");
+      Serial.println("    auto_zero <ch>      Auto-zero noise floor for channel");
+      Serial.println("    volt_cal <val>      Set voltage calibration");
+      Serial.println("    setwifi sta|ap|auto Set WiFi mode");
+      Serial.println("    setwifi ssid <name> Set WiFi network name");
+      Serial.println("    setwifi pass <pwd>  Set WiFi password");
+      Serial.println("    setwifi connect     Save + reboot to connect");
+      Serial.println("    clearwifi           Erase WiFi credentials");
+      Serial.println("    nvs_debug           Test NVS write/read cycle");
+      Serial.println("    reboot              Restart the device");
+    }
+    Serial.println();
   }
 }
 

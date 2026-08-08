@@ -335,3 +335,154 @@ Lint: PASS — node --check data/script.js OK; C++ compiles -Wall clean
 - .gitignore: firebase_config.h, frontend/config.js, .firebase/, build artifacts
 - README + ARCHITECTURE.md updated (no_fs partition, Firebase setup, cloud flow)
 - BLOCKED on: service-account private key -> firebase_config.h (currently placeholders, bridge inert) + dashboard flash
+
+================================================================
+2026-08-08 — Web UI Live Console Terminal (PLAN.md, 6 steps)
+Build cmd: arduino-cli compile --fqbn esp32:esp32:esp32s3:FlashSize=4M,PartitionScheme=no_fs,CDCOnBoot=cdc --warnings all
+  (arduino-cli lives at ~/apps/arduino-ide/extracted/resources/app/lib/backend/resources/arduino-cli — NOT on PATH)
+Baseline before changes: flash 1,474,717 B (72%), RAM 116,384 B (35%)
+
+Step 1 — ConsoleHandler class (src/network/console_handler.{h,cpp})
+  Status: PASS
+  Build: flash 1,478,017 B (72%), RAM 116,416 B (35%) — +3,300 B flash, +32 B RAM
+  Notes: safe subset only (status, ch, cal, info, wifi, help, buzz, inject,
+  reset, reset_name). Output via consoleAppendf() with MAX_OUTPUT=3072 cap and
+  "... output truncated" marker. consoleJsonEscape() handles " \ \n \r \t and
+  drops other control chars. Global `consoleHandler` instance (extern in .h).
+
+Step 2 — processCommand() response support (command_processor.{h,cpp})
+  Status: PASS
+  Build: PASS (same binary as step 1 measurement)
+  Notes: added `String *responseOut = nullptr` (default keeps all existing call
+  sites source-compatible). New `console` case is checked FIRST. Added
+  extractJsonString() that honours backslash escapes (so an embedded \" does
+  not terminate the scan) + jsonUnescape() for \n \t \r \" \\ \/.
+
+Step 3 — WebSocket response path (websocket_server.cpp)
+  Status: PASS
+  Build: PASS
+  Notes: handleCommand() no longer discards `client`. Response is unicast via
+  client->text() as {"type":"console","out":"<escaped>"} — NOT textAll(), so
+  other dashboards aren't spammed. lastBroadcast=0 refresh preserved.
+
+Step 4 — Firebase response path (firebase_bridge.cpp)
+  Status: PASS
+  Build: PASS
+  Notes: pollCommands() writes the response to /console/<commandKey> with
+  Firebase.RTDB.setString() on the existing `fbdo` write connection, before
+  deleting /commands/<key>. Raw text (no JSON escaping needed — RTDB stores it
+  as a string). Error path logs fbdo.errorReason().
+
+Step 5 — RTDB rules (database.rules.json)
+  Status: PASS
+  Verify: node JSON.parse after comment strip -> keys [latest, commands, ota, console]
+  Notes: /console is {".read": true, ".write": true} to mirror /commands
+  (device writes with auth, browser deletes anonymously after reading).
+
+Step 6 — Web UI (frontend/index.html, style.css, script.js)
+  Status: PASS
+  Verify: node --check frontend/script.js -> OK
+  Notes: "Device Console" panel added between System Calibration and About.
+  #consoleOutput terminal div (260px, #08090a, pre-wrap, 400-line cap,
+  auto-scroll) + prompt row + Clear button. ws.onmessage intercepts
+  data.type==='console' before updateDashboard(). Cloud mode subscribes
+  cloudDb.ref('console').on('child_added') -> print -> snap.ref.remove().
+  Command history via ArrowUp/ArrowDown. Demo mode prints a friendly refusal.
+
+Step 6b — .ino rewire
+  Status: PASS
+  Build: PASS — flash 1,478,017 B (72%), RAM 116,416 B (35%)
+  Notes: consoleHandler.begin(&nvs,&powerCalc,&systemData,&dataMutex,&buzzer,
+  &limitMgr,&wifiMgr,&otaHandler) in setup() after limitMgr.begin().
+  Removed the duplicated serial implementations of status/ch/cal/info/wifi/
+  help/buzz/inject/reset/reset_name (~230 lines); the final else-branch now
+  delegates to consoleHandler.exec() and prints the buffer, appending the
+  serial-only command list when cmd == "help". Serial-only branches kept:
+  test led, rms_samples, curr_cal, auto_zero, volt_cal, setwifi*, clearwifi,
+  nvs_debug, reboot. No .cpp is #included from the .ino.
+
+Host-side unit check (JSON round-trip)
+  Status: PASS
+  Notes: g++ harness for extractJsonString/jsonUnescape/jsonEscape — 5/5 extract
+  cases pass incl. embedded \" and \\; escaped output contains no raw control
+  chars and round-trips through node JSON.parse().
+
+Only pre-existing warnings remain (setup() banner %d vs uint32_t, untouched).
+
+---------------- TESTER REPORT (2026-08-08) ----------------
+(The `tester` subagent returned an empty result; verification was re-run
+directly. Note: the subagent also rewrote .workflow/PLAN.md, RESEARCH.md and
+active.json — those edits were NOT requested and should be reviewed/reverted
+before commit; no source or frontend file was touched by it.)
+
+1. Compile gate                                          PASS
+   --clean rebuild, fqbn esp32:esp32:esp32s3:FlashSize=4M,PartitionScheme=no_fs,CDCOnBoot=cdc
+   Flash 1,478,001 B (72% of 2,031,616) | RAM 116,416 B (35% of 327,680)
+   Delta vs baseline: +3,284 B flash, +32 B RAM
+   NEW warnings in console_handler / command_processor / websocket_server /
+   firebase_bridge: 0. Only the pre-existing setup() banner "%d vs uint32_t"
+   warning remains (esp32-electricity-counter.ino:264) — not a regression.
+
+2. JS syntax — node --check frontend/script.js            PASS
+
+3. RTDB rules validity                                    PASS
+   JSON.parse after comment strip -> [latest, commands, ota, console];
+   console = {".read":true,".write":true}
+
+4. ConsoleHandler dispatch logic (host g++ harness, 24 cases)   PASS 24/24
+   - branch ORDER verified: reset_name (console_handler.cpp:234) precedes
+     reset (console_handler.cpp:262) — "reset_name 3" cannot be swallowed by
+     the "reset " branch. CORRECT.
+   - ch 1 -> index 0, ch 6 -> index 5; ch 0 / ch 7 / ch abc -> usage message
+   - buzz 0 and buzz 9 rejected; buzz 3 accepted
+   - inject with a missing 2nd arg, out-of-range ch, and negative kwh -> usage
+   - reset 0 / reset 7 rejected; reset_name 9 falls back to "reset all"
+   - empty / whitespace-only line produces zero output (no stray frame)
+   - MAX_OUTPUT: 400 filler lines -> capped at 3,094 B with
+     "... output truncated" marker; further consoleAppendf() calls are no-ops
+     (3,094 -> 3,094), so truncation genuinely terminates.
+
+5. JSON escaping round-trip (g++ + node)                  PASS
+   extractJsonString/jsonUnescape: 5/5 incl. embedded \" and \\ and empty line.
+   consoleJsonEscape output containing " \ \n \t embedded in
+   {"type":"console","out":"..."} parses cleanly with node JSON.parse.
+   No raw control characters survive escaping.
+
+6. Frontend DOM (headless Chrome harness, 18 assertions)  PASS 18/18
+   T1  #consolePanel exists / T1b inside #page-settings / T1c output+input
+   T2  showPage('settings') activates the page
+   T3  echo line "> status" rendered; input cleared;
+       payload == {"cmd":"console","line":"status"}
+   T4  multiline output rendered incl. quotes and tabs; trailing blank trimmed
+       (4 nodes for 3 output lines + 1 echo)
+   T5  ArrowUp recalls "status"; ArrowDown clears
+   T6  400-line cap holds exactly at CONSOLE_MAX_LINES
+   T7  clearConsole() empties the node
+   T8  Enter key sends {"cmd":"console","line":"ch 1"}
+   T9  whitespace-only input is a no-op (nothing sent)
+   T10 demo mode prints the refusal and sends nothing
+   T11 XSS: "<img src=x onerror=...>" renders as TEXT, no element created
+       (textContent used, never innerHTML)
+   T12 a {"type":"console"} frame short-circuits before updateDashboard()
+   Caveat: config.js and the gstatic firebase CDN scripts were stubbed out
+   (offline). The cloud /console child_added path is therefore verified by code
+   review only — it needs a live RTDB round-trip to confirm end-to-end.
+
+7. Regression                                             PASS
+   - processCommand() still matches all 14 pre-existing commands (set_name,
+     reset_counter, test_inject, set_voltage_cal, set_current_cal,
+     set_monthly_kwh, set_noise_floor, set_rms_samples, set_ntfy_topic,
+     set_ntfy_enabled, reset_channel_names, reset_ch_to_default,
+     reset_nvs_defaults, test_force_rollover) plus the new `console`.
+   - The default `responseOut = nullptr` keeps every existing call site
+     source-compatible.
+   - .ino serial-only branches all precede the delegate else at line 508:
+     test led(349), rms_samples(359), curr_cal(375), auto_zero(393),
+     volt_cal(401), setwifi sta/ap/auto/ssid/pass/connect|save(415-448),
+     clearwifi(461), nvs_debug(468), reboot(496). None can fall through to
+     ConsoleHandler.
+
+OUTSTANDING / NOT VERIFIED (needs hardware or a live cloud round-trip):
+  - WebSocket unicast client->text() against a real AsyncWebSocket client
+  - Firebase /console/<key> setString + browser child_added + delete cycle
+  - buzz / inject / reset side effects on real hardware

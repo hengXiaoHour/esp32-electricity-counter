@@ -1,8 +1,8 @@
 {
-  "task": "Remove all relay features + add buzzer alert on pin 13",
+  "task": "Web UI Live Console Terminal",
   "phase": "done",
   "research_file": ".workflow/RESEARCH.md",
   "plan_file": ".workflow/PLAN.md",
-  "started_at": "2026-08-05T00:00:00Z",
-  "notes": "User-confirmed: single 100% limit threshold (no 80% warning), active buzzer on pin 13, beeps = channel number, relays physically detached. Firmware 1.1.0 -> 1.2.0. reset_relay renamed reset_counter. Builder: compile PASS (1182473 B flash / 112168 B RAM), node --check PASS, all grep checks clean. Tester: ALL PASS (22/22 incl. test_cal_sync.py). Cleaner: artifacts removed, http.server killed. NOT committed. Docs (README/ARCHITECTURE/AGENTS) pending doc-sync."
+  "started_at": "2026-08-08T00:00:00Z",
+  "notes": "Console terminal in Settings tab. ConsoleHandler class extracted from serial handler. processCommand() gets responseOut param. WS unicast + Firebase /console/ node. Deployed to https://esp32-electricity-counter.web.app. Build PASS (1,478,001 B flash / 116,416 B RAM). Tests 42/42. NOT committed."
 }

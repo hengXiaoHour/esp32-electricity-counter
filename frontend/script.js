@@ -11,6 +11,10 @@ let chartBuf = {};
 let connMode = 'local';            // 'local' | 'cloud' | 'demo'
 let cloudDb = null;
 let cloudLatestRef = null;
+let cloudConsoleRef = null;
+let consoleHistory = [];
+let consoleHistIdx = -1;
+const CONSOLE_MAX_LINES = 400;
 let lastDataTs = 0;
 let cloudWatchdog = null;
 const CLOUD_STALE_MS = 10000;
@@ -132,6 +136,7 @@ function handleDisconnect() {
   if (demoInterval) clearInterval(demoInterval);
   if (cloudWatchdog) clearInterval(cloudWatchdog);
   if (cloudLatestRef && cloudDb) { cloudLatestRef.off(); cloudLatestRef = null; }
+  if (cloudConsoleRef && cloudDb) { cloudConsoleRef.off(); cloudConsoleRef = null; }
   if (ws) {
     ws.close();
     ws = null;
@@ -159,6 +164,14 @@ function connectCloud() {
       if (!val) return;
       lastDataTs = Date.now();
       updateDashboard(normalizeSnapshot(val));
+    });
+
+    // Console responses land under /console/<commandKey>. Print, then delete.
+    cloudConsoleRef = cloudDb.ref('console');
+    cloudConsoleRef.on('child_added', (snap) => {
+      const text = snap.val();
+      if (typeof text === 'string' && text.length) appendConsoleOutput(text);
+      snap.ref.remove().catch(() => {});
     });
 
     const ipEl = document.getElementById('connectedIp');
@@ -263,6 +276,10 @@ function connectWS(ip) {
   ws.onmessage = (e) => {
     try {
       const data = JSON.parse(e.data);
+      if (data && data.type === 'console') {
+        appendConsoleOutput(data.out || '');
+        return;
+      }
       updateDashboard(data);
     } catch (err) { console.error('JSON Parse error', err); }
   };
@@ -854,6 +871,67 @@ function handleResetNvs() {
       delete btn.dataset.confirm;
       btn.textContent = '\u21ba Reset NVS to Defaults';
     }, 3000);
+  }
+}
+
+// ============ Device Console ============
+function appendConsoleLine(text, cls) {
+  const out = document.getElementById('consoleOutput');
+  if (!out) return;
+  const line = document.createElement('span');
+  line.className = 'console-line' + (cls ? ' ' + cls : '');
+  line.textContent = text;
+  out.appendChild(line);
+  while (out.childElementCount > CONSOLE_MAX_LINES) out.removeChild(out.firstChild);
+  out.scrollTop = out.scrollHeight;
+}
+
+function appendConsoleOutput(text) {
+  if (typeof text !== 'string') return;
+  const lines = text.replace(/\n+$/, '').split('\n');
+  lines.forEach(l => appendConsoleLine(l));
+}
+
+function clearConsole() {
+  const out = document.getElementById('consoleOutput');
+  if (out) out.innerHTML = '';
+}
+
+function sendConsoleCommand() {
+  const inp = document.getElementById('consoleInput');
+  if (!inp) return;
+  const line = inp.value.trim();
+  if (!line) return;
+  inp.value = '';
+  consoleHistory.push(line);
+  if (consoleHistory.length > 50) consoleHistory.shift();
+  consoleHistIdx = consoleHistory.length;
+
+  appendConsoleLine('> ' + line, 'echo');
+
+  if (connMode === 'demo') {
+    appendConsoleLine('  Console unavailable in demo mode.', 'err');
+    return;
+  }
+  sendCommand({ cmd: 'console', line: line }).catch(() => {
+    appendConsoleLine('  Not connected — command not sent.', 'err');
+  });
+}
+
+function onConsoleKey(ev) {
+  if (ev.key === 'Enter') {
+    ev.preventDefault();
+    sendConsoleCommand();
+    return;
+  }
+  if (ev.key === 'ArrowUp' || ev.key === 'ArrowDown') {
+    if (!consoleHistory.length) return;
+    ev.preventDefault();
+    if (ev.key === 'ArrowUp') consoleHistIdx = Math.max(0, consoleHistIdx - 1);
+    else consoleHistIdx = Math.min(consoleHistory.length, consoleHistIdx + 1);
+    const inp = ev.target;
+    inp.value = consoleHistIdx < consoleHistory.length ? consoleHistory[consoleHistIdx] : '';
+    setTimeout(() => inp.setSelectionRange(inp.value.length, inp.value.length), 0);
   }
 }
 
