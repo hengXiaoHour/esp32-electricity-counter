@@ -391,7 +391,14 @@ function updateDashboard(data) {
   }
 
   const lmEl = document.getElementById('lastMonth');
-  if (lmEl && typeof data.lastMonth === 'number') lmEl.textContent = data.lastMonth;
+  if (lmEl && typeof data.lastMonth === 'number') {
+    const ym = String(data.lastMonth);
+    if (ym.length === 6) {
+      lmEl.textContent = ym.slice(0, 4) + '/' + ym.slice(4);
+    } else {
+      lmEl.textContent = data.lastMonth;
+    }
+  }
 
   // System status LED
   const led = document.getElementById('sysLed');
