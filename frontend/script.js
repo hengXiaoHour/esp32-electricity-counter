@@ -10,6 +10,7 @@ let lastToastEventKey = '';
 let chartBuf = {};
 let connMode = 'local';            // 'local' | 'cloud' | 'demo'
 let cloudDb = null;
+let selectedDeviceId = null;       // board picked in the Cloud dropdown
 let cloudLatestRef = null;
 let cloudConsoleRef = null;
 let consoleHistory = [];
@@ -86,6 +87,28 @@ function promptInstall() {
   if (isStandalone()) hideInstallRow();
   else showInstallRow();
 
+  // Prefer a board the user picked before; fall back to config, then the
+  // 192.168.100.3 board (esp-858428).
+  try {
+    const savedDev = localStorage.getItem('esp32monitor_device');
+    selectedDeviceId = savedDev || (window.FB_CONFIG && window.FB_CONFIG.deviceId) || 'esp-858428';
+  } catch (e) { /* localStorage unavailable */ }
+  loadDevicePicker();
+
+  const picker = document.getElementById('devicePicker');
+  if (picker) {
+    picker.addEventListener('change', () => {
+      selectedDeviceId = picker.value || null;
+      try { localStorage.setItem('esp32monitor_device', selectedDeviceId || ''); } catch (e) {}
+      // Rebind live cloud refs to the newly selected board, if connected.
+      if (connMode === 'cloud' && cloudDb) {
+        if (cloudLatestRef) cloudLatestRef.off();
+        if (cloudConsoleRef) cloudConsoleRef.off();
+        connectCloud();
+      }
+    });
+  }
+
   // Close modal on Escape key
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeEditModal();
@@ -146,6 +169,66 @@ function handleDisconnect() {
 }
 
 // ============ Cloud (Firebase RTDB) mode ============
+
+// Board-scoped path: every node lives under /devices/<chip-unique-id>/.
+// The device picks its own id from its efuse MAC; the dashboard just needs
+// to know which board it is watching (see loadDevicePicker above).
+function cloudDevPath() {
+  return 'devices/' + currentDeviceId();
+}
+
+function currentDeviceId() {
+  if (selectedDeviceId) return selectedDeviceId;
+  if (window.FB_CONFIG && window.FB_CONFIG.deviceId) return window.FB_CONFIG.deviceId;
+  return 'esp-000000';
+}
+
+// Populate the board dropdown from RTDB /devices. Filters to boards that
+// actually pushed a /latest snapshot (online). Keeps the user-selected or
+// config-default board selected when present.
+function loadDevicePicker() {
+  const sel = document.getElementById('devicePicker');
+  if (!sel) return;
+  try {
+    if (!window.firebase || !window.FB_CONFIG || !window.FB_CONFIG.databaseURL) return;
+    if (!cloudDb) {
+      if (!firebase.apps.length) firebase.initializeApp({ databaseURL: window.FB_CONFIG.databaseURL });
+      cloudDb = firebase.database();
+    }
+    cloudDb.ref('devices').once('value').then((snap) => {
+      const val = snap.val() || {};
+      const cur = currentDeviceId();
+      sel.innerHTML = '';
+      let first = null;
+      Object.keys(val).forEach((id) => {
+        const dev = val[id];
+        if (!dev || !dev.latest) return; // not live on cloud yet
+        if (!first) first = id;
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = id;
+        sel.appendChild(opt);
+      });
+      const target = selectionMatches(cur, val) ? cur : (first || '');
+      if (target) sel.value = target;
+      selectedDeviceId = sel.value || null;
+      try { if (selectedDeviceId) localStorage.setItem('esp32monitor_device', selectedDeviceId); } catch (e) {}
+      if (sel.options.length === 0) {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = 'no boards online';
+        sel.appendChild(opt);
+      }
+    }).catch(() => {});
+  } catch (e) {}
+}
+
+function selectionMatches(id, val) {
+  if (!id) return false;
+  const dev = val[id];
+  return !!(dev && dev.latest);
+}
+
 function connectCloud() {
   setConnectStatus('Connecting to Firebase...', 'connecting');
   try {
@@ -153,12 +236,12 @@ function connectCloud() {
       throw new Error('config.js missing \u2014 create it from config.example.js');
     }
     if (!cloudDb) {
-      firebase.initializeApp({ databaseURL: window.FB_CONFIG.databaseURL });
+      if (!firebase.apps.length) firebase.initializeApp({ databaseURL: window.FB_CONFIG.databaseURL });
       cloudDb = firebase.database();
     }
     connMode = 'cloud';
     lastDataTs = Date.now();
-    const devPath = 'devices/' + (window.FB_CONFIG.deviceId || 'esp-000000');
+    const devPath = cloudDevPath();
     cloudLatestRef = cloudDb.ref(devPath + '/latest');
     cloudLatestRef.on('value', (snap) => {
       const val = snap.val();
@@ -177,7 +260,7 @@ function connectCloud() {
     });
 
     const ipEl = document.getElementById('connectedIp');
-    if (ipEl) ipEl.textContent = 'Firebase RTDB';
+    if (ipEl) ipEl.textContent = 'Firebase RTDB / ' + currentDeviceId();
     document.getElementById('connStatus').textContent = 'Connected';
     const cs2 = document.getElementById('connStatus2');
     if (cs2) cs2.textContent = 'Connected';
@@ -241,7 +324,7 @@ function sendCommand(obj) {
     return Promise.resolve();
   }
   if (connMode === 'cloud' && cloudDb) {
-    const devPath = 'devices/' + (window.FB_CONFIG.deviceId || 'esp-000000');
+    const devPath = cloudDevPath();
     return cloudDb.ref(devPath + '/commands').push(obj).then(() => undefined);
   }
   if (connMode === 'local' && ws && ws.readyState === WebSocket.OPEN) {

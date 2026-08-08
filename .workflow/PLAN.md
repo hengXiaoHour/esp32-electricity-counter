@@ -1,60 +1,44 @@
-# Plan: Switch Cloud OTA to Firebase-ESP-Client built-in RTDB downloadOTA
+# Plan: Board Picker Dropdown for Cloud Dashboard
 
-## Context
-Hand-rolled `WiFiClientSecure + HTTPClient` download from Firebase Hosting keeps
-failing (ENOMEM / TLS hang with ~96 KB free heap). The installed library
-(v4.4.17) has a proven, chunked, WDT-safe `Firebase.RTDB.downloadOTA()` that
-streams a base64 firmware blob from RTDB over the existing fbdo TLS session.
-Storage bucket is NOT enabled in this project, so RTDB (base64) is the delivery path.
+## Goal
+Dashboard lists live boards from RTDB `/devices/*` in a dropdown, letting the
+user pick which board's live data + console they watch. No config.js editing.
+Default selection: the 192.168.100.3 board (`esp-858428`).
 
 ## Files to Modify
-
-- `src/network/cloud_ota.{h,cpp}` — rewrite download path to
-  `Firebase.RTDB.downloadOTA`; keep state/progress/md5 API surface.
-- `src/network/firebase_bridge.cpp` — `handleOtaRequest()` must NOT call
-  `stopWiFiClient()`; trigger the new blocking download instead.
-- `tools/ota_upload.py` — write base64 firmware to RTDB `/devices/<id>/firmware` with
-  the `file,base64,` signature; keep the `/devices/<id>/ota` trigger; drop Hosting publish.
-- `database.rules.json` — allow read of `firmware` node (public) so device can read;
-  writes stay `auth != null` (service account / script).
-- Possibly `.ino` — OTA driver comment stays valid (loop() drives nothing now);
-  verify firebaseTask handles the blocking call.
+- `frontend/index.html` — add `<select id="devicePicker">` in the Cloud connect row
+- `frontend/style.css` — style the select to match `.connect-row input`
+- `frontend/script.js` — populate picker from RTDB `/devices`, track selection,
+  use it in `connectCloud()` + `sendCommand()`, rebind on change while in cloud mode
 
 ## Implementation Steps
-1. `cloud_ota.{h,cpp}`:
-   - Add `#include <Firebase_ESP_Client.h>`, keep `Update.h` (library uses it).
-   - Add `bool FirebaseBridge`-owned `downloadRTDB(FirebaseData &fbdo,
-     const String &fwPath, const String &md5)` that calls
-     `Firebase.RTDB.downloadOTA(&fb, fwPath, cb)` blocking with a static callback.
-   - Callback maps status → progress/state strings (keep `getState()`/`getProgress()`
-     working for WebSocket/WS dashboard + web console); on complete store appliedMd5.
-   - Remove HTTPClient / WiFiClientSecure idling code (keep Update for library? library
-     drives Update; we don't call it—remove our Update.use too).
-   - Keep `trigger(version,url,md5)` for internal state.
-   - Verification: compile.
-2. `firebase_bridge.cpp`:
-   - In `handleOtaRequest()`: build fw path `/devices/<id>/firmware`, call
-     `cloudOta.startRefresh...` → actually call `cloudOta.download_rtdb(fbdo,
-     rtdbPath("firmware"), md5)` directly (blocking in firebaseTask). Remove
-     `fbdo.stopWiFiClient()`/`fbCmd.stopWiFiClient()`.
-   - Verification: compile; smoke on serial.
-3. `tools/ota_upload.py`:
-   - Add `publish_firmware_to_rtdb(db, device, bin, token)`: read bin bytes, base64,
-     compute pad sig (`file/File/fIle`), PUT `dev_path(device,"firmware.json")` with
-     JSON string `'"<sig>"...'`; assert HTTP 200.
-   - Keep writing `/devices/<id>/ota` `{version,url,md5,ts}` trigger.
-   - Remove `publish_to_hosting` call path (or stub) — keep URL field optional.
-   - Verification: `python3 tools/ota_upload.py --device esp-a172e0`.
-4. `database.rules.json`:
-   - Add `"firmware": { ".read": true, ".write": "auth != null" }`.
-   - Verify deploy via PUT `.settings/rules.json`.
-5. Build & flash to `esp-a172e0`, then TEST: publish 2.4.21, polka boot; check serial.
+1. **index.html**: add a device `<select>` above the Cloud/Demo buttons with
+   id `devicePicker` and a hint "Board to watch in Cloud mode".
+2. **style.css**: `.connect-row select` styled like input (mono font, border).
+3. **script.js**:
+   - Add `let selectedDeviceId = null;` and `devicePickerEl` helper
+   - `loadDevicePicker()`: lazy-init firebase app (same as connectCloud),
+     `once('value')` on `/devices`, list keys that have a `latest` node,
+     fill `<option>esp.xxx</option>`, pre-select default
+     (`localStorage esp32monitor_device` → `FB_CONFIG.deviceId` →
+     `esp-858428`), store `cloudDb` for reuse.
+   - `currentDeviceId()`: returns selected + fallback chain.
+   - `cloudDevPath()`: `'devices/' + currentDeviceId()`.
+   - `connectCloud()`: use `cloudDevPath()`; show device id in `connectedIp`.
+   - `sendCommand()`: use `cloudDevPath()`.
+   - on `devicePicker` change: persist to localStorage, and if
+     `connMode === 'cloud'` detach old refs + rebind (call `bindCloud()`,
+     extracted from `connectCloud`).
+   - Persist selection so it survives reloads (replaces editing config.js).
+4. Deploy Hosting + verify `?` served page contains dropdown.
 
 ## Test Strategy
-- Unit: none (embedded). Step-by-step compile then live flash.
-- Live: upload via `ota_upload.py --device esp-a172e0`, watch `/devices/esp-a172e0/ota`,
-  confirm device rebooted to new FW (`/devices/esp-a172e0/latest`).
+- Deploy hosting, open https://esp32-electricity-counter.web.app
+- Expect both `esp-858428` and `esp-a172e0` options, default `esp-858428`
+- Click Cloud → shows data from esp-4011 board; switch dropdown → board data
+  flips without reload; commands routed to newly selected board.
+- Demo/Local modes unaffected.
 
 ## Rollback
-- Keep Hosting publish (just don't delete). If RTDB OTA fails, revert to Hosting path
-  (git checkout cloud_ota.*).
+- `git checkout frontend/index.html frontend/style.css frontend/script.js`
+- Redeploy hosting.

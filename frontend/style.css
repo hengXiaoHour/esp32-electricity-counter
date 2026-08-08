@@ -52,6 +52,16 @@ body {
   outline: none; transition: border-color 0.15s;
 }
 .connect-row input:focus { border-color: var(--trip); }
+.connect-row select {
+  flex: 1; padding: 11px 12px; background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text); font-family: var(--font-mono); font-size: 0.9rem;
+  outline: none; transition: border-color 0.15s; cursor: pointer;
+  appearance: none; -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='m0 0 L5 6 L10 0 z' fill='%23888'/></svg>");
+  background-repeat: no-repeat; background-position: right 12px center;
+}
+.connect-row select:focus { border-color: var(--trip); }
+.connect-pick-label { font-size: 0.72rem; color: var(--text-2); font-family: var(--font-mono); margin-bottom: -8px; }
 .btn-primary {
   padding: 11px 18px; border: none; border-radius: 6px; background: var(--trip); color: #fff;
   font-weight: 700; font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase;
