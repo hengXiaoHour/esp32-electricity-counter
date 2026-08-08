@@ -1,5 +1,6 @@
 #include "firebase_bridge.h"
 #include "firebase_config.h"
+#include "cloud_ota.h"
 #include "command_processor.h"
 #include "../core/limit_manager.h"
 #include "../utils/nvs_manager.h"
@@ -123,6 +124,26 @@ bool FirebaseBridge::configured() const {
   return strlen(FIREBASE_DB_URL) > 0 &&
          strlen(FIREBASE_CLIENT_EMAIL) > 0 &&
          strlen(FIREBASE_PRIVATE_KEY) > 0;
+}
+
+bool FirebaseBridge::checkOtaTrigger() {
+  if (!started || !Firebase.ready()) return false;
+
+  FirebaseJson data;
+  if (!Firebase.RTDB.getJSON(&fbdo, "/ota", &data)) return false;
+
+  FirebaseJsonData jd;
+  String version, url, md5;
+  if (data.get(jd, "version")) version = jd.to<String>();
+  if (data.get(jd, "url")) url = jd.to<String>();
+  if (data.get(jd, "md5")) md5 = jd.to<String>();
+
+  if (version.isEmpty() || url.isEmpty() || md5.isEmpty()) return false;
+  if (md5 == cloudOta.getAppliedMd5()) return false;
+
+  Serial.printf("  [FB] OTA trigger: %s -> %s\n", FIRMWARE_VERSION, version.c_str());
+  cloudOta.trigger(version, url, md5);
+  return true;
 }
 
 void FirebaseBridge::start() {

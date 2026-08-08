@@ -5,9 +5,10 @@
 #include "src/network/wifi_manager.h"
 #include "src/network/websocket_server.h"
 #include "src/network/firebase_bridge.h"
+#include "src/network/cloud_ota.h"
 #include "src/network/ota_handler.h"
 #include "src/network/ntfy_notifier.h"
-#include "src/ui/status_led.h"
+#include "src/ui/status_led.h"  
 #include "src/ui/buzzer.h"
 #include "src/utils/nvs_manager.h"
 
@@ -168,6 +169,7 @@ void firebaseTask(void *pvParameters) {
   while (true) {
     fbBridge.loop();
     fbBridge.pushLatest();
+    fbBridge.checkOtaTrigger();  // detects new firmware in RTDB /ota, triggers cloudOta
     vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(50));
   }
 }
@@ -310,6 +312,7 @@ void setup() {
 
   wsServer.begin(nvs, &systemData, &dataMutex, &powerCalc, &limitMgr);
   fbBridge.begin(nvs, &systemData, &dataMutex, &powerCalc, &limitMgr);
+  cloudOta.begin();
 
   wifiMgr.begin(nvs);
   statusLED.setMode(LED_SOLID_RED);
@@ -328,7 +331,7 @@ void setup() {
   // HTTPS/TLS work must never delay the 150 ms broadcast loop on Core 0.
   xTaskCreatePinnedToCore(networkTask, "network", 8192, NULL, 2, NULL, 0);
   xTaskCreatePinnedToCore(sensorTask, "sensor", 8192, NULL, 2, NULL, 1);
-  xTaskCreatePinnedToCore(firebaseTask, "firebase", 8192, NULL, 1, NULL, 0);
+  xTaskCreatePinnedToCore(firebaseTask, "firebase", 32768, NULL, 1, NULL, 0);
 
   Serial.println();
 }
@@ -668,5 +671,10 @@ static void handleSerialCommand(const String &cmd) {
 }
 
 void loop() {
+  // Run OTA download in the loopTask context (Core 1). This task is NOT
+  // registered with the task watchdog, so long downloads don't trigger WDT
+  // resets. The IDLE task on Core 0 is fed by the firebaseTask's regular
+  // vTaskDelayUntil yields, so the WDT stays happy on both cores.
+  cloudOta.loop();
   vTaskDelay(pdMS_TO_TICKS(100));
 }

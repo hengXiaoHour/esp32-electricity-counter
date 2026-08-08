@@ -42,7 +42,7 @@
 // ==============================
 // Firmware Version
 // ==============================
-#define FIRMWARE_VERSION "1.2.0"
+#define FIRMWARE_VERSION "2.4.18"
 
 // ==============================
 // Default Calibration Constants

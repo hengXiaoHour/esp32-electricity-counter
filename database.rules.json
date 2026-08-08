@@ -3,8 +3,10 @@
      latest/   : device writes the live snapshot (via Firebase Auth service account),
                  anyone may read (public dashboard).
      commands/ : anyone may push commands (fire-and-forget queue). The device
-                 reads, executes, and deletes them. Writes are limited to small
-                 JSON command objects. */
+                 reads, executes, and deletes them.
+     ota/      : release metadata + signed firmware URL, written only by an
+                 authenticated owner (the upload script / service account).
+                 The device reads it and writes its progress under /ota/status. */
   "rules": {
     "latest": {
       ".read": true,
@@ -13,6 +15,10 @@
     "commands": {
       ".read": true,
       ".write": true
+    },
+    "ota": {
+      ".read": true,
+      ".write": "auth != null"
     }
   }
 }

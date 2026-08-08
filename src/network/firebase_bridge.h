@@ -14,6 +14,7 @@
 class LimitManager;
 class NVSManager;
 class SystemData;
+class CloudOTA;
 
 // Publishes the live system snapshot to Firebase Realtime Database (`/latest`)
 // every FIREBASE_PUSH_INTERVAL_MS and polls the `/commands` node for queued
@@ -45,6 +46,11 @@ public:
   void pushLatest();
 
   bool configured() const;
+
+  // Check RTDB /ota node for a new firmware version. If found (and not
+  // already applied), triggers the CloudOTA download. Returns true if
+  // an OTA was triggered. Called from firebaseTask.
+  bool checkOtaTrigger();
 
 private:
   NVSManager *nvs;
