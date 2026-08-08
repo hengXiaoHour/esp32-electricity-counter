@@ -54,3 +54,28 @@ Deliver firmware updates through Firebase (Cloud RTDB + Firebase Hosting) so the
 - FirebaseClient OTA discussion: https://github.com/mobizt/FirebaseClient/discussions/259
 - WDT + OTA issue: https://github.com/espressif/arduino-esp32/issues/3959
 - FirebaseClient has built-in `downloadOTA()` in newer versions (4.4.17 has it) — might handle WDT internally
+
+## Firebase Sync Latency — Regression & Fix (2026-08-08)
+
+### Symptom
+Cloud dashboard sync slowed/stalled on live boards after the cloud-OTA rework.
+
+### Root cause
+A **stale RTDB OTA trigger** (`/devices/<id>/ota` left from the OTA experiment) matched nothing in NVS `appliedMd5` on boot → `checkOtaTrigger()` fired `handleOtaRequest()` → the dead `downloadOTA` failed (code -1000) → `paused=true` set → all `/latest` pushes halted. The poll cadence itself was a latent bug, but the trigger was the active cause.
+
+### Latent bug fixed too
+`checkOtaTrigger()` originally ran **every 50 ms loop on `fbdo`** (the same TLS connection as `/latest` pushes) and did a blocking `getJSON` on `/ota`. A missing node can return an error and tear down the shared TLS session → fresh ~1.3-1.9 s handshake on every push. This was the exact regression pattern fixed earlier in 784531e (empty `/commands` poll sharing the push connection).
+
+### Fix
+- Give OTA checking its **own `FirebaseData fbOta` connection** + 4 KB buffers (fbdo/fbCmd/fbOta are all separate, so no empty-read teardown of the publish session).
+- Throttle the poll to 10 s (`FIREBASE_OTA_CHECK_MS`), not every loop.
+- Treat a `null`/empty `/ota` node as **normal** (mirror `pollCommands()` pattern) — no teardown.
+- Deleted the stale `/devices/esp-a172e0/ota` + `/firmware` nodes via admin SDK (helpers in `tools/ota_upload.py`).
+
+### Verify
+- Serial: board boots `OTA OK`, bridge starts, no download attempt, no pauses.
+- RTDB `epoch` in `/devices/<id>/latest` advances every ~1 s on both boards.
+- **Ops**: the Arduino serial-port service holds `/dev/ttyACM0` and blocks `arduino-cli upload` — kill that PID before flashing.
+
+### Lesson
+Any per-loop RTDB read that can fail (missing node) must go on a dedicated connection and be throttled, or it silently destroys the push path. And stale cloud OTA triggers are a toilet trap: keep them deleted in RTDB whenever firmware is delivered by other means.
