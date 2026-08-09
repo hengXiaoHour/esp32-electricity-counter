@@ -65,6 +65,11 @@
 #define DEFAULT_MONTHLY_KWH_LIMIT 48.0f
 
 // ==============================
+// Auto-Recovery (limit trip)
+// ==============================
+#define AUTO_RECOVER_PF 0.1f
+
+// ==============================
 // Timing Constants (milliseconds)
 // ==============================
 #define ENERGY_UPDATE_INTERVAL_MS  1000

@@ -45,6 +45,13 @@ void LimitManager::checkLimits() {
           ntfy->notify("Electricity limit reached", buf);
         }
       }
+      if (powerCalc->getPowerFactor(ch) < AUTO_RECOVER_PF) {
+        sysData->channels[ch].status = STATUS_OK;
+        if (tripNotified[ch]) {
+          tripNotified[ch] = false;
+          logEvent(ch, STATUS_OK, "Auto-recovered — load removed", energy);
+        }
+      }
     } else {
       sysData->channels[ch].status = STATUS_OK;
     }

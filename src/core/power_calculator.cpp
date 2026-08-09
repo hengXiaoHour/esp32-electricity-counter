@@ -118,7 +118,7 @@ void PowerCalculator::computeAll() {
       powerFactor[ch] = activePower[ch] / apparentPower[ch];
       if (powerFactor[ch] > 1.0f) powerFactor[ch] = 1.0f;
     } else {
-      powerFactor[ch] = 1.0f;
+      powerFactor[ch] = 0.0f;
     }
   }
 }
