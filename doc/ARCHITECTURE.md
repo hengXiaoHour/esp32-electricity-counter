@@ -51,7 +51,7 @@ esp32-electricity-counter/
 │   │   ├── firebase_config.example.h# Committed credential template
 │   │   ├── ntfy_notifier.h          # ntfy.sh push notifications (WiFiClientSecure POST)
 │   │   ├── ntfy_notifier.cpp
-│   │   ├── ota_handler.h            # ArduinoOTA setup
+│   │   ├── ota_handler.h            # ArduinoOTA (local WiFi OTA from Arduino IDE)
 │   │   └── ota_handler.cpp
 │   ├── ui/
 │   │   ├── status_led.h             # WS2812 with R/G channel swap
@@ -77,8 +77,8 @@ esp32-electricity-counter/
 │   ├── PLAN.md
 │   └── VERIFICATION.log
 │
-└── scripts/                         # Utility scripts
-     └── deploy.py
+└── tools/                          # Utility scripts
+     └── hosting_deploy.py
 ```
 
 ## Conventions
@@ -107,8 +107,7 @@ esp32-electricity-counter/
 - Dashboard (any browser) reads `/latest` and pushes commands to `/commands`.
 - Device polls `/commands` every 1 s, executes each queued command via the shared `processCommand()`, and deletes it.
 - Same JSON schema (`buildSystemJson`) is used for both WebSocket broadcasts and the `/latest` RTDB snapshot.
-- **Three dedicated FirebaseData connections (`fbdo`, `fbCmd`, `fbOta`)** — one TLS session each. A failing/empty GET on a shared connection tears down that TLS session and forces a ~1.3-1.9 s handshake on every push, so empty reads must never share the publish connection. The OTA trigger poll (`checkOtaTrigger`) reads `/devices/<id>/ota` on its own `fbOta` connection, throttled to 10 s (`FIREBASE_OTA_CHECK_MS`), and treats a missing (`null`) node as normal (no teardown) — the same pattern as the empty `/commands` poll.
-- Cloud OTA via RTDB firmware download is a **dead end** (`downloadOTA` fails with TLS code -1000 on device). The `/ota` trigger poll is kept only as a cheap trigger check; real firmware delivery is via USB/`tools/ota_upload.py`. A stale `/ota` node left in RTDB makes the board attempt the dead download, fail, and set `paused=true`, which halts all `/latest` pushes (the 2026-08-08 latency regression). Clear stale triggers from RTDB when debugging sync stalls.
+- **Two dedicated FirebaseData connections (`fbdo`, `fbCmd`)** — one TLS session each. A failing/empty GET on a shared connection tears down that TLS session and forces a ~1.3-1.9 s handshake on every push, so empty reads must never share the publish connection. The `/commands` poll treats a missing (`null`) node as normal (no teardown).
 
 ## Lock Enforcement
 

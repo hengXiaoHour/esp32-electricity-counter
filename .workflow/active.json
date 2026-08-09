@@ -1,8 +1,5 @@
 {
-  "task": "Web UI Live Console Terminal",
-  "phase": "done",
-  "research_file": ".workflow/RESEARCH.md",
-  "plan_file": ".workflow/PLAN.md",
-  "started_at": "2026-08-08T00:00:00Z",
-  "notes": "Console terminal in Settings tab. ConsoleHandler class extracted from serial handler. processCommand() gets responseOut param. WS unicast + Firebase /console/ node. Deployed to https://esp32-electricity-counter.web.app. Build PASS (1,478,001 B flash / 116,416 B RAM). Tests 42/42. NOT committed."
+  "task": "none",
+  "phase": "idle",
+  "notes": "Cloud OTA removed. Board on clean v2.0.0. Local ArduinoOTA only."
 }

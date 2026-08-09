@@ -26,7 +26,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
-from ota_upload import get_access_token, rest  # noqa: E402
+from firebase_rest import get_access_token, rest  # noqa: E402
 
 SITE_ID = "esp32-electricity-counter"
 PROJECT = "esp32-electricity-counter"

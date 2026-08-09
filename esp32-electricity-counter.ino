@@ -5,7 +5,6 @@
 #include "src/network/wifi_manager.h"
 #include "src/network/websocket_server.h"
 #include "src/network/firebase_bridge.h"
-#include "src/network/cloud_ota.h"
 #include "src/network/ota_handler.h"
 #include "src/network/ntfy_notifier.h"
 #include "src/network/console_handler.h"
@@ -168,20 +167,8 @@ void networkTask(void *pvParameters) {
 void firebaseTask(void *pvParameters) {
   TickType_t lastWake = xTaskGetTickCount();
   while (true) {
-    // checkOtaTrigger() may detect a new firmware version. If it sets the
-    // pending flag, call handleOtaRequest() to free the Firebase SSL heap
-    // BEFORE the OTA download starts — without this, Update.begin() fails
-    // with ENOMEM because the SSL socket eats ~150KB.
-    if (fbBridge.otaRequested()) {
-      fbBridge.handleOtaRequest();
-      // After this, fbBridge is paused. CloudOTA runs in loop() on Core 1.
-      // This task just idles until reboot.
-      while (true) { vTaskDelay(pdMS_TO_TICKS(1000)); }
-    }
-
     fbBridge.loop();
     fbBridge.pushLatest();
-    fbBridge.checkOtaTrigger();
     vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(50));
   }
 }
@@ -331,9 +318,8 @@ void setup() {
 
   wsServer.begin(nvs, &systemData, &dataMutex, &powerCalc, &limitMgr);
   fbBridge.begin(nvs, &systemData, &dataMutex, &powerCalc, &limitMgr);
-  cloudOta.begin();
 
-  wifiMgr.begin(nvs);
+   wifiMgr.begin(nvs);
   statusLED.setMode(LED_SOLID_RED);
   if (wifiMgr.isApMode()) {
     Serial.printf("  %-19sAP @ %s\n", "WiFi", WiFi.softAPIP().toString().c_str());
@@ -383,22 +369,6 @@ static void handleSerialCommand(const String &cmd) {
 }
 
 void loop() {
-  // Run OTA download in the loopTask context (Core 1). This task is NOT
-  // registered with the task watchdog, so chunked downloads don't trigger
-  // WDT resets. sensorTask (also Core 1, same priority) gets CPU time because
-  // each cloudOta.loop() call returns after one chunk — we batch a few chunks
-  // per yield to keep throughput high while staying preemptible.
-  if (cloudOta.isInProgress()) {
-    for (int i = 0; i < 8; i++) {
-      cloudOta.loop();
-      if (!cloudOta.isInProgress()) break;
-    }
-    vTaskDelay(pdMS_TO_TICKS(5));
-  } else {
-    cloudOta.loop();  // cheap check for new triggers
-    vTaskDelay(pdMS_TO_TICKS(100));
-  }
-
   // Drive the non-blocking LED test state machine + deferred console commands.
   consoleHandler.runDeferred();
   consoleHandler.loop();

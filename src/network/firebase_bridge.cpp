@@ -1,6 +1,5 @@
 #include "firebase_bridge.h"
 #include "firebase_config.h"
-#include "cloud_ota.h"
 #include "command_processor.h"
 #include "console_handler.h"
 #include "../core/limit_manager.h"
@@ -11,15 +10,10 @@
 #include <addons/RTDBHelper.h>
 #include <time.h>
 
-// ---------------------------------------------------------------
-// Shared JSON builder (also used by WebSocketServer)
-// ---------------------------------------------------------------
-// RTDB path namespace for this board. Multiple boards share one Firestore,
-// so every node is scoped under /devices/<chip-unique-id>/ to stop boards
-// from clobbering each other's /latest, /commands and /ota.
 static String rtdbPath(const char *node) {
   return String("/devices/") + deviceId() + "/" + node;
 }
+
 void buildSystemJson(const SystemData &data, PowerCalculator *powerCalc,
                      NVSManager *nvs, String &json) {
   json = "{\"v\":";
@@ -32,10 +26,6 @@ void buildSystemJson(const SystemData &data, PowerCalculator *powerCalc,
   json += data.wifiRSSI;
   json += ",\"ap\":";
   json += data.apMode ? "true" : "false";
-  json += ",\"ota\":";
-  json += data.otaInProgress ? "true" : "false";
-  json += ",\"otaProgress\":";
-  json += data.otaProgress;
   json += ",\"voltageCalibration\":";
   json += String(data.voltageCalibration, 1);
   json += ",\"currentCalibration\":[";
@@ -108,14 +98,10 @@ void buildSystemJson(const SystemData &data, PowerCalculator *powerCalc,
   json += "]}";
 }
 
-// ---------------------------------------------------------------
-// FirebaseBridge
-// ---------------------------------------------------------------
 FirebaseBridge::FirebaseBridge()
   : nvs(nullptr), sysData(nullptr), dataMutex(nullptr),
     powerCalc(nullptr), limitMgr(nullptr),
-    started(false), paused(false), lastPush(0), lastCommandPoll(0),
-    lastOtaCheck(0), otaReq(false) {}
+    started(false), lastPush(0), lastCommandPoll(0) {}
 
 void FirebaseBridge::begin(NVSManager &nvsRef,
                            SystemData *sysDataRef, SemaphoreHandle_t *mutexRef,
@@ -128,71 +114,9 @@ void FirebaseBridge::begin(NVSManager &nvsRef,
 }
 
 bool FirebaseBridge::configured() const {
-  // Service-account auth needs db url, client email and private key.
-  // The web API key is only used for email/password sign-in — not required.
   return strlen(FIREBASE_DB_URL) > 0 &&
          strlen(FIREBASE_CLIENT_EMAIL) > 0 &&
          strlen(FIREBASE_PRIVATE_KEY) > 0;
-}
-
-bool FirebaseBridge::checkOtaTrigger() {
-  if (!started || !Firebase.ready() || paused) return false;
-
-  // Throttle hard: a missing /ota node is the *normal* case, and every GET
-  // on a non-existent node can close the TLS session. Running this on the
-  // same connection as /latest (fbdo) at 50 ms cadence forced a fresh
-  // ~1.3-1.9 s handshake on every push — the exact latency regression we
-  // fixed in 784531e. It now has its own connection (fbOta) and only polls
-  // a few times per minute.
-  if (millis() - lastOtaCheck < FIREBASE_OTA_CHECK_MS) return false;
-  lastOtaCheck = millis();
-
-  FirebaseJson data;
-  if (!Firebase.RTDB.getJSON(&fbOta, rtdbPath("ota"), &data)) return false;
-
-  // Missing (null) node is normal — treat it like the empty /commands poll:
-  // do not tear down the connection.
-  String dt = fbOta.dataType();
-  if (dt == "null" || dt.length() == 0) return false;
-
-  FirebaseJsonData jd;
-  String version, url, md5;
-  if (data.get(jd, "version")) version = jd.to<String>();
-  if (data.get(jd, "url")) url = jd.to<String>();
-  if (data.get(jd, "md5")) md5 = jd.to<String>();
-
-  if (version.isEmpty() || md5.isEmpty()) return false;
-  if (md5 == cloudOta.getAppliedMd5()) return false;
-
-  // Stash the request; handleOtaRequest() performs the blocking download.
-  pendingOtaVersion = version;
-  pendingOtaUrl = url;
-  pendingOtaMd5 = md5;
-  otaReq = true;
-
-  Serial.printf("  [FB] OTA requested: %s -> %s (deferred)\n", FIRMWARE_VERSION, version.c_str());
-  return true;
-}
-
-void FirebaseBridge::handleOtaRequest() {
-  if (!otaReq) return;
-  otaReq = false;
-  paused = true;
-
-  String version = pendingOtaVersion;
-  String url = pendingOtaUrl;
-  String md5 = pendingOtaMd5;
-
-  Serial.printf("  [FB] OTA download from %s (md5 %s)\n",
-                rtdbPath("firmware").c_str(), md5.c_str());
-
-  // NOTE: do NOT stop the fbdo TLS client here. The library's downloadOTA
-  // streams the base64 firmware blob through the SAME fbdo TCP/TLS session
-  // (it temporarily raises the RX buffer to 16KB during the download).
-  // This is a blocking call; it runs in firebaseTask (Core 0), where the
-  // sensor task (Core 1) and the broadcast task (Core 0, priority 2) keep
-  // running concurrently.
-  cloudOta.download(fbCmd, rtdbPath("firmware"), md5);
 }
 
 void FirebaseBridge::start() {
@@ -206,21 +130,13 @@ void FirebaseBridge::start() {
   config.service_account.data.private_key = FIREBASE_PRIVATE_KEY;
   config.database_url = FIREBASE_DB_URL;
 
-  // NOTE: do NOT set auth.token.uid here. Setting it switches the library to
-  // the custom-token (signInWithCustomToken) flow, which requires the web API
-  // key. Leaving it empty uses the pure OAuth2 service-account flow (JWT ->
-  // oauth2.googleapis.com/token), which needs no API key and still yields a
-  // valid RTDB auth identity (satisfies rules "auth != null").
-
   fbdo.setBSSLBufferSize(4096, 4096);
   fbdo.setResponseSize(4096);
   fbCmd.setBSSLBufferSize(4096, 4096);
   fbCmd.setResponseSize(4096);
-  fbOta.setBSSLBufferSize(4096, 4096);
-  fbOta.setResponseSize(4096);
 
   config.token_status_callback = tokenStatusCallback;
-  Firebase.reconnectNetwork(false);  // WiFi managed by WiFiManager
+  Firebase.reconnectNetwork(false);
   Firebase.begin(&config, &auth);
 
   started = true;
@@ -236,9 +152,8 @@ bool FirebaseBridge::ready() const {
 }
 
 void FirebaseBridge::loop() {
-  if (!started || !Firebase.ready() || paused) return;
+  if (!started || !Firebase.ready()) return;
 
-  // Poll the command queue (coarse cadence, cheap).
   if (millis() - lastCommandPoll >= FIREBASE_COMMAND_POLL_MS) {
     lastCommandPoll = millis();
     pollCommands();
@@ -250,9 +165,6 @@ void FirebaseBridge::pushLatest() {
   if (millis() - lastPush < FIREBASE_PUSH_INTERVAL_MS) return;
   lastPush = millis();
 
-  // Snapshot the state under the lock (fast), then RELEASE the mutex before
-  // the blocking HTTPS call. Holding the mutex across setJSON would block
-  // WebSocket broadcasts (same mutex) for the whole TLS round-trip.
   String json;
   if (xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(20)) != pdTRUE) return;
   buildSystemJson(*sysData, powerCalc, nvs, json);
@@ -277,8 +189,6 @@ void FirebaseBridge::pollCommands() {
 
   FirebaseJson cmds;
   if (!Firebase.RTDB.getJSON(&fbCmd, rtdbPath("commands"), &cmds)) {
-    // Empty (null) node is normal, not an error — and must not tear down the
-    // connection (that would force a fresh TLS handshake on the next push).
     String dt = fbCmd.dataType();
     if (dt == "null" || dt.length() == 0) return;
     static uint32_t lastErr = 0;
@@ -295,8 +205,6 @@ void FirebaseBridge::pollCommands() {
     String key, value;
     cmds.iteratorGet(i, type, key, value);
     if (type == FirebaseJson::JSON_OBJECT || type == FirebaseJson::JSON_STRING) {
-      // Rebuild a full command object: {"cmd":...,"ch":...,"val":...,"name":...}
-      // value holds the raw child JSON.
       String cmd = value;
       if (cmd.length() > 0 && cmd[0] != '{') {
         cmd = "{\"" + key + "\":" + value + "}";
@@ -305,8 +213,6 @@ void FirebaseBridge::pollCommands() {
       bool handled = processCommand(nvs, sysData, dataMutex, powerCalc, limitMgr,
                                    cmd.c_str(), &response);
       if (handled) {
-        // Console commands answer with text — publish it under /console/<key>
-        // so the cloud dashboard can pick it up (and delete it) by key.
         if (response.length() > 0) {
           String outPath = "/devices/";
           outPath += deviceId();
@@ -317,7 +223,6 @@ void FirebaseBridge::pollCommands() {
                           fbdo.errorReason().c_str());
           }
         }
-        // Delete the processed command node.
         String path = "/devices/";
         path += deviceId();
         path += "/commands/";

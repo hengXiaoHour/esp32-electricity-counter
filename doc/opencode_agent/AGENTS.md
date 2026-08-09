@@ -1,7 +1,7 @@
 # AGENTS.md — ESP32-S3 Electricity Counter
 
 ## Project Summary
-ESP32-S3 firmware (Arduino C++) for monitoring 6 AC circuits with SCT-013-100 current sensors and ZMPT101B voltage sensor. Dual-core FreeRTOS: Core 0 handles networking (WiFi, WebSocket dashboard, OTA), Core 1 handles sensing (ADC sampling, power calculation, limit checking, buzzer alerts). WebSocket dashboard served from LittleFS.
+ESP32-S3 firmware (Arduino C++) for monitoring 6 AC circuits with SCT-013-100 current sensors and ZMPT101B voltage sensor. Dual-core FreeRTOS: Core 0 handles networking (WiFi, WebSocket dashboard, Firebase bridge), Core 1 handles sensing (ADC sampling, power calculation, limit checking, buzzer alerts). Local ArduinoOTA supported for flashing from Arduino IDE.
 
 ## Key Architecture
 - Main sketch: `esp32-electricity-counter.ino` at project root
