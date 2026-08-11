@@ -15,6 +15,16 @@
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="stylesheet" href="style.css">
+<script>
+// Prevent a flash of the connect panel while script.js is still loading.
+// If a live session exists, mark <html> so CSS hides the panel pre-paint.
+(function () {
+  try {
+    var s = localStorage.getItem('esp32monitor_session');
+    if (s) document.documentElement.classList.add('has-session');
+  } catch (e) {}
+})();
+</script>
 </head>
 <body>
 
@@ -25,29 +35,30 @@
       <span class="connect-led"></span>
       <h1 class="connect-title">ESP32 Counter</h1>
     </div>
-    <p class="connect-sub">ESP32-S3 &middot; 6-Channel AC Electricity Monitor</p>
 
     <div class="connect-row">
-      <input type="text" id="esp32Ip" placeholder="192.168.1.x" spellcheck="false" autocomplete="off">
-      <button class="btn-primary" onclick="connectLocal()">Local</button>
+      <select id="connMode" title="Connection mode">
+        <option value="cloud">Cloud</option>
+        <option value="local">Local</option>
+        <option value="demo">Demo</option>
+      </select>
     </div>
 
-    <div class="connect-row">
+    <div class="connect-row hidden" id="ipRow">
+      <input type="text" id="esp32Ip" placeholder="192.168.1.x" spellcheck="false" autocomplete="off">
+    </div>
+
+    <div class="connect-row hidden" id="cloudRow">
       <select id="devicePicker" title="Board to watch in Cloud mode">
-        <option value="">— boards…</option>
+        <option value="">&mdash; boards&hellip;</option>
       </select>
     </div>
 
     <div class="connect-row">
-      <button class="btn-outline" onclick="connectCloud()">&#9729; Cloud</button>
-      <button class="btn-outline" onclick="startDemoMode()">Demo</button>
+      <button class="btn-primary btn-launch" onclick="handleConnect()">&#9654; Launch</button>
     </div>
 
     <div id="connectStatus" class="connect-status disconnected">Ready to connect</div>
-
-    <div class="demo-toggle">
-      <span>Cloud = Firebase RTDB &middot; Local = WebSocket to ESP32 &middot; Demo = mock data</span>
-    </div>
 
     <div class="install-row" id="installRow">
       <button class="btn-outline" id="installBtn" onclick="promptInstall()">&#8595; Install App</button>

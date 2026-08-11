@@ -83,6 +83,17 @@ function promptInstall() {
     }
   } catch (e) { /* localStorage unavailable (e.g. file://) */ }
 
+  // Cloud is always the default connection mode. No persisted-mode restore.
+  const modeSel = document.getElementById('connMode');
+  if (modeSel) {
+    modeSel.value = 'cloud';
+    modeSel.addEventListener('change', updateConnectFields);
+    updateConnectFields();
+  }
+
+  // If a live session was saved, jump straight into the dashboard.
+  autoReconnect();
+
   // Show the install control on load (hidden only when already installed).
   if (isStandalone()) hideInstallRow();
   else showInstallRow();
@@ -151,7 +162,19 @@ function connectLocal() {
 }
 
 function handleConnect() {
-  connectLocal();
+  const mode = document.getElementById('connMode').value;
+  try { localStorage.setItem('esp32monitor_connmode', mode); } catch (e) {}
+  if (mode === 'cloud') return connectCloud();
+  if (mode === 'demo') return startDemoMode();
+  return connectLocal();
+}
+
+function updateConnectFields() {
+  const mode = document.getElementById('connMode').value;
+  const ipRow = document.getElementById('ipRow');
+  const cloudRow = document.getElementById('cloudRow');
+  if (ipRow) ipRow.classList.toggle('hidden', mode !== 'local');
+  if (cloudRow) cloudRow.classList.toggle('hidden', mode !== 'cloud');
 }
 
 function handleDisconnect() {
@@ -165,7 +188,40 @@ function handleDisconnect() {
     ws = null;
   }
   connMode = 'local';
+  try { localStorage.removeItem('esp32monitor_session'); } catch (e) {}
   showConnectPanel();
+}
+
+// Persist a live session so a page reload reconnects straight into the
+// dashboard (mode + ip + device), instead of landing back on the connect panel.
+function saveSession(mode) {
+  const s = { mode: mode };
+  if (mode === 'local') {
+    s.ip = document.getElementById('esp32Ip') ? document.getElementById('esp32Ip').value.trim() : currentIP;
+  }
+  if (mode === 'cloud') s.device = currentDeviceId();
+  try { localStorage.setItem('esp32monitor_session', JSON.stringify(s)); } catch (e) {}
+}
+
+function autoReconnect() {
+  let s = null;
+  try { s = JSON.parse(localStorage.getItem('esp32monitor_session') || 'null'); } catch (e) { s = null; }
+  if (!s || !s.mode) return;
+  const modeSel = document.getElementById('connMode');
+  if (modeSel) modeSel.value = s.mode;
+  updateConnectFields();
+  if (s.mode === 'cloud') {
+    if (s.device) selectedDeviceId = s.device;
+    connectCloud();
+  } else if (s.mode === 'demo') {
+    startDemoMode();
+  } else if (s.mode === 'local') {
+    if (s.ip) {
+      document.getElementById('esp32Ip').value = s.ip;
+      currentIP = s.ip;
+    }
+    connectLocal();
+  }
 }
 
 // ============ Cloud (Firebase RTDB) mode ============
@@ -241,6 +297,7 @@ function connectCloud() {
     }
     connMode = 'cloud';
     lastDataTs = Date.now();
+    saveSession('cloud');
     const devPath = cloudDevPath();
     cloudLatestRef = cloudDb.ref(devPath + '/latest');
     cloudLatestRef.on('value', (snap) => {
@@ -341,6 +398,7 @@ function connectWS(ip) {
 
   ws = new WebSocket(url);
   ws.onopen = () => {
+    saveSession('local');
     const ipEl = document.getElementById('connectedIp');
     if (ipEl) ipEl.textContent = ip;
     document.getElementById('connStatus').textContent = 'Connected';
@@ -379,6 +437,8 @@ function showDashboard() {
 function showConnectPanel() {
   document.getElementById('app').classList.add('hidden');
   document.getElementById('connectPanel').classList.remove('hidden');
+  // Drop the no-flash marker so the panel's hidden CSS no longer applies.
+  document.documentElement.classList.remove('has-session');
 }
 
 function setConnectStatus(msg, cls) {
@@ -1031,6 +1091,7 @@ function onConsoleKey(ev) {
 // ============ Mock Demo Mode ============
 function startDemoMode() {
   connMode = 'demo';
+  saveSession('demo');
   if (ws) { ws.close(); ws = null; }
   showDashboard();
   const ipEl = document.getElementById('connectedIp');
