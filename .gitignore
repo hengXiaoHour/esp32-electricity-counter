@@ -16,3 +16,6 @@ build/
 
 # Firebase CLI debug logs
 firebase-debug.log
+
+# Playwright MCP artifacts
+.playwright-mcp/

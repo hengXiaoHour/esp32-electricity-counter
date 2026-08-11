@@ -99,6 +99,15 @@
       </button>
     </nav>
     <div class="side-footer">
+      <div id="authBox" class="auth-box">
+        <div id="authUserRow" class="auth-user-row hidden">
+          <span id="authEmail" class="auth-email mono" title="Signed in Google account"></span>
+        </div>
+        <button id="authBtnSide" class="nav-item auth-btn" onclick="toggleGoogleAuth()">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="7" r="4"/><path d="M5 21a7 7 0 0 1 14 0"/></svg>
+          <span class="nav-label">Sign in with Google</span>
+        </button>
+      </div>
       <button class="nav-item" onclick="handleDisconnect()">
         <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
         <span class="nav-label">Sign Out</span>
@@ -176,6 +185,20 @@
       <!-- Settings -->
       <section id="page-settings" class="page">
         <div class="panel-box">
+          <div class="panel-header"><h3>Account</h3></div>
+          <div class="cal-row-single" style="display:block;margin-bottom:4px;">
+            <div id="roleBadge" class="role-badge role-guest">Guest &mdash; read-only</div>
+          </div>
+          <div class="cal-row-single" style="display:block;">
+            <span id="acctEmail" class="mono conn-ip">Not signed in</span>
+          </div>
+          <div style="margin-top:12px;">
+            <button id="authBtnSettings" class="btn-outline" onclick="toggleGoogleAuth()">Sign in with Google</button>
+            <span id="guestHint" class="hint-inline dim">Guests can view the dashboard; admin controls require signing in with the owner Google account.</span>
+          </div>
+        </div>
+
+        <div class="panel-box">
           <div class="panel-header"><h3>Connection</h3></div>
           <div class="cal-row-single">
             <label>Device:</label>
@@ -190,7 +213,7 @@
           </div>
         </div>
 
-        <div class="panel-box">
+        <div class="panel-box admin-only">
           <div class="panel-header"><h3>Push Notifications (ntfy.sh)</h3></div>
           <div class="cal-row-single">
             <label>Topic:</label>
@@ -203,7 +226,7 @@
           <div class="hint">Alerts are pushed to https://ntfy.sh/&lt;topic&gt; when a channel's monthly kWh limit is reached.</div>
         </div>
 
-        <div class="panel-box">
+        <div class="panel-box admin-only">
           <div class="panel-header"><h3>System Calibration</h3></div>
           <div class="cal-row-single">
             <label>Voltage Cal:</label>
@@ -223,7 +246,7 @@
           </div>
         </div>
 
-        <div class="panel-box" id="consolePanel">
+        <div class="panel-box admin-only" id="consolePanel">
           <div class="panel-header">
             <h3>Device Console</h3>
             <button class="btn-sm" onclick="clearConsole()">Clear</button>
@@ -310,6 +333,7 @@
 
 <script src="config.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script src="script.js"></script>
 <script>

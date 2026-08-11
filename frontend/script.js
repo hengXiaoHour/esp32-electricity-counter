@@ -28,6 +28,109 @@ const CHART_DEFS = {
 
 const NUM_CHANNELS = 6;
 
+// ============ Auth (Google) ============
+let authUser = null;
+let authAdmin = false;          // signed-in user email ∈ FB_CONFIG.adminEmails
+let authInitialized = false;
+
+function initAuth() {
+  // Apply the guest baseline synchronously so admin controls never flash for
+  // non-admins on reload; onAuthStateChanged upgrades to admin when it resolves.
+  applyAuthState();
+  if (!window.firebase || !window.FB_CONFIG || !window.FB_CONFIG.apiKey || !window.firebase.auth) {
+    authInitialized = false;
+    return;
+  }
+  try {
+    if (!firebase.apps.length) {
+      firebase.initializeApp({
+        apiKey: window.FB_CONFIG.apiKey,
+        authDomain: window.FB_CONFIG.authDomain,
+        databaseURL: window.FB_CONFIG.databaseURL
+      });
+    }
+    firebase.auth().onAuthStateChanged((user) => {
+      authUser = user;
+      authAdmin = !!(user && window.FB_CONFIG.adminEmails &&
+                     window.FB_CONFIG.adminEmails.indexOf(user.email) !== -1);
+      authInitialized = true;
+      applyAuthState();
+    });
+  } catch (e) {
+    console.error('Auth init failed', e);
+    authInitialized = false;
+    applyAuthState();
+  }
+}
+
+function toggleGoogleAuth() {
+  if (!window.firebase || !firebase.auth) return;
+  if (authUser) {
+    firebase.auth().signOut().catch((e) => showToast('Sign out failed: ' + e.message));
+    return;
+  }
+  if (!window.FB_CONFIG || !window.FB_CONFIG.apiKey) {
+    showToast('Google sign-in not configured (config.js)');
+    return;
+  }
+  const provider = new firebase.auth.GoogleAuthProvider();
+  firebase.auth().signInWithPopup(provider).catch((err) => {
+    // popup-closed is not an error worth showing
+    if (err.code !== 'auth/popup-closed-by-user' && err.code !== 'auth/cancelled-popup-request') {
+      showToast('Sign in failed: ' + err.message);
+    }
+  });
+}
+
+// Apply the current role to the whole UI: badge, buttons, and admin-only gating.
+function applyAuthState() {
+  const guest = !authAdmin;
+
+  // Connection is allowed for everyone; only command-sending is gated later.
+  const badge = document.getElementById('roleBadge');
+  if (badge) {
+    badge.textContent = authAdmin ? 'Admin — full control' : 'Guest — read-only';
+    badge.className = 'role-badge ' + (authAdmin ? 'role-admin' : 'role-guest');
+  }
+  const acctEmail = document.getElementById('acctEmail');
+  if (acctEmail) acctEmail.textContent = authUser ? authUser.email : 'Not signed in';
+
+  const sideEmail = document.getElementById('authEmail');
+  if (sideEmail) {
+    sideEmail.textContent = authUser ? authUser.email : '';
+    const row = document.getElementById('authUserRow');
+    if (row) row.classList.toggle('hidden', !authUser);
+  }
+  const authBtnSide = document.getElementById('authBtnSide');
+  if (authBtnSide) {
+    authBtnSide.querySelector('.nav-label').textContent = authUser ? 'Sign out of Google' : 'Sign in with Google';
+  }
+  const authBtnSettings = document.getElementById('authBtnSettings');
+  if (authBtnSettings) {
+    authBtnSettings.textContent = authUser ? 'Sign out of Google' : 'Sign in with Google';
+  }
+
+  document.body.classList.toggle('role-admin', authAdmin);
+  document.body.classList.toggle('role-guest', guest);
+
+  // If a channel edit modal is open and the user just lost admin, close it.
+  if (guest && activeEditChIdx !== null) closeEditModal();
+
+  // Role may govern cloud console access (guest = no /console read).
+  syncCloudConsoleListener();
+
+  const guestHint = document.getElementById('guestHint');
+  if (guestHint) guestHint.style.display = guest ? 'inline' : 'none';
+}
+
+function requireAdmin() {
+  if (authAdmin) return true;
+  showToast(authUser
+    ? 'This Google account is not the admin. Admin controls are locked.'
+    : 'Sign in with the admin Google account to change settings.');
+  return false;
+}
+
 // ============ PWA install prompt ============
 let deferredInstallPrompt = null;
 
@@ -76,6 +179,8 @@ function promptInstall() {
 
 // Initial Setup
 (function init() {
+  initAuth();
+
   try {
     const savedIP = localStorage.getItem('esp32monitor_ip');
     if (savedIP) {
@@ -163,6 +268,7 @@ function connectLocal() {
 
 function handleConnect() {
   const mode = document.getElementById('connMode').value;
+  document.body.classList.remove('conn-mode-demo');
   try { localStorage.setItem('esp32monitor_connmode', mode); } catch (e) {}
   if (mode === 'cloud') return connectCloud();
   if (mode === 'demo') return startDemoMode();
@@ -188,6 +294,7 @@ function handleDisconnect() {
     ws = null;
   }
   connMode = 'local';
+  document.body.classList.remove('conn-mode-demo');
   try { localStorage.removeItem('esp32monitor_session'); } catch (e) {}
   showConnectPanel();
 }
@@ -231,6 +338,25 @@ function autoReconnect() {
 // to know which board it is watching (see loadDevicePicker above).
 function cloudDevPath() {
   return 'devices/' + currentDeviceId();
+}
+
+// Keep the /console child_added listener in sync with the live role. Guests
+// have no read on /console (security rules); attaching anyway would spam
+// PERMISSION_DENIED errors, so only admins hold the listener.
+function syncCloudConsoleListener() {
+  if (!cloudDb || connMode !== 'cloud') return;
+  if (cloudConsoleRef) {
+    cloudConsoleRef.off('child_added');
+    cloudConsoleRef = null;
+  }
+  if (authAdmin) {
+    cloudConsoleRef = cloudDb.ref(cloudDevPath() + '/console');
+    cloudConsoleRef.on('child_added', (snap) => {
+      const text = snap.val();
+      if (typeof text === 'string' && text.length) appendConsoleOutput(text);
+      snap.ref.remove().catch(() => {});
+    });
+  }
 }
 
 function currentDeviceId() {
@@ -308,13 +434,9 @@ function connectCloud() {
     });
 
     // Console responses land under /devices/<id>/console/<commandKey>.
-    // Print, then delete.
-    cloudConsoleRef = cloudDb.ref(devPath + '/console');
-    cloudConsoleRef.on('child_added', (snap) => {
-      const text = snap.val();
-      if (typeof text === 'string' && text.length) appendConsoleOutput(text);
-      snap.ref.remove().catch(() => {});
-    });
+    // Print, then delete. Guests always lose the listener so no
+    // PERMISSION_DENIED noise makes it up to the console.
+    syncCloudConsoleListener();
 
     const ipEl = document.getElementById('connectedIp');
     if (ipEl) ipEl.textContent = 'Firebase RTDB / ' + currentDeviceId();
@@ -379,6 +501,11 @@ function sendCommand(obj) {
       zeroSubCardDisplay(obj.ch);
     }
     return Promise.resolve();
+  }
+  // Guests may observe live data but never mutate the board.
+  if (!authAdmin) {
+    requireAdmin();
+    return Promise.reject(new Error('Auth required'));
   }
   if (connMode === 'cloud' && cloudDb) {
     const devPath = cloudDevPath();
@@ -689,7 +816,7 @@ function createChannelCardElement(idx) {
       <span>PF: <strong class="val-pf mono">1.00</strong></span>
       <span class="mono">Monthly</span>
     </div>
-    <div class="card-actions">
+    <div class="card-actions admin-only">
       <button class="btn-sm" onclick="openEditModal(${idx})">Edit</button>
       <button class="btn-sm btn-reset" onclick="handleResetChannel(${idx})">&#8634; Reset Counter</button>
     </div>`;
@@ -782,6 +909,7 @@ function setModalMode(mode) {
 }
 
 function openEditModal(idx) {
+  if (!requireAdmin()) return;
   populateChannelSelect();
   const sel = document.getElementById('modalChSelect');
   sel.value = idx;
@@ -791,6 +919,7 @@ function openEditModal(idx) {
 }
 
 function openResetModal(idx) {
+  if (!requireAdmin()) return;
   populateChannelSelect();
   const sel = document.getElementById('modalChSelect');
   sel.value = idx;
@@ -1091,6 +1220,7 @@ function onConsoleKey(ev) {
 // ============ Mock Demo Mode ============
 function startDemoMode() {
   connMode = 'demo';
+  document.body.classList.add('conn-mode-demo');
   saveSession('demo');
   if (ws) { ws.close(); ws = null; }
   showDashboard();

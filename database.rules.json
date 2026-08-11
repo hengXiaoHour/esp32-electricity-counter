@@ -1,17 +1,4 @@
 {
-  /* ESP32 Electricity Counter — Realtime Database Security Rules
-
-     Every board owns its own subtree: /devices/<chip-unique-id>/
-       latest/   : the device writes the live snapshot (via Firebase Auth
-                   service account), anyone may read (public dashboard).
-       commands/ : anyone may push commands (fire-and-forget queue). The device
-                   reads, executes, and deletes them.
-       ota/      : release metadata + signed firmware URL, written only by an
-                   authenticated owner (the upload script / service account).
-                   The device reads it and writes its progress under ota/status.
-       console/  : the device writes the text output of a console command keyed
-                   by the originating commands key. The dashboard reads it,
-                   prints it in the terminal panel, then deletes the node. */
   "rules": {
     "devices": {
       ".read": true,
@@ -19,23 +6,28 @@
         ".read": true,
         ".write": false,
         "latest": {
-          ".write": "auth != null"
+          ".read": true,
+          ".write": "auth != null && (auth.token.email == 'heng.xiao.hour@gmail.com' || auth.token.email == 'firebase-adminsdk-fbsvc@esp32-electricity-counter.iam.gserviceaccount.com')"
         },
         "commands": {
-          ".read": true,
-          ".write": true
+          ".read": "auth != null && (auth.token.email == 'heng.xiao.hour@gmail.com' || auth.token.email == 'firebase-adminsdk-fbsvc@esp32-electricity-counter.iam.gserviceaccount.com')",
+          "$cmd": {
+            ".write": "auth != null && (auth.token.email == 'heng.xiao.hour@gmail.com' || auth.token.email == 'firebase-adminsdk-fbsvc@esp32-electricity-counter.iam.gserviceaccount.com')"
+          }
         },
         "ota": {
-          ".read": true,
-          ".write": "auth != null"
+          ".read": "auth != null && (auth.token.email == 'heng.xiao.hour@gmail.com' || auth.token.email == 'firebase-adminsdk-fbsvc@esp32-electricity-counter.iam.gserviceaccount.com')",
+          ".write": "auth != null && (auth.token.email == 'heng.xiao.hour@gmail.com' || auth.token.email == 'firebase-adminsdk-fbsvc@esp32-electricity-counter.iam.gserviceaccount.com')"
         },
         "firmware": {
-          ".read": true,
-          ".write": "auth != null"
+          ".read": "auth != null && (auth.token.email == 'heng.xiao.hour@gmail.com' || auth.token.email == 'firebase-adminsdk-fbsvc@esp32-electricity-counter.iam.gserviceaccount.com')",
+          ".write": "auth != null && (auth.token.email == 'heng.xiao.hour@gmail.com' || auth.token.email == 'firebase-adminsdk-fbsvc@esp32-electricity-counter.iam.gserviceaccount.com')"
         },
         "console": {
-          ".read": true,
-          ".write": true
+          ".read": "auth != null && (auth.token.email == 'heng.xiao.hour@gmail.com' || auth.token.email == 'firebase-adminsdk-fbsvc@esp32-electricity-counter.iam.gserviceaccount.com')",
+          "$out": {
+            ".write": "auth != null && (auth.token.email == 'heng.xiao.hour@gmail.com' || auth.token.email == 'firebase-adminsdk-fbsvc@esp32-electricity-counter.iam.gserviceaccount.com')"
+          }
         }
       }
     }

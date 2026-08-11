@@ -41,8 +41,11 @@ The dashboard supports a **Cloud** mode over Firebase Realtime Database (reachab
    firebase deploy
    ```
 3. **Device credentials** — Firebase Console → Project Settings → Service Accounts → *Generate new private key*. Fill the values into `src/network/firebase_config.h` (copy from `src/network/firebase_config.example.h`; this file is gitignored).
-4. **Dashboard config** — copy `frontend/config.js` from `frontend/config.example.js` (gitignored) and verify `databaseURL` matches your RTDB instance.
-5. Re-upload the firmware (Firebase starts automatically when WiFi connects) and open the dashboard: pick **Cloud** on the connect screen.
+4. **Google sign-in (admin)** — Firebase Console → Authentication → Get started → enable the **Google** sign-in provider, then add `heng.xiao.hour@gmail.com` to `frontend/config.js` -> `adminEmails` (the list here only drives the UI; enforce it in `database.rules.json` -> `isAdmin()` which is deployed with `firebase deploy`). The web `apiKey`/`authDomain` in `frontend/config.js` come from Project Settings → Your apps → Web app.
+5. **Dashboard config** — copy `frontend/config.js` from `frontend/config.example.js` (gitignored) and verify `databaseURL` matches your RTDB instance.
+6. Re-upload the firmware (Firebase starts automatically when WiFi connects) and open the dashboard: pick **Cloud** on the connect screen. Guests (who haven't signed in with the admin Google account) are **read-only** — commands, console, calibration, counters and OTA stay locked.
+
+**Auth scope note:** admin gating is enforced by the RTDB security rules, so **Cloud** mode is always protected even if the dashboard UI is bypassed. **Local (WebSocket)** mode has no server-side auth on the ESP32, so the admin check there is UI-level only — treat Local as trusted-LAN-only. **Demo** mode is intentionally fully open.
 
 Data flow: the device pushes its live snapshot to `/latest` every 1 s (service-account auth); the dashboard subscribes to it; commands are fire-and-forget pushes to `/commands` that the device polls and executes.
 

@@ -117,6 +117,20 @@ html.has-session #app { display: grid !important; }
 .nav-icon { width: 17px; height: 17px; flex: 0 0 auto; }
 .side-footer { border-top: 1px solid var(--border); padding: 8px 0; }
 
+/* Auth */
+.auth-box { padding: 8px 8px 4px; }
+.auth-user-row { padding: 4px 8px 6px; }
+.auth-email { display: block; font-size: 0.68rem; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; }
+.auth-btn { justify-content: flex-start; }
+.auth-btn.active { color: var(--ok); }
+.role-badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 0.66rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.role-badge.role-admin { background: rgba(95, 180, 130, 0.16); color: var(--ok); border: 1px solid rgba(95, 180, 130, 0.4); }
+.role-badge.role-guest { background: rgba(139, 142, 155, 0.14); color: var(--text-3); border: 1px solid var(--border-2); }
+.hint-inline { font-size: 0.7rem; color: var(--text-3); margin-left: 10px; }
+
+/* Guests may observe live data but never mutate. Demo mode stays fully open. */
+body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
+
 /* Main */
 #main { padding: 16px 20px 40px; min-width: 0; }
 
