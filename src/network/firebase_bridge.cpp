@@ -42,6 +42,12 @@ void buildSystemJson(const SystemData &data, PowerCalculator *powerCalc,
     if (i < NUM_CHANNELS - 1) json += ",";
   }
   json += "]";
+  json += ",\"lpfAlpha\":[";
+  for (int i = 0; i < NUM_CHANNELS; i++) {
+    json += String(powerCalc->lpfAlpha[i], 2);
+    if (i < NUM_CHANNELS - 1) json += ",";
+  }
+  json += "]";
   json += ",\"firmwareVersion\":\"";
   json += FIRMWARE_VERSION;
   json += "\",\"epoch\":";

@@ -43,7 +43,7 @@ static bool extractJsonString(const String &s, const char *key, String &outVal) 
 // Shared command handler for both the WebSocket server and the Firebase bridge.
 // Mirrors the command vocabulary of the frontend dashboard:
 // set_name, reset_counter, test_inject, set_voltage_cal, set_current_cal,
-// set_monthly_kwh, set_noise_floor, set_rms_samples, set_ntfy_topic,
+// set_monthly_kwh, set_noise_floor, set_lpf, set_rms_samples, set_ntfy_topic,
 // set_ntfy_enabled, reset_ch_to_default, reset_nvs_defaults, test_force_rollover.
 bool processCommand(NVSManager *nvs, SystemData *sysData,
                     SemaphoreHandle_t *dataMutex,
@@ -168,6 +168,18 @@ bool processCommand(NVSManager *nvs, SystemData *sysData,
       handled = true;
     }
 
+  } else if (s.indexOf("\"cmd\":\"set_lpf\"") >= 0) {
+    int ch = -1; float val = 0;
+    int ci = s.indexOf("\"ch\":");
+    if (ci >= 0) ch = s.substring(ci + 5).toInt();
+    int vi = s.indexOf("\"val\":");
+    if (vi >= 0) val = s.substring(vi + 6).toFloat();
+    if (ch >= 0 && ch < NUM_CHANNELS && val > 0 && powerCalc) {
+      powerCalc->setLpfAlpha(ch, val);  // clamps to 0.01 .. 1.0 internally
+      nvs->saveLpfAlpha(ch, powerCalc->lpfAlpha[ch]);
+      handled = true;
+    }
+
   } else if (s.indexOf("\"cmd\":\"set_rms_samples\"") >= 0) {
     int vi = s.indexOf("\"val\":");
     if (vi >= 0) {
@@ -232,8 +244,10 @@ bool processCommand(NVSManager *nvs, SystemData *sysData,
     for (int i = 0; i < NUM_CHANNELS; i++) {
       nvs->saveChannelCurrentCal(i, DEFAULT_CURRENT_CALIBRATION);
       nvs->saveNoiseFloor(i, 0.0f);
+      nvs->saveLpfAlpha(i, 1.0f);
       powerCalc->currentCal[i] = DEFAULT_CURRENT_CALIBRATION;
       powerCalc->setNoiseFloor(i, 0.0f);
+      powerCalc->setLpfAlpha(i, 1.0f);
     }
     if (sysData && dataMutex && xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
       sysData->voltageCalibration = DEFAULT_VOLTAGE_CALIBRATION;

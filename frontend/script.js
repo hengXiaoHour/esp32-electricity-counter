@@ -470,6 +470,7 @@ function normalizeSnapshot(val) {
   if (val.ch) norm.ch = toArray(val.ch);
   if (val.currentCalibration) norm.currentCalibration = toArray(val.currentCalibration);
   if (val.noiseFloor) norm.noiseFloor = toArray(val.noiseFloor);
+  if (val.lpfAlpha) norm.lpfAlpha = toArray(val.lpfAlpha);
   if (val.events) norm.events = toArray(val.events);
   return norm;
 }
@@ -727,6 +728,9 @@ function updateDashboard(data) {
   if (Array.isArray(data.noiseFloor)) {
     data.noiseFloor.forEach((v, i) => syncField(`nf_${i}`, v, 3));
   }
+  if (Array.isArray(data.lpfAlpha)) {
+    data.lpfAlpha.forEach((v, i) => syncField(`lpf_${i}`, v, 2));
+  }
 
   const rmsInput = document.getElementById('rmsSamples');
   if (rmsInput && typeof data.rmsSamples === 'number' && !rmsInput.dataset.userSet) {
@@ -739,6 +743,7 @@ function updateDashboard(data) {
     data.ch.forEach((_, idx) => {
       const currCal = (data.currentCalibration && data.currentCalibration[idx]) || 100;
       const nf = (data.noiseFloor && data.noiseFloor[idx]) || 0;
+      const lpf = (data.lpfAlpha && data.lpfAlpha[idx]) || 1;
 
       const header = document.createElement('div');
       header.className = 'cal-collapse-header';
@@ -761,6 +766,12 @@ function updateDashboard(data) {
           <label>Noise Floor:</label>
           <input type="number" id="nf_${idx}" step="0.001" value="${nf}" oninput="this.dataset.userSet='true'">
           <button class="btn-sm" onclick="autoZeroChannel(${idx})" style="color:#e67e22;">Auto-Zero</button>
+        </div>
+        <div class="cal-param-row">
+          <label>LPF Alpha:</label>
+          <input type="number" id="lpf_${idx}" step="0.01" min="0.01" max="1" value="${lpf}" oninput="this.dataset.userSet='true'">
+          <button class="btn-sm" onclick="sendLpfAlpha(${idx})">Set</button>
+          <span class="hint-inline">(0.01-1, 1=none)</span>
         </div>
       `;
 
@@ -1102,6 +1113,16 @@ function autoZeroChannel(idx) {
   });
 }
 
+function sendLpfAlpha(idx) {
+  const inp = document.getElementById(`lpf_${idx}`);
+  const val = parseFloat(inp.value);
+  if (isNaN(val) || val < 0.01 || val > 1) return showToast('LPF Alpha must be 0.01-1 (1 = no filtering)');
+  delete inp.dataset.userSet;
+  sendCommand({ cmd: 'set_lpf', ch: idx, val }).then(() => {
+    showToast(`Ch${idx + 1} LPF alpha set to ${val.toFixed(2)}`);
+  });
+}
+
 function setRmsSamples() {
   const inp = document.getElementById('rmsSamples');
   const val = parseInt(inp.value);
@@ -1142,6 +1163,8 @@ function handleResetNvs() {
       if (nf) delete nf.dataset.userSet;
       const cc = document.getElementById(`currCal_${i}`);
       if (cc) delete cc.dataset.userSet;
+      const lp = document.getElementById(`lpf_${i}`);
+      if (lp) delete lp.dataset.userSet;
     }
     sendCommand({ cmd: 'reset_nvs_defaults' }).then(() => {
       showToast('NVS reset to defaults \u2014 values will reload from ESP32');
@@ -1245,6 +1268,7 @@ function startDemoMode() {
       lastMonth: 202608,
       epoch: Math.floor(Date.now() / 1000),
       ota: false,
+      lpfAlpha: [1, 1, 1, 1, 1, 1],
       ch: [
         { n: "Counter 1", a: 4.8 + Math.random(), w: 1080 + Math.random() * 20, kwh: 42.4, pf: 0.95, mkwh: 48, s: 0 },
         { n: "Counter 2", a: 0.0, w: 0.0, kwh: 1.2, pf: 0.0, mkwh: 48, s: 3 },
