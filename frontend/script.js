@@ -354,8 +354,10 @@ function syncCloudConsoleListener() {
   if (authAdmin) {
     cloudConsoleRef = cloudDb.ref(cloudDevPath() + '/console');
     cloudConsoleRef.on('child_added', (snap) => {
-      const text = snap.val();
-      if (typeof text === 'string' && text.length) appendConsoleOutput(text);
+      const raw = snap.val();
+      const text = (typeof raw === 'string') ? raw
+                 : (raw && typeof raw.out === 'string') ? raw.out : '';
+      if (text.length) appendConsoleOutput(text);
       snap.ref.remove().catch(() => {});
     });
   }

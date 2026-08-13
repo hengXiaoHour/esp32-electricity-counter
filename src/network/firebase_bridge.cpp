@@ -163,6 +163,7 @@ void FirebaseBridge::start() {
 
   started = true;
   lastPush = 0;
+  consoleErr = "";
   Serial.printf("  Firebase bridge started (pushing %s every %u ms, "
                 "polling %s every %u ms)\n",
                 rtdbPath("latest").c_str(), FIREBASE_PUSH_INTERVAL_MS,
@@ -190,6 +191,17 @@ void FirebaseBridge::pushLatest() {
   String json;
   if (xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(20)) != pdTRUE) return;
   buildSystemJson(*sysData, powerCalc, nvs, json);
+  if (consoleErr.length() > 0) {
+    String e;
+    e.reserve(consoleErr.length());
+    for (size_t i = 0; i < consoleErr.length(); i++) {
+      char c = consoleErr[i];
+      if (c == '"') e += "\\\"";
+      else if (c == '\\') e += "\\\\";
+      else if ((unsigned char)c >= 0x20) e += c;
+    }
+    json = json.substring(0, json.length() - 1) + ",\"fbErr\":\"" + e + "\"}";
+  }
   xSemaphoreGive(*dataMutex);
 
   FirebaseJson payload;
@@ -225,7 +237,15 @@ void FirebaseBridge::pollCommands() {
   for (size_t i = 0; i < n; i++) {
     int type = 0;
     String key, value;
-    cmds.iteratorGet(i, type, key, value);
+    // FirebaseJson::iteratorGet RECURSIVELY yields top-level objects AND
+    // every nested member (child depth > 0). Only the depth-0 value is the
+    // actual command object pushed by the dashboard; the flattened children
+    // must not be treated as standalone commands (e.g. a pushed object's
+    // bare "cmd" field would otherwise be reconstructed as
+    // {"cmd":"..."} with no "ch", fooling per-channel commands into acting
+    // on every channel).
+    int depth = cmds.iteratorGet(i, type, key, value);
+    if (depth != 0) continue;
     if (type == FirebaseJson::JSON_OBJECT || type == FirebaseJson::JSON_STRING) {
       String cmd = value;
       if (cmd.length() > 0 && cmd[0] != '{') {
@@ -240,9 +260,22 @@ void FirebaseBridge::pollCommands() {
           outPath += deviceId();
           outPath += "/console/";
           outPath += key;
-          if (!Firebase.RTDB.setString(&fbdo, outPath, response)) {
+          bool ok = false;
+          if (Firebase.RTDB.setString(&fbdo, outPath, response)) {
+            ok = true;
+          } else {
+            // setString send failed (heap/SSL path). Fall back to setJSON,
+            // which is the primitive proven to work for latest/delete.
+            FirebaseJson out;
+            out.set("out", response.c_str());
+            ok = Firebase.RTDB.setJSON(&fbdo, outPath, &out);
+          }
+          if (!ok) {
+            consoleErr = fbdo.errorReason().c_str();
             Serial.printf("  [FB] console response write failed: %s\n",
-                          fbdo.errorReason().c_str());
+                          consoleErr.c_str());
+          } else {
+            consoleErr = "";
           }
         }
         String path = "/devices/";

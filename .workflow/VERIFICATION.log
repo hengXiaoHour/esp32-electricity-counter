@@ -748,3 +748,9 @@ DEPLOYED: release 1786608543693000. Verified via curl: /, /script.js, /style.css
   One reload on the user's device now pulls fresh content; subsequent deploys need NO manual
   version bump to be seen.
 TOAST: removed confusing "(2s)" -> "auto-zero started — the noise floor updates shortly".
+
+===  — Reset-all bug (ch lost in FirebaseJson iterator flattening) ===
+BUILD: PASS — arduino-cli no_fs 1,465,385 B (72%, no new warnings)
+FIX 1 (firebase_bridge.cpp): skip iterator depth!=0 entries — flattened child fields are no longer treated as commands
+FIX 2 (command_processor.cpp): reset_ch_to_default/reset_channel_names REQUIRE valid ch; missing ch is ignored, not "reset all"
+ROOT CAUSE: FirebaseJson::iteratorGet recursively emits nested members; a pushed {ch,cmd} object yields the full object AND separate "ch", "cmd" leaves. Reconstructed {"cmd":"reset_ch_to_default"} (no ch) hit the legacy ch=-1 -> all-channels fallback.

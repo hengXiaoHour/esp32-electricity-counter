@@ -243,20 +243,26 @@ bool processCommand(NVSManager *nvs, SystemData *sysData,
     }
 
   } else if (s.indexOf("\"cmd\":\"reset_channel_names\"") >= 0 || s.indexOf("\"cmd\":\"reset_ch_to_default\"") >= 0) {
+    // A channel is ALWAYS required. The dashboard always sends "ch"; a
+    // command without a valid channel is ignored instead of being treated as
+    // "reset every channel" (previously a flattened child object dropped the
+    // "ch" field and wiped all 6 channels' limits).
     int ch = -1;
     int ci = s.indexOf("\"ch\":");
     if (ci >= 0) ch = s.substring(ci + 5).toInt();
-    int startCh = (ch >= 0 && ch < NUM_CHANNELS) ? ch : 0;
-    int endCh = (ch >= 0 && ch < NUM_CHANNELS) ? ch + 1 : NUM_CHANNELS;
-    for (int i = startCh; i < endCh; i++) {
-      nvs->clearChannelName(i);
-      nvs->saveMonthlyKwhLimit(i, DEFAULT_MONTHLY_KWH_LIMIT);
+    if (ch < 0 || ch >= NUM_CHANNELS) {
+      Serial.printf("  [CMD] %s ignored: ch=%d out of range\n",
+                    s.indexOf("\"cmd\":\"reset_channel_names\"") >= 0 ? "reset_channel_names" : "reset_ch_to_default", ch);
+      handled = true;
+    } else {
+      nvs->clearChannelName(ch);
+      nvs->saveMonthlyKwhLimit(ch, DEFAULT_MONTHLY_KWH_LIMIT);
     }
     if (sysData && dataMutex && xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-      for (int i = startCh; i < endCh; i++) {
-        strncpy(sysData->channels[i].name, NVSManager::defaultChannelName(i), MAX_CHANNEL_NAME_LEN - 1);
-        sysData->channels[i].name[MAX_CHANNEL_NAME_LEN - 1] = '\0';
-        sysData->channels[i].monthlyKwhLimit = DEFAULT_MONTHLY_KWH_LIMIT;
+      if (ch >= 0 && ch < NUM_CHANNELS) {
+        strncpy(sysData->channels[ch].name, NVSManager::defaultChannelName(ch), MAX_CHANNEL_NAME_LEN - 1);
+        sysData->channels[ch].name[MAX_CHANNEL_NAME_LEN - 1] = '\0';
+        sysData->channels[ch].monthlyKwhLimit = DEFAULT_MONTHLY_KWH_LIMIT;
       }
       xSemaphoreGive(*dataMutex);
     }

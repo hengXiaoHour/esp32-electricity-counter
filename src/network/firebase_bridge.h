@@ -40,6 +40,7 @@ private:
   bool started;
   uint32_t lastPush;
   uint32_t lastCommandPoll;
+  String consoleErr;
 
   void buildLatestJson(FirebaseJson &json);
   void pollCommands();
