@@ -36,10 +36,13 @@ PUBLIC = ROOT / "frontend"
 HOSTING = "https://firebasehosting.googleapis.com/v1beta1"
 UPLOAD = "https://upload-firebasehosting.googleapis.com/upload"
 
-# Mirrors firebase.json (rewrites + headers) so SPA routing stays intact.
+# Mirrors firebase.json (rewrites + headers) so SPA routing stays intact and the
+# SW's network-first fetch actually reaches the network (Firebase's default
+# max-age=3600 otherwise feeds the browser HTTP cache stale JS/CSS/HTML for an hour).
 CONFIG = {
     "rewrites": [{"glob": "**", "path": "/index.html"}],
     "headers": [
+        {"glob": "**", "headers": {"Cache-Control": "no-cache"}},
         {"glob": "/sw.js", "headers": {"Cache-Control": "no-cache"}},
         {"glob": "/manifest.json", "headers": {"Cache-Control": "no-cache"}},
     ],

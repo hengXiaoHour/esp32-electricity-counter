@@ -30,6 +30,11 @@ SemaphoreHandle_t dataMutex;
 static uint32_t lastSensorCycle = 0;
 static bool wifiIpPrinted = false;
 
+// Auto-zero is processed in small chunks per sensor cycle so the sensing loop
+// (update + broadcast) never stalls while a channel is being captured. More
+// batches per cycle = faster, but longer single-cycle hold.
+static const int AZ_BATCHES_PER_CYCLE = 2;
+
 void onWiFiEvent(WiFiEvent_t event, arduino_event_info_t info) {
   if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
     wifiIpPrinted = true;
@@ -182,38 +187,18 @@ void sensorTask(void *pvParameters) {
     lastSensorCycle = millis();
 
     if (powerCalc.isAutoZeroBusy()) {
-      int ch = powerCalc.getAutoZeroChannel();
-      if (ch >= 0 && ch < NUM_CHANNELS) {
-        const int batches = 32;
-        float floors[batches];
-        float origLPF[NUM_CHANNELS];
-        for (int i = 0; i < NUM_CHANNELS; i++) {
-          origLPF[i] = powerCalc.lpfAlpha[i];
-          powerCalc.lpfAlpha[i] = 1.0f;
+      if (powerCalc.autoZeroStart()) {
+        powerCalc.autoZeroCapture(AZ_BATCHES_PER_CYCLE);
+        if (powerCalc.autoZeroDone()) {
+          int ch = powerCalc.getAutoZeroChannel();
+          float median = powerCalc.autoZeroFinish();
+          powerCalc.setNoiseFloor(ch, median);
+          nvs.saveNoiseFloor(ch, median);
+          nvs.commit();
+          Serial.printf("  [NVS] ch%d auto-zero complete (median of %d): %.3f A\n",
+            ch + 1, PowerCalculator::AZ_BATCHES, median);
         }
-        for (int b = 0; b < batches; b++) {
-          floors[b] = powerCalc.runAutoZeroSingle(ch);
-        }
-        for (int i = 0; i < NUM_CHANNELS; i++) {
-          powerCalc.lpfAlpha[i] = origLPF[i];
-        }
-        for (int i = 0; i < batches; i++) {
-          for (int j = i + 1; j < batches; j++) {
-            if (floors[j] < floors[i]) {
-              float t = floors[i]; floors[i] = floors[j]; floors[j] = t;
-            }
-          }
-        }
-        float median = (batches % 2 == 1)
-            ? floors[batches / 2]
-            : (floors[batches / 2 - 1] + floors[batches / 2]) * 0.5f;
-        powerCalc.setNoiseFloor(ch, median);
-        nvs.saveNoiseFloor(ch, median);
-        nvs.commit();
-        Serial.printf("  [NVS] ch%d auto-zero complete (median of %d): %.3f A\n",
-          ch + 1, batches, median);
       }
-      powerCalc.cancelAutoZero();
     }
 
     powerCalc.update(deltaSeconds);

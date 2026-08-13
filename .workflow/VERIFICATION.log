@@ -486,3 +486,265 @@ OUTSTANDING / NOT VERIFIED (needs hardware or a live cloud round-trip):
   - WebSocket unicast client->text() against a real AsyncWebSocket client
   - Firebase /console/<key> setString + browser child_added + delete cycle
   - buzz / inject / reset side effects on real hardware
+
+========================================================
+2026-08-12 — Per-Channel Calibration Reset Button (PLAN.md, 2 steps)
+
+Step 1 — Firmware reset_ch_cal command (src/network/command_processor.cpp)
+  Status: PASS
+  Build: arduino-cli compile ... --warnings all
+    flash 1,463,353 B (72%), RAM 116,400 B (35%)
+  Changes: new branch matching "cmd":"reset_ch_cal" placed BEFORE the
+    reset_channel_names|reset_ch_to_default branch; parses "ch":N, only
+    accepts 0<=N<NUM_CHANNELS; resets NVS currentCal/noiseFloor/lpfAlpha,
+    live powerCalc (currentCal[], setNoiseFloor, setLpfAlpha) and
+    sysData->currentCalibration[ch] under *dataMutex; handled=true; also
+    updated the command-list comment header block.
+  Warnings: only pre-existing -Wformat in esp32-electricity-counter.ino (262)
+
+Step 2 — Frontend Reset Cal button + sender (frontend/script.js)
+  Status: PASS
+  Checks: node --check frontend/script.js -> OK
+  Changes: appended a 4th .cal-param-row in the calibration collapse-body
+    builder: <button class="btn-sm btn-danger" onclick="sendResetChannelCal(idx)">
+    with hint "(cal, noise floor, LPF)"; added sendResetChannelCal(idx) after
+    sendLpfAlpha() which deletes dataset.userSet on currCal_/nf_/lpf_ inputs so
+    values repopulate from ESP32, then sendCommand({cmd:reset_ch_cal, ch:idx})
+    with a toast on success. btn-danger/.cal-param-row/.hint-inline already
+    exist in style.css (no CSS change needed).
+
+FINAL VERDICT: both steps PASS. Handing off to tester subagent.
+
+========================================================
+2026-08-12 — Voltage bug fix: decouple voltage channel from ch0 LPF
+  (240V -> 147V on any cal op)
+
+Step 1 — src/core/power_calculator.cpp (collectSamples)
+  Status: PASS
+  Build: arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc,PartitionScheme=huge_app
+    --warnings all  -> 1,463,633 B (46%) flash / 116,400 B (35%) RAM. Only pre-existing
+    -Wformat warning in esp32-electricity-counter.ino:262.
+  Changes: removed `float vAlpha = lpfAlpha[0];` and the voltage EMA branch
+    (vFiltered/vInit) in collectSamples(). VoltageSamples now always raw
+    `analogRead(PIN_VOLTAGE)`. Per-channel current LPF untouched.
+  Why: an EMA low-pass at alpha=0.01 (UI min) attenuates 50Hz RMS to ~64%,
+    so 230V reads ~147V. Voltage is a single shared reference; matching it to
+    channel 0's tunable LPF was wrong for ch1-5 anyway.
+  Side note: debug logging in command_processor.cpp (voltageCal before/after every
+    cmd) remains in place for hardware verification; voltageCal never changes, the
+    real culprit was lpfAlpha[0].
+
+FINAL VERDICT: PASS. Hardware confirm on board: set_lpf ch:0 val:0.01 ->
+  voltage must stay ~230/240V; set_lpf ch:0 val:0.01 is no longer able to move it.
+
+========================================================
+2026-08-13 — Move current LPF from pre-RMS to post-RMS (EMA on RMS estimate)
+
+  User reported live-board symptom (changing ch1 LPF dropped voltage to 150V)
+  matched the OLD pre-fix firmware exactly — the 08-12 voltage fix was compiled
+  but never flashed. Source confirmed clean (voltage raw, no LPF path). User then
+  asked to move filtering after RMS so the EMA can't attenuate the 50Hz amplitude.
+
+Step 1 — src/core/power_calculator.{h,cpp} + esp32-electricity-counter.ino
+  Status: PASS
+  Build: arduino-cli compile --fqbn esp32:esp32:esp32s3:FlashSize=4M,
+    PartitionScheme=no_fs,CDCOnBoot=cdc --warnings all -> 1,463,653 B (72%)
+    flash / 116,408 B (35%) RAM. Only pre-existing -Wformat banner warning.
+  Changes:
+    - collectSamples(): per-sample EMA removed; currentSamples now raw analogRead.
+    - computeAll(): after noise-floor quadrature subtraction, apply EMA on the
+      RMS estimate: filteredCurrentRMS += alpha*(signalRMS - filteredCurrentRMS),
+      alpha=1.0 bypass. New bool rmsInit[] seeds the filter on first use.
+    - setLpfAlpha()/setNoiseFloor() reset rmsInit so a changed alpha re-initializes.
+    - auto-zero: .ino now routes lpf force/restore through setLpfAlpha() so rmsInit
+      resets; runAutoZeroSingle still reads raw currentRMS (floor=0, lpf=1.0).
+  Why: time-domain EMA before RMS attenuates the fundamental (alpha=0.01 -> ~64%
+    at 50Hz). Filtering the post-RMS estimate smooths readings without touching
+    amplitude. Bonus: activePower cross-correlation now uses raw V+I samples, so
+    real power/PF are phase-accurate when alpha<1.0.
+  Pipeline: ADC raw -> RMS -> cal + noise-floor -> EMA LPF -> output.
+
+Step 2 — frontend: Reset Cal 2-click confirm
+  Status: PASS
+  Build: node --check frontend/script.js OK
+  Test: Playwright headless demo — Ch1 Reset Cal: 1st click -> "Confirm?" +
+    .confirming pulse; 2nd click within 3s -> button resets + sendCommand
+    {cmd:'reset_ch_cal'} fires (toast "Ch1 calibration reset to defaults");
+    >3s without 2nd click auto-reverts to "↺ Reset Cal". Mirrors handleResetChannel.
+  Changes: frontend/script.js — button gets class btn-reset-cal + data-ch, onclick
+    handleResetChannelCal(); new handler with pendingActions key 'cal_<idx>'.
+    frontend/style.css — .btn-sm.btn-danger.confirming (same pulse as .btn-reset).
+
+OUTSTANDING: firmware changes unflashed (no /dev/ttyACM*, board reachable only via
+  OTA/WiFi); debug voltageCal logging still in command_processor.cpp pending final
+  hardware confirm.
+
+========================================================
+2026-08-13 — Default LPF alpha 1.0 -> 0.2 (pre-NVS factory default)
+
+  User request: channels with no LPF stored in NVS should default to 0.2, not 1.0.
+  Frontend cache fixes same day: v7->v8->v9 / ?v=20260813 -> b -> c (broke stale SW/HTTP
+  cache of script.js after Reset Cal confirm deploy).
+
+Step 1 — src/config.h
+  Status: PASS
+  Notes: added DEFAULT_LPF_ALPHA 0.2f (Channel Configuration block).
+
+Step 2 — src/core/power_calculator.cpp (begin)
+  Status: PASS
+  Notes: lpfAlpha[ch] = DEFAULT_LPF_ALPHA (0.2) instead of 1.0. Auto-zero still forces
+  1.0 (bypass) via setLpfAlpha in .ino — correct, untouched.
+
+Step 3 — src/utils/nvs_manager.cpp (loadLpfAlpha)
+  Status: PASS
+  Notes: prefs.getFloat(key, DEFAULT_LPF_ALPHA) — the "before any NVS written" default.
+  Boards with an existing chN_lpf key keep their stored value; only never-written
+  channels get 0.2.
+
+Step 4 — src/network/command_processor.cpp (reset paths)
+  Status: PASS
+  Notes: reset_ch_cal and reset_nvs_defaults now reset LPF to DEFAULT_LPF_ALPHA (0.2)
+  instead of 1.0 (both NVS save + live powerCalc).
+
+Step 5 — frontend/script.js (calibration UI fallback)
+  Status: PASS (node --check OK)
+  Notes: lpf input fallback `|| 1` -> `|| 0.2` (null-safe). Cosmetic; firmware sends
+  real lpfAlpha once a snapshot arrives.
+
+FINAL VERDICT: PASS — arduino-cli no_fs build 1,463,649 B (72%) / RAM 116,408 B, only
+  pre-existing -Wformat warning. Deployed live (release 1786601294616000, SW v9,
+  ?v=20260813c). Firmware still UNFLASHED (OTA/USB needed).
+
+========================================================
+2026-08-13 — Auto-zero noise-floor flicker + stale box after multi-channel AZ
+
+  User report: (1) nf box flickers 0.000 <-> old value during auto-zero; (2) after
+  clicking Auto-Zero on several calibration rows, the new value didn't load into the
+  box until a page refresh (firmware write confirmed in NVS).
+
+Step 1 — src/core/power_calculator.cpp (flicker root cause)
+  Status: PASS (compile, Step 5)
+  Notes: computeAll() was mutating noiseFloor[ch]=0 at the start of every az batch and
+  restoring after — so every mid-capture broadcast emitted a transient "0.000" for the
+  channel. Now the zero floor is VIRTUAL: `float floor = (azActive && ch == azChannel)
+  ? 0.0f : noiseFloor[ch];` used for both floorSq and noisePower. noiseFloor[] stays
+  constant during capture, so every consumer (WS + Firebase /latest) sees the stable
+  value. Removed the now-dead save/zero/restore in runAutoZeroSingle.
+
+Step 2 — src/network/firebase_bridge.cpp (broadcast az state)
+  Status: PASS (compile, Step 5)
+  Notes: buildSystemJson() (shared by WS + Firebase) now emits "azActive":bool and
+  "azChannel":N (via isAutoZeroActive()/getAutoZeroChannel()) right after noiseFloor.
+
+Step 3 — frontend/script.js + style.css (calibrating state + reliable re-sync)
+  Status: PASS (node --check; Playwright Test 7)
+  Notes: normalizeSnapshot() passes through azActive/azChannel. noiseFloor sync loop:
+  while azActive && azChannel===i, that nf box gets a pulsing .calibrating class and
+  title "Auto-zero in progress…" and sync is skipped (no stale write, no flicker); on
+  completion azActive=false -> box syncs the committed median immediately. CSS adds
+  .calibrating (trip border + pulse-border keyframes).
+
+Step 4 — tests/test_cal_sync.py
+  Status: PASS (Playwright, 27/27)
+  Notes: Fixed stale UI selectors for the post-redesign shell (demo via #connMode select
+  + Launch; #page-dashboard; expand_cal_channel switches to Settings page). Added
+  Test 7 regression: azActive broadcast with transient noiseFloor 0.000 does NOT change
+  the box (stays 0.396), gets .calibrating; then azActive=false + 0.123 -> box syncs to
+  0.123 and marker clears.
+
+Step 5 — Firmware compile gate
+  Status: PASS
+  Build: arduino-cli compile --fqbn esp32:esp32:esp32s3:FlashSize=4M,
+    PartitionScheme=no_fs,CDCOnBoot=cdc --warnings all -> 1,464,181 B (72%) flash /
+    116,592 B (35%) RAM. Only pre-existing -Wformat banner warning remains.
+
+FINAL VERDICT: PASS. Bug 1 eliminated at source (no transient in the broadcast, so no
+  flicker in any consumer). Bug 2's perception (box stuck until refresh) addressed by
+  the explicit azActive gate: the box stays stable during capture, is visually marked
+  calibrating, and is re-synced the moment az completes. Firmware STILL UNFLASHED
+  (board reachable only via OTA/USB); needs a hardware flash + on-device multi-channel
+  Auto-Zero round-trip to confirm end-to-end.
+========================================================
+2026-08-13 — Auto-zero queue status ("Please wait") UX (post-flicker-fix follow-up)
+
+  User request: when multiple Auto-Zero calibrations are clicked, show "please wait"
+  and let the UI advance to the next channel as each box updates.
+
+Step 1 — src/core/power_calculator.{h,cpp}
+  Status: PASS (compile, Step 4)
+  Notes: added int getAutoZeroQueue(int *out, int maxLen) const — copies queued channel
+  indices, returns queue length.
+
+Step 2 — src/network/firebase_bridge.cpp
+  Status: PASS (compile, Step 4)
+  Notes: buildSystemJson() now also emits "azProgress":<batchCount> and "azQueue":[<channels>]
+  (shared by WS + Firebase /latest).
+
+Step 3 — frontend (index.html, script.js, style.css)
+  Status: PASS (node --check; Playwright Test 8)
+  Notes:
+  - index.html: #azStatus status line inserted between "Channel Calibration" title and
+    #calibrationRows.
+  - script.js: global lastAzState + AZ_BATCHES=32; normalizeSnapshot passes through
+    azQueue/azProgress; setAzChip() helper drives both the in-row chip (#azChip_n) and
+    the always-visible collapse-header chip (#azHeadChip_n) — active = "◐ Calibrating…"
+    coral pulsing, queued = "◷ Queued" amber, idle = hidden; #azStatus banner shows
+    "Please wait — calibrating Ch{n} (p/32) · waiting: Ch…" while busy; autoZeroChannel()
+    now warns on duplicate clicks ("already in the auto-zero queue — please wait") and
+    reports "queued — please wait (calibrating Ch{m})" when enqueued behind a busy channel.
+  - style.css: .az-status (coral mono banner), .az-chip / .az-chip.active (coral pulse) /
+    .az-chip.queued (amber). Reuses existing --trip/--warn/--font-mono tokens.
+
+Step 4 — Firmware compile gate
+  Status: PASS
+  Build: arduino-cli --fqbn esp32:esp32:esp32s3:FlashSize=4M,PartitionScheme=no_fs,
+    CDCOnBoot=cdc --warnings all -> 1,464,429 B (72%) flash / 116,592 B (35%) RAM.
+    Only pre-existing -Wformat banner warning.
+
+Step 5 — Playwright verification (tests/test_cal_sync.py)
+  Status: PASS — 33/33 (added Test 8: auto-zero queue status)
+  - idle: azStatus hidden, chips empty
+  - Ch1 active 18/32 + queue [2]: nf_0 stays 0.396 (no flicker), row+header chips show
+    Calibrating/Queued, status line "Please wait — ◐ calibrating Ch1 (18/32) · waiting: Ch3"
+  - duplicate Auto-Zero click on active channel -> toast "already in the auto-zero queue"
+  - completion (azActive=false, queue empty): nf_0 synced 0.123, status hidden, chips cleared
+  Programmatic DOM check (Playwright): #azStatus + all #azHeadChip_n are offsetParent-visible,
+  coral rgb(226,74,59), correct text. (Vision subagent missed them in full-page screenshots
+  because the status line sits at the viewport fold and queued rows were below the fold.)
+
+FINAL VERDICT: PASS. Queue state now visible in the UI (banner + per-row/header chips),
+  click feedback guides the user ("please wait"), and the broadcast-driven auto-advance
+  moves the active channel to the next queued one the instant the previous box syncs.
+  design.md updated (Auto-zero queue status decision). Firmware STILL UNFLASHED.
+
+## 2026-08-13 — LPF-during-AZ jump + banner fix
+ROOT CAUSE (Test 9): demo-mode mock rebroadcast lpfAlpha [1,1,1,1,1,1] every 1s with no
+  azActive field — racing the azActive=true broadcast and rewriting the LPF box to 1.00.
+FIXES:
+  - frontend/script.js: demo mock now sends lpfAlpha 0.2 + azActive:false/azChannel:-1/
+    azProgress:0/azQueue:[] so demo matches real firmware and can't race the az gate.
+  - tests/test_cal_sync.py: setup_demo_mode now stops demoInterval after connecting so
+    every test is deterministic (no 1s mock rebroadcast racing 200ms assertions).
+  - tests stop the http.server test server on exit (no leftover processes).
+DEPLOYED: hosting release 1786607786378000 — https://esp32-electricity-counter.web.app
+  serves index.html?v=20260813d, sw.js CACHE_NAME 'esp32-counter-v10' (verified via curl).
+  One browser reload pulls the new SW (v10) + assets; the v9 SW's network-first page
+  handler fetches fresh index.html even before the new SW activates.
+TEST: tests/test_cal_sync.py — 36 passed, 0 failed (incl. new Test 9 LPF stability).
+FIRMWARE: still unflashed (auto-zero banner fields azActive/azChannel/azProgress/azQueue
+  only exist on the flashed build — the user must flash src/ for the banner to appear).
+
+## 2026-08-13 — Recurring stale-cache root cause FIXED (not just bumped)
+REAL CAUSE: Firebase Hosting served all assets with default "Cache-Control: max-age=3600".
+  The SW is network-first, but its fetch() is satisfied by the browser HTTP cache, so a
+  reload after a deploy could serve STALE script.js/css/html for up to an hour — even with
+  a fresh SW. This is why the cache problem kept recurring after every deploy.
+FIX (permanent):
+  - hosting_deploy.py CONFIG now adds {"glob":"**","headers":{"Cache-Control":"no-cache"}}
+    (firebase.json mirrors it) -> every request revalidates, network-first is truly network-first.
+  - Bumped sw.js CACHE_NAME v10->v11 and refs ?v=20260813d->20260813e to force clean reinstall.
+DEPLOYED: release 1786608543693000. Verified via curl: /, /script.js, /style.css, /config.js,
+  /sw.js all serve "cache-control: no-cache"; index.html refs 20260813e; SW v11.
+  One reload on the user's device now pulls fresh content; subsequent deploys need NO manual
+  version bump to be seen.
+TOAST: removed confusing "(2s)" -> "auto-zero started — the noise floor updates shortly".

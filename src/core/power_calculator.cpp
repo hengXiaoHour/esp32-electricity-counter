@@ -8,10 +8,15 @@ void PowerCalculator::begin() {
     currentCal[ch] = DEFAULT_CURRENT_CALIBRATION;
     energyKWh[ch] = 0.0f;
     noiseFloor[ch] = 0.0f;
-    lpfAlpha[ch] = 1.0f;
+    lpfAlpha[ch] = DEFAULT_LPF_ALPHA;
     filteredCurrentRMS[ch] = 0.0f;
+    rmsInit[ch] = false;
   }
-  autoZeroPending = false;
+  azQueueLen = 0;
+  azActive = false;
+  azLpfForced = false;
+  azChannel = -1;
+  azBatchCount = 0;
   analogReadResolution(ADC_RESOLUTION);
 }
 
@@ -26,32 +31,11 @@ void PowerCalculator::update(float deltaSeconds) {
 }
 
 void PowerCalculator::collectSamples() {
-  float vFiltered = 0.0f;
-  float cFiltered[NUM_CHANNELS];
-  bool vInit = false;
-  bool cInit[NUM_CHANNELS] = {false};
-  float vAlpha = lpfAlpha[0];
-
   for (int i = 0; i < rmsSamples; i++) {
-    float vRaw = (float)analogRead(PIN_VOLTAGE);
-    if (vAlpha < 1.0f) {
-      if (!vInit) { vFiltered = vRaw; vInit = true; }
-      vFiltered += vAlpha * (vRaw - vFiltered);
-      voltageSamples[i] = vFiltered;
-    } else {
-      voltageSamples[i] = vRaw;
-    }
+    voltageSamples[i] = (float)analogRead(PIN_VOLTAGE);
 
     for (int ch = 0; ch < NUM_CHANNELS; ch++) {
-      float raw = (float)analogRead(CURRENT_PINS[ch]);
-      float alpha = lpfAlpha[ch];
-      if (alpha < 1.0f) {
-        if (!cInit[ch]) { cFiltered[ch] = raw; cInit[ch] = true; }
-        cFiltered[ch] += alpha * (raw - cFiltered[ch]);
-        currentSamples[ch][i] = cFiltered[ch];
-      } else {
-        currentSamples[ch][i] = raw;
-      }
+      currentSamples[ch][i] = (float)analogRead(CURRENT_PINS[ch]);
     }
 
     delayMicroseconds(ADC_READ_INTERVAL_US);
@@ -97,16 +81,24 @@ void PowerCalculator::computeAll() {
     float rawRMS = iPinVoltage * currentCal[ch];
 
     float rawSq = rawRMS * rawRMS;
-    float floorSq = noiseFloor[ch] * noiseFloor[ch];
+    float floor = (azActive && ch == azChannel) ? 0.0f : noiseFloor[ch];
+    float floorSq = floor * floor;
     float signalRMS = (rawSq > floorSq) ? sqrtf(rawSq - floorSq) : 0.0f;
 
     currentRMS[ch] = signalRMS;
-    filteredCurrentRMS[ch] = signalRMS;
+
+    float alpha = azLpfForced ? 1.0f : lpfAlpha[ch];
+    if (alpha < 1.0f) {
+      if (!rmsInit[ch]) { filteredCurrentRMS[ch] = signalRMS; rmsInit[ch] = true; }
+      filteredCurrentRMS[ch] += alpha * (signalRMS - filteredCurrentRMS[ch]);
+    } else {
+      filteredCurrentRMS[ch] = signalRMS;
+    }
 
     float pMean = pSum / rmsSamples;
     float adcToVolt = ADC_REFERENCE_V / ADC_MAX_VALUE;
     float pWatts = pMean * adcToVolt * adcToVolt * voltageCal * currentCal[ch];
-    float noisePower = voltageRMS * noiseFloor[ch];
+    float noisePower = voltageRMS * floor;
     activePower[ch] = fabsf(pWatts) - noisePower;
     if (activePower[ch] < 0.0f) activePower[ch] = 0.0f;
 
@@ -127,6 +119,7 @@ void PowerCalculator::setNoiseFloor(int ch, float val) {
   if (ch < 0 || ch >= NUM_CHANNELS) return;
   noiseFloor[ch] = val;
   filteredCurrentRMS[ch] = 0.0f;
+  rmsInit[ch] = false;
 }
 
 void PowerCalculator::setLpfAlpha(int ch, float val) {
@@ -134,20 +127,85 @@ void PowerCalculator::setLpfAlpha(int ch, float val) {
   if (val < 0.01f) val = 0.01f;
   if (val > 1.0f) val = 1.0f;
   lpfAlpha[ch] = val;
+  rmsInit[ch] = false;
 }
 
-void PowerCalculator::requestAutoZero(int ch) {
-  if (ch < 0 || ch >= NUM_CHANNELS) return;
-  autoZeroChannel = ch;
-  autoZeroPending = true;
+bool PowerCalculator::requestAutoZero(int ch) {
+  if (ch < 0 || ch >= NUM_CHANNELS) return false;
+  if (azActive && azChannel == ch) return false;
+  for (int i = 0; i < azQueueLen; i++) {
+    if (azQueue[i] == ch) return false;
+  }
+  if (azQueueLen >= NUM_CHANNELS) return false;
+  azQueue[azQueueLen++] = ch;
+  return true;
+}
+
+void PowerCalculator::cancelAutoZero() {
+  azActive = false;
+  azLpfForced = false;
+  azQueueLen = 0;
+  azChannel = -1;
+  azBatchCount = 0;
+}
+
+bool PowerCalculator::isAutoZeroBusy() const {
+  return azActive || azQueueLen > 0;
+}
+
+int PowerCalculator::getAutoZeroQueue(int *out, int maxLen) const {
+  int n = (azQueueLen < maxLen) ? azQueueLen : maxLen;
+  for (int i = 0; i < n; i++) out[i] = azQueue[i];
+  return azQueueLen;
+}
+
+bool PowerCalculator::autoZeroStart() {
+  if (!azActive) {
+    if (azQueueLen <= 0) return false;
+    azChannel = azQueue[0];
+    for (int i = 1; i < azQueueLen; i++) {
+      azQueue[i - 1] = azQueue[i];
+    }
+    azQueueLen--;
+    azBatchCount = 0;
+    azActive = true;
+    azLpfForced = true;
+  }
+  return true;
+}
+
+int PowerCalculator::autoZeroCapture(int n) {
+  int captured = 0;
+  while (captured < n && azBatchCount < AZ_BATCHES) {
+    azFloors[azBatchCount++] = runAutoZeroSingle(azChannel);
+    captured++;
+  }
+  return captured;
+}
+
+float PowerCalculator::autoZeroFinish() {
+  azLpfForced = false;
+  for (int i = 0; i < NUM_CHANNELS; i++) {
+    rmsInit[i] = false;
+  }
+  for (int i = 0; i < AZ_BATCHES; i++) {
+    for (int j = i + 1; j < AZ_BATCHES; j++) {
+      if (azFloors[j] < azFloors[i]) {
+        float t = azFloors[i]; azFloors[i] = azFloors[j]; azFloors[j] = t;
+      }
+    }
+  }
+  float median = (AZ_BATCHES % 2 == 1)
+      ? azFloors[AZ_BATCHES / 2]
+      : (azFloors[AZ_BATCHES / 2 - 1] + azFloors[AZ_BATCHES / 2]) * 0.5f;
+  azActive = false;
+  azChannel = -1;
+  azBatchCount = 0;
+  return median;
 }
 
 float PowerCalculator::runAutoZeroSingle(int ch) {
-  float savedNF = noiseFloor[ch];
-  noiseFloor[ch] = 0.0f;
   collectSamples();
   computeAll();
-  float rawRMS = currentRMS[ch];
-  noiseFloor[ch] = savedNF;
-  return rawRMS;
+  return currentRMS[ch];
 }

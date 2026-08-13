@@ -44,13 +44,20 @@ static bool extractJsonString(const String &s, const char *key, String &outVal) 
 // Mirrors the command vocabulary of the frontend dashboard:
 // set_name, reset_counter, test_inject, set_voltage_cal, set_current_cal,
 // set_monthly_kwh, set_noise_floor, set_lpf, set_rms_samples, set_ntfy_topic,
-// set_ntfy_enabled, reset_ch_to_default, reset_nvs_defaults, test_force_rollover.
+// set_ntfy_enabled, reset_ch_cal, reset_ch_to_default, reset_nvs_defaults,
+// test_force_rollover.
 bool processCommand(NVSManager *nvs, SystemData *sysData,
                     SemaphoreHandle_t *dataMutex,
                     PowerCalculator *powerCalc, LimitManager *limitMgr,
                     const char *msg, String *responseOut) {
   bool handled = false;
   String s(msg);
+
+  // DEBUG: log voltageCal before command processing
+  if (powerCalc) {
+    Serial.printf("  [CMD] voltageCal before cmd: %.1f  msg: %.40s\n",
+                  powerCalc->voltageCal, msg);
+  }
 
   if (s.indexOf("\"cmd\":\"console\"") >= 0) {
     String line;
@@ -215,6 +222,26 @@ bool processCommand(NVSManager *nvs, SystemData *sysData,
       handled = true;
     }
 
+  } else if (s.indexOf("\"cmd\":\"reset_ch_cal\"") >= 0) {
+    int ch = -1;
+    int ci = s.indexOf("\"ch\":");
+    if (ci >= 0) ch = s.substring(ci + 5).toInt();
+    if (ch >= 0 && ch < NUM_CHANNELS) {
+      Serial.printf("  [RESET_CH_CAL] ch=%d  voltageCal BEFORE=%.1f\n", ch, powerCalc->voltageCal);
+      nvs->saveChannelCurrentCal(ch, DEFAULT_CURRENT_CALIBRATION);
+      nvs->saveNoiseFloor(ch, 0.0f);
+      nvs->saveLpfAlpha(ch, DEFAULT_LPF_ALPHA);
+      powerCalc->currentCal[ch] = DEFAULT_CURRENT_CALIBRATION;
+      powerCalc->setNoiseFloor(ch, 0.0f);
+      powerCalc->setLpfAlpha(ch, DEFAULT_LPF_ALPHA);
+      if (sysData && dataMutex && xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        sysData->currentCalibration[ch] = DEFAULT_CURRENT_CALIBRATION;
+        xSemaphoreGive(*dataMutex);
+      }
+      Serial.printf("  [RESET_CH_CAL] ch=%d  voltageCal AFTER=%.1f\n", ch, powerCalc->voltageCal);
+      handled = true;
+    }
+
   } else if (s.indexOf("\"cmd\":\"reset_channel_names\"") >= 0 || s.indexOf("\"cmd\":\"reset_ch_to_default\"") >= 0) {
     int ch = -1;
     int ci = s.indexOf("\"ch\":");
@@ -244,10 +271,10 @@ bool processCommand(NVSManager *nvs, SystemData *sysData,
     for (int i = 0; i < NUM_CHANNELS; i++) {
       nvs->saveChannelCurrentCal(i, DEFAULT_CURRENT_CALIBRATION);
       nvs->saveNoiseFloor(i, 0.0f);
-      nvs->saveLpfAlpha(i, 1.0f);
+      nvs->saveLpfAlpha(i, DEFAULT_LPF_ALPHA);
       powerCalc->currentCal[i] = DEFAULT_CURRENT_CALIBRATION;
       powerCalc->setNoiseFloor(i, 0.0f);
-      powerCalc->setLpfAlpha(i, 1.0f);
+      powerCalc->setLpfAlpha(i, DEFAULT_LPF_ALPHA);
     }
     if (sysData && dataMutex && xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
       sysData->voltageCalibration = DEFAULT_VOLTAGE_CALIBRATION;
@@ -264,5 +291,11 @@ bool processCommand(NVSManager *nvs, SystemData *sysData,
   }
 
   if (handled) nvs->commit();
+
+  // DEBUG: log voltageCal after every handled command to detect corruption
+  if (handled && powerCalc) {
+    Serial.printf("  [CMD] voltageCal after cmd: %.1f\n", powerCalc->voltageCal);
+  }
+
   return handled;
 }

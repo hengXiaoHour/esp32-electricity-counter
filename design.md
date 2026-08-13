@@ -68,6 +68,42 @@ footer explanation, Install row.
 
 ## Design Decisions
 
+### Auto-zero queue status — "Please wait" (2026-08-13)
+Multi-channel Auto-Zero clicks are queued on the board (firmware `requestAutoZero`),
+so the dashboard must communicate busy state and queue progression.
+- **Firmware adds to broadcast**: `azActive`, `azChannel`, `azProgress` (batch count
+  / 32), `azQueue` (channels waiting). WebSocket and Firebase /latest both carry them
+  via the shared `buildSystemJson`.
+- **Status line** (`#azStatus`, coral `--trip`, mono 0.7rem) appears above the Channel
+  Calibration list only while busy:
+  `Please wait — calibrating Ch1 (18/32) · waiting: Ch3, Ch5`
+- **Per-row chips** (`#azChip_n` + mirrored `#azHeadChip_n` on each collapse header so
+  queued state is visible even in collapsed rows):
+  - active: `◐ Calibrating…` — coral, pulsing (`pulse-border`), same visual language
+    as the `.calibrating` input border
+  - queued: `◷ Queued` — dim amber `--warn`
+  - idle: hidden
+- **Click feedback** (`autoZeroChannel`): clicking Auto-Zero on an already-active or
+  queued channel shows "already in the auto-zero queue — please wait"; when another
+  channel is calibrating the toast reports "Ch4 queued — please wait".
+- **Auto-advance** is driven by the broadcast: when the active channel finishes, its
+  Noise Floor box syncs to the committed median and the next queued channel becomes
+  active automatically (chips/banner/box all move live).
+
+### LPF box must not follow the firmware's capture bypass (2026-08-13)
+The firmware forces the LPF alpha to 1.0 (no filtering) while capturing the auto-zero
+samples, then restores the user value after commit. Naively syncing `lpfAlpha` from the
+broadcast made the LPF box jump to `1.00` the moment Auto-Zero started and stay there
+until calibration finished.
+- **Firmware**: `computeAll()` bypasses filtering via `azLpfForced ? 1.0f : lpfAlpha[ch]`
+  during capture — the saved user value in `lpfAlpha[ch]` is never touched, and the
+  save/set/restore round-trip around auto-zero was removed.
+- **Dashboard**: the broadcast sync is gated on `data.azActive !== true`, so the LPF box
+  holds its last real value while the banner/chips communicate the busy state; it resumes
+  syncing the instant the broadcast clears `azActive`. Test 9 pins this behavior.
+- **Demo mock** corrected: it broadcast `lpfAlpha: [1,1,1,1,1,1]` (and no `azActive`),
+  so demo mode showed `1.00` LPF boxes and could race the gate — now `0.2` + reset az fields.
+
 ### Single mode dropdown + Launch button (2026-08-11)
 - **Context**: Connect panel had three separate buttons (Local primary,
   Cloud/Demo outline) plus an IP input and a device picker — cluttered, and

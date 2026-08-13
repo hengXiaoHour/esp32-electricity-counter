@@ -227,6 +227,7 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
 .btn-sm.btn-reset.confirming { background: var(--trip); color: #fff; animation: pulse 0.5s infinite alternate; }
 .btn-sm.btn-danger { border-color: rgba(226, 74, 59, 0.4); color: var(--trip); }
 .btn-sm.btn-danger:hover { background: var(--trip); color: #fff; }
+.btn-sm.btn-danger.confirming { background: var(--trip); color: #fff; animation: pulse 0.5s infinite alternate; }
 .btn-outline {
   padding: 9px 18px; border-radius: 6px; font-size: 0.72rem; font-weight: 700; cursor: pointer;
   border: 1px solid rgba(226, 74, 59, 0.45); background: transparent; color: var(--trip);
@@ -273,6 +274,12 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
 .cal-param-row label { font-size: 0.72rem; color: var(--text-2); min-width: 85px; font-family: var(--font-mono); white-space: nowrap; }
 .cal-param-row input { flex: 0 0 auto; width: 88px; padding: 4px 6px; background: var(--bg-input); border: 1px solid var(--border); color: var(--text); border-radius: 4px; font-family: var(--font-mono); font-size: 0.8rem; outline: none; }
 .cal-param-row input:focus { border-color: var(--trip); }
+.cal-param-row input.calibrating { border-color: var(--trip); background: var(--bg-input); animation: pulse-border 1.2s ease-in-out infinite; }
+@keyframes pulse-border { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+.az-status { margin: 6px 0 10px; font-family: var(--font-mono); font-size: 0.7rem; color: var(--trip); }
+.az-chip { font-family: var(--font-mono); font-size: 0.66rem; margin-left: 6px; }
+.az-chip.active { color: var(--trip); animation: pulse-border 1.2s ease-in-out infinite; }
+.az-chip.queued { color: var(--warn); }
 .cal-reset-row { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
 .conn-ip { color: var(--text); font-size: 0.8rem; }
 

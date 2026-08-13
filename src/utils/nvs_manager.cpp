@@ -143,7 +143,7 @@ void NVSManager::saveNoiseFloor(uint8_t channel, float value) {
 
 float NVSManager::loadLpfAlpha(uint8_t channel) {
   String key = channelKey(channel, "lpf");
-  return prefs.getFloat(key.c_str(), 1.0f);
+  return prefs.getFloat(key.c_str(), DEFAULT_LPF_ALPHA);
 }
 
 void NVSManager::saveLpfAlpha(uint8_t channel, float value) {

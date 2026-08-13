@@ -4,6 +4,8 @@
 
 class PowerCalculator {
 public:
+  static const int AZ_BATCHES = 32;
+
   void begin();
 
   void update(float deltaSeconds);
@@ -25,10 +27,17 @@ public:
 
   void setNoiseFloor(int ch, float val);
   void setLpfAlpha(int ch, float val);
-  void requestAutoZero(int ch);
-  void cancelAutoZero() { autoZeroPending = false; }
-  bool isAutoZeroBusy() const { return autoZeroPending; }
-  int getAutoZeroChannel() const { return autoZeroChannel; }
+  bool requestAutoZero(int ch);
+  void cancelAutoZero();
+  bool isAutoZeroBusy() const;
+  bool isAutoZeroActive() const { return azActive; }
+  int getAutoZeroChannel() const { return azActive ? azChannel : -1; }
+  int getAutoZeroProgress() const { return azActive ? azBatchCount : 0; }
+  int getAutoZeroQueue(int *out, int maxLen) const;
+  bool autoZeroStart();
+  int autoZeroCapture(int n);
+  bool autoZeroDone() const { return azActive && azBatchCount >= AZ_BATCHES; }
+  float autoZeroFinish();
   float runAutoZeroSingle(int ch);
 
   uint16_t rmsSamples;
@@ -41,13 +50,19 @@ private:
   float voltageRMS;
   float currentRMS[NUM_CHANNELS];
   float filteredCurrentRMS[NUM_CHANNELS];
+  bool rmsInit[NUM_CHANNELS];
   float activePower[NUM_CHANNELS];
   float apparentPower[NUM_CHANNELS];
   float powerFactor[NUM_CHANNELS];
   float energyKWh[NUM_CHANNELS];
 
-  int autoZeroChannel;
-  volatile bool autoZeroPending;
+  int azQueue[NUM_CHANNELS];
+  int azQueueLen;
+  int azChannel;
+  int azBatchCount;
+  float azFloors[AZ_BATCHES];
+  bool azActive;
+  bool azLpfForced;
 
   void collectSamples();
   void computeAll();

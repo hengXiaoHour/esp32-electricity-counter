@@ -64,6 +64,9 @@
 // Default monthly kWh limit
 #define DEFAULT_MONTHLY_KWH_LIMIT 48.0f
 
+// Default per-channel LPF alpha (EMA on post-RMS estimate; 1.0 = no filtering)
+#define DEFAULT_LPF_ALPHA 0.2f
+
 // ==============================
 // Auto-Recovery (limit trip)
 // ==============================

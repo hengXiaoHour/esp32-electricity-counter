@@ -14,7 +14,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=20260813e">
 <script>
 // Prevent a flash of the connect panel while script.js is still loading.
 // If a live session exists, mark <html> so CSS hides the panel pre-paint.
@@ -240,6 +240,7 @@
             <span class="hint-inline">(100-2000)</span>
           </div>
           <div class="cal-section-title">Channel Calibration</div>
+          <div id="azStatus" class="az-status hidden"></div>
           <div id="calibrationRows" class="cal-grid"></div>
           <div class="cal-reset-row">
             <button id="resetNvsBtn" class="btn-sm btn-danger" onclick="handleResetNvs()">&#8634; Reset NVS to Defaults</button>
@@ -331,11 +332,11 @@
   </div>
 </div>
 
-<script src="config.js?v=20260812"></script>
+<script src="config.js?v=20260813e"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="script.js?v=20260812"></script>
+<script src="script.js?v=20260813e"></script>
 <script>
 if ('serviceWorker' in navigator && window.isSecureContext) {
   window.addEventListener('load', function () {

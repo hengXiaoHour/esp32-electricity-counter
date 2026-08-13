@@ -42,6 +42,22 @@ void buildSystemJson(const SystemData &data, PowerCalculator *powerCalc,
     if (i < NUM_CHANNELS - 1) json += ",";
   }
   json += "]";
+  json += ",\"azActive\":";
+  json += powerCalc->isAutoZeroActive() ? "true" : "false";
+  json += ",\"azChannel\":";
+  json += powerCalc->getAutoZeroChannel();
+  json += ",\"azProgress\":";
+  json += powerCalc->getAutoZeroProgress();
+  json += ",\"azQueue\":[";
+  {
+    int q[NUM_CHANNELS];
+    int qLen = powerCalc->getAutoZeroQueue(q, NUM_CHANNELS);
+    for (int i = 0; i < qLen; i++) {
+      json += q[i];
+      if (i < qLen - 1) json += ",";
+    }
+  }
+  json += "]";
   json += ",\"lpfAlpha\":[";
   for (int i = 0; i < NUM_CHANNELS; i++) {
     json += String(powerCalc->lpfAlpha[i], 2);

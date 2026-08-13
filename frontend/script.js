@@ -4,6 +4,8 @@ let userDisconnect = false;
 let activeEditChIdx = null;
 let latestChannelData = [];
 let pendingActions = {};
+let lastAzState = { active: false, channel: -1, queue: [] };
+const AZ_BATCHES = 32;
 let demoInterval = null;
 let lastEventKey = '';
 let lastToastEventKey = '';
@@ -470,6 +472,10 @@ function normalizeSnapshot(val) {
   if (val.ch) norm.ch = toArray(val.ch);
   if (val.currentCalibration) norm.currentCalibration = toArray(val.currentCalibration);
   if (val.noiseFloor) norm.noiseFloor = toArray(val.noiseFloor);
+  if (val.azActive !== undefined) norm.azActive = val.azActive;
+  if (val.azChannel !== undefined) norm.azChannel = val.azChannel;
+  if (val.azProgress !== undefined) norm.azProgress = val.azProgress;
+  if (val.azQueue) norm.azQueue = toArray(val.azQueue);
   if (val.lpfAlpha) norm.lpfAlpha = toArray(val.lpfAlpha);
   if (val.events) norm.events = toArray(val.events);
   return norm;
@@ -725,11 +731,66 @@ function updateDashboard(data) {
   if (Array.isArray(data.currentCalibration)) {
     data.currentCalibration.forEach((v, i) => syncField(`currCal_${i}`, v, 1));
   }
+  const azActiveCh = (data.azActive === true && typeof data.azChannel === 'number') ? data.azChannel : -1;
+  const azQueueArr = Array.isArray(data.azQueue) ? data.azQueue : [];
+  lastAzState = { active: azActiveCh >= 0, channel: azActiveCh, queue: azQueueArr };
+
+  const setAzChip = (elId, active, queued) => {
+    const chip = document.getElementById(elId);
+    if (!chip) return;
+    if (active) {
+      chip.textContent = '\u25d0 Calibrating\u2026';
+      chip.className = 'az-chip active';
+    } else if (queued) {
+      chip.textContent = '\u25f7 Queued';
+      chip.className = 'az-chip queued';
+    } else {
+      chip.textContent = '';
+      chip.className = 'az-chip';
+    }
+  };
+
   if (Array.isArray(data.noiseFloor)) {
-    data.noiseFloor.forEach((v, i) => syncField(`nf_${i}`, v, 3));
+    data.noiseFloor.forEach((v, i) => {
+      const active = i === azActiveCh;
+      const queued = !active && azQueueArr.includes(i);
+      const inp = document.getElementById(`nf_${i}`);
+      if (inp) {
+        if (active) {
+          inp.classList.add('calibrating');
+          inp.title = 'Auto-zero in progress\u2026';
+        } else {
+          inp.classList.remove('calibrating');
+          inp.title = '';
+        }
+      }
+      setAzChip(`azChip_${i}`, active, queued);
+      setAzChip(`azHeadChip_${i}`, active, queued);
+      if (!active) syncField(`nf_${i}`, v, 3);
+    });
+  }
+
+  const azStatus = document.getElementById('azStatus');
+  if (azStatus) {
+    const busy = azActiveCh >= 0 || azQueueArr.length > 0;
+    if (busy) {
+      let txt = azActiveCh >= 0
+        ? `\u25d0 calibrating Ch${azActiveCh + 1} (${data.azProgress || 0}/${AZ_BATCHES})`
+        : 'starting auto-zero\u2026';
+      if (azQueueArr.length) {
+        txt += '\u2003\u00b7\u2003waiting: ' + azQueueArr.map(c => 'Ch' + (c + 1)).join(', ');
+      }
+      azStatus.textContent = 'Please wait \u2014 ' + txt;
+      azStatus.classList.remove('hidden');
+    } else {
+      azStatus.textContent = '';
+      azStatus.classList.add('hidden');
+    }
   }
   if (Array.isArray(data.lpfAlpha)) {
-    data.lpfAlpha.forEach((v, i) => syncField(`lpf_${i}`, v, 2));
+    data.lpfAlpha.forEach((v, i) => {
+      if (data.azActive !== true) syncField(`lpf_${i}`, v, 2);
+    });
   }
 
   const rmsInput = document.getElementById('rmsSamples');
@@ -743,11 +804,11 @@ function updateDashboard(data) {
     data.ch.forEach((_, idx) => {
       const currCal = (data.currentCalibration && data.currentCalibration[idx]) || 100;
       const nf = (data.noiseFloor && data.noiseFloor[idx]) || 0;
-      const lpf = (data.lpfAlpha && data.lpfAlpha[idx]) || 1;
+      const lpf = (data.lpfAlpha && data.lpfAlpha[idx]) != null ? data.lpfAlpha[idx] : 0.2;
 
       const header = document.createElement('div');
       header.className = 'cal-collapse-header';
-      header.innerHTML = `<span class="arrow">&#9654;</span> Ch${idx + 1}`;
+      header.innerHTML = `<span class="arrow">&#9654;</span> Ch${idx + 1}<span class="az-chip head" id="azHeadChip_${idx}"></span>`;
       header.onclick = () => {
         const body = header.nextElementSibling;
         const isOpen = body.classList.toggle('open');
@@ -766,12 +827,17 @@ function updateDashboard(data) {
           <label>Noise Floor:</label>
           <input type="number" id="nf_${idx}" step="0.001" value="${nf}" oninput="this.dataset.userSet='true'">
           <button class="btn-sm" onclick="autoZeroChannel(${idx})" style="color:#e67e22;">Auto-Zero</button>
+          <span class="az-chip" id="azChip_${idx}"></span>
         </div>
         <div class="cal-param-row">
           <label>LPF Alpha:</label>
           <input type="number" id="lpf_${idx}" step="0.01" min="0.01" max="1" value="${lpf}" oninput="this.dataset.userSet='true'">
           <button class="btn-sm" onclick="sendLpfAlpha(${idx})">Set</button>
           <span class="hint-inline">(0.01-1, 1=none)</span>
+        </div>
+        <div class="cal-param-row">
+          <button class="btn-sm btn-danger btn-reset-cal" data-ch="${idx}" onclick="handleResetChannelCal(${idx})">&#8634; Reset Cal</button>
+          <span class="hint-inline">(cal, noise floor, LPF)</span>
         </div>
       `;
 
@@ -1033,6 +1099,33 @@ function handleResetChannel(idx) {
   }
 }
 
+function handleResetChannelCal(idx) {
+  const btn = document.querySelector(`.btn-reset-cal[data-ch="${idx}"]`);
+  const key = 'cal_' + idx;
+
+  if (pendingActions[key] === 'confirm') {
+    delete pendingActions[key];
+    if (btn) {
+      btn.innerHTML = '&#8634; Reset Cal';
+      btn.classList.remove('confirming');
+    }
+    sendResetChannelCal(idx);
+  } else {
+    pendingActions[key] = 'confirm';
+    if (btn) {
+      btn.textContent = 'Confirm?';
+      btn.classList.add('confirming');
+    }
+    setTimeout(() => {
+      delete pendingActions[key];
+      if (btn) {
+        btn.innerHTML = '&#8634; Reset Cal';
+        btn.classList.remove('confirming');
+      }
+    }, 3000);
+  }
+}
+
 function confirmModalReset() {
   const idx = activeEditChIdx;
   if (idx === null) return;
@@ -1108,8 +1201,19 @@ function sendCurrentCal(idx) {
 function autoZeroChannel(idx) {
   const nf = document.getElementById(`nf_${idx}`);
   if (nf) delete nf.dataset.userSet;
+
+  const az = lastAzState;
+  const already = (az.active && az.channel === idx) || (az.queue && az.queue.includes(idx));
+  if (already) {
+    showToast(`Ch${idx + 1} is already in the auto-zero queue \u2014 please wait`);
+    return;
+  }
+
   sendCommand({ cmd: 'set_noise_floor', ch: idx }).then(() => {
-    showToast(`Ch${idx + 1} auto-zero started (2s)...`);
+    const busy = az.active || (az.queue && az.queue.length > 0);
+    showToast(busy
+      ? `Ch${idx + 1} queued \u2014 please wait (calibrating Ch${az.channel + 1})`
+      : `Ch${idx + 1} auto-zero started \u2014 the noise floor updates shortly`);
   });
 }
 
@@ -1120,6 +1224,16 @@ function sendLpfAlpha(idx) {
   delete inp.dataset.userSet;
   sendCommand({ cmd: 'set_lpf', ch: idx, val }).then(() => {
     showToast(`Ch${idx + 1} LPF alpha set to ${val.toFixed(2)}`);
+  });
+}
+
+function sendResetChannelCal(idx) {
+  ['currCal', 'nf', 'lpf'].forEach(id => {
+    const el = document.getElementById(`${id}_${idx}`);
+    if (el) delete el.dataset.userSet;
+  });
+  sendCommand({ cmd: 'reset_ch_cal', ch: idx }).then(() => {
+    showToast(`Ch${idx + 1} calibration reset to defaults`);
   });
 }
 
@@ -1268,7 +1382,8 @@ function startDemoMode() {
       lastMonth: 202608,
       epoch: Math.floor(Date.now() / 1000),
       ota: false,
-      lpfAlpha: [1, 1, 1, 1, 1, 1],
+      lpfAlpha: [0.2, 0.2, 0.2, 0.2, 0.2, 0.2],
+      azActive: false, azChannel: -1, azProgress: 0, azQueue: [],
       ch: [
         { n: "Counter 1", a: 4.8 + Math.random(), w: 1080 + Math.random() * 20, kwh: 42.4, pf: 0.95, mkwh: 48, s: 0 },
         { n: "Counter 2", a: 0.0, w: 0.0, kwh: 1.2, pf: 0.0, mkwh: 48, s: 3 },
