@@ -64,6 +64,10 @@
 // Default monthly kWh limit
 #define DEFAULT_MONTHLY_KWH_LIMIT 48.0f
 
+// Monthly billing reset day (1-28). Counters zero at 00:00 UTC on this day each month.
+// Billing period = 26th → 25th next month. Use 1 for calendar-month reset.
+#define MONTHLY_RESET_DAY 26
+
 // Default per-channel LPF alpha (EMA on post-RMS estimate; 1.0 = no filtering)
 #define DEFAULT_LPF_ALPHA 0.2f
 
