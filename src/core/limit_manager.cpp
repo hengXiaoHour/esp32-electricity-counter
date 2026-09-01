@@ -85,11 +85,20 @@ void LimitManager::rolloverIfNeeded() {
 
   struct tm t;
   localtime_r(&now, &t);
-  int32_t month = (t.tm_year + 1900) * 100 + (t.tm_mon + 1);
+  // Billing cycle anchored to MONTHLY_RESET_DAY (e.g. 26th → 25th).
+  // Effective month increments on/after the reset day at 00:00 UTC.
+  int y = t.tm_year + 1900;
+  int m = t.tm_mon + 1;
+  int d = t.tm_mday;
+  if (d >= MONTHLY_RESET_DAY) {
+    m += 1;
+    if (m > 12) { m = 1; y += 1; }
+  }
+  int32_t billingMonth = y * 100 + m;
 
-  if (month == nvs->loadLastMonth()) return;
+  if (billingMonth == nvs->loadLastMonth()) return;
 
-  nvs->saveLastMonth(month);
+  nvs->saveLastMonth(billingMonth);
 
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {
     powerCalc->setEnergyKWh(ch, 0.0f);
