@@ -138,7 +138,9 @@ void networkTask(void *pvParameters) {
       }
     }
 
-    // Start webserver + Firebase after WiFi connects or AP starts
+    // Start webserver after WiFi connects or AP starts.
+    // Firebase is started from firebaseTask (avoids blocking TLS handshake
+    // in networkTask which starves the idle task and triggers WDT).
     {
       static bool serverStarted = false;
       if (!serverStarted && !wsServer.isRunning()) {
@@ -146,7 +148,6 @@ void networkTask(void *pvParameters) {
           serverStarted = true;
           wsServer.startServer();
           Serial.printf("  %-19s%s\n", "WebSocket", "STARTED");
-          if (wifiMgr.isConnected()) fbBridge.start();
           Serial.println();
           Serial.println("  Core 0: Network (WiFi, WebSocket, Firebase, OTA)");
           Serial.println("  Core 1: Sensor (ADC, Power, Limits)");
