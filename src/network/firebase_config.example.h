@@ -2,17 +2,14 @@
 
 // Firebase config — EXAMPLE TEMPLATE (safe to commit).
 // Copy this file to `src/network/firebase_config.h` and fill in real values.
-// `firebase_config.h` is gitignored; never commit real service-account keys.
+// `firebase_config.h` is gitignored; never commit real credentials.
 //
-// NOTE: the web API key is NOT required — auth uses the OAuth2 service-account
-// flow (private_key + client_email + project_id), and RTDB rules allow the
-// resulting identity ("auth != null"). Keep FIREBASE_API_KEY empty.
+// Auth uses API key + email/password. Create a user in Firebase Console →
+// Authentication (enable Email/Password sign-in), then set FIREBASE_AUTH_EMAIL
+// and FIREBASE_AUTH_PASSWORD here. Keep the private key OUT (no service account).
 
-#define FIREBASE_API_KEY ""        // NOT needed for service-account auth
-#define FIREBASE_DB_URL ""         // Realtime database URL
+#define FIREBASE_API_KEY ""         // Web API key (Firebase Console → Project settings)
+#define FIREBASE_DB_URL ""          // Realtime database URL
 #define FIREBASE_PROJECT_ID "esp32-electricity-counter"
-#define FIREBASE_CLIENT_EMAIL ""   // service account email
-#define FIREBASE_PRIVATE_KEY \
-  "-----BEGIN PRIVATE KEY-----\n" \
-  "PASTE_YOUR_PRIVATE_KEY_HERE\n" \
-  "-----END PRIVATE KEY-----\n"
+#define FIREBASE_AUTH_EMAIL ""
+#define FIREBASE_AUTH_PASSWORD ""
