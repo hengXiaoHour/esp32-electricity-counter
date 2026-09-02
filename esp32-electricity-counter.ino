@@ -172,7 +172,15 @@ void networkTask(void *pvParameters) {
 // pushLatest()/loop() are throttled internally to FIREBASE_*_INTERVAL_MS.
 void firebaseTask(void *pvParameters) {
   TickType_t lastWake = xTaskGetTickCount();
+  static bool fbStarted = false;
   while (true) {
+    // Start Firebase here — the blocking TLS handshake + token exchange
+    // (Firebase.begin) takes 10-20s and must never run in networkTask
+    // (would starve IDLE0 and trigger WDT).
+    if (!fbStarted && wifiMgr.isConnected()) {
+      fbStarted = true;
+      fbBridge.start();
+    }
     fbBridge.loop();
     fbBridge.pushLatest();
     vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(50));
