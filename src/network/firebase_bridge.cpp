@@ -158,10 +158,10 @@ void FirebaseBridge::start() {
   Serial.printf("  %-19s%s\n", "Firebase", "CONFIGURED");
 
   config.api_key = FIREBASE_API_KEY;
-  config.service_account.data.client_email = FIREBASE_CLIENT_EMAIL;
-  config.service_account.data.project_id = FIREBASE_PROJECT_ID;
-  config.service_account.data.private_key = FIREBASE_PRIVATE_KEY;
   config.database_url = FIREBASE_DB_URL;
+
+  auth.user.email = FIREBASE_AUTH_EMAIL;
+  auth.user.password = FIREBASE_AUTH_PASSWORD;
 
   fbdo.setBSSLBufferSize(4096, 4096);
   fbdo.setResponseSize(4096);

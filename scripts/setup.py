@@ -601,9 +601,8 @@ def main():
             print("  1. frontend/config.js was not created — check errors above")
         elif 'esp-000000' in FRONTEND_TARGET.read_text():
             print("  1. Edit frontend/config.js → set deviceId to your board id (src/utils/device_id.cpp)")
-        if not FIREBASE_TARGET.exists() or "PASTE_YOUR" in FIREBASE_TARGET.read_text():
-            print("  2. Fill src/network/firebase_config.h with service-account values")
-            print("     + save JSON as src/network/*firebase-adminsdk*.json for hosting_deploy.py")
+        if not FIREBASE_TARGET.exists() or "PASTE_AUTH_USER" in FIREBASE_TARGET.read_text():
+            print("  2. Fill src/network/firebase_config.h with Web API Key + Firebase Auth email/password")
         print("  3. Firebase deploy:  python3 tools/hosting_deploy.py   (no CLI)  OR  firebase deploy")
         print("  4. Arduino IDE: Board ESP32S3 Dev Module, Partition No FS 4MB (2MB APP with OTA), PSRAM Enabled")
         print("     CLI compile: arduino-cli compile --fqbn esp32:esp32:esp32s3:FlashSize=4M,PartitionScheme=no_fs,CDCOnBoot=cdc ...")
