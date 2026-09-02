@@ -534,7 +534,9 @@ def main():
     if args.yes:
         print(color("  Mode: --yes (non-interactive)", "yellow"))
 
-    # handle --service-account non-interactive import for firmware
+    # handle --service-account non-interactive import
+    # NOTE: firmware now uses Web API Key + email/password auth (no private key).
+    # --service-account only copies the adminsdk JSON for tools/hosting_deploy.py.
     service_import_ok = False
     if args.service_account and not dry:
         p = Path(args.service_account).expanduser()
@@ -549,18 +551,11 @@ def main():
                 try:
                     if p.resolve() != dest.resolve():
                         shutil.copy2(p, dest)
-                        ok(f"copied service-account JSON → {dest.relative_to(ROOT)}")
-                    values = {
-                        "project_id": sa.get("project_id", "esp32-electricity-counter"),
-                        "db_url": f"https://{sa.get('project_id','esp32-electricity-counter')}-default-rtdb.firebaseio.com",
-                        "client_email": sa.get("client_email",""),
-                        "private_key": sa.get("private_key",""),
-                    }
-                    write_firebase_config(values, FIREBASE_TARGET)
-                    print(color("  → firmware config auto-filled from --service-account", "cyan"))
+                        ok(f"copied service-account JSON → {dest.relative_to(ROOT)} (for hosting_deploy.py)")
+                    warn("firmware does NOT use the service account — set FIREBASE_API_KEY + FIREBASE_AUTH_EMAIL/PASSWORD in src/network/firebase_config.h instead")
                     service_import_ok = True
                 except Exception as e:
-                    warn(f"service-account import failed: {e}")
+                    warn(f"service-account copy failed: {e}")
             else:
                 warn(f"failed to parse --service-account {p}")
         else:
