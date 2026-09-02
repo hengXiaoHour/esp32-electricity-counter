@@ -274,14 +274,14 @@ def ensure_firebase_config(force=False, dry=False, yes=False):
     if FIREBASE_TARGET.exists() and not force:
         ok(f"exists: {FIREBASE_TARGET.relative_to(ROOT)} (kept)")
         txt = FIREBASE_TARGET.read_text()
-        if "PASTE_YOUR_PRIVATE_KEY_HERE" in txt or 'FIREBASE_CLIENT_EMAIL ""' in txt:
-            warn("still contains placeholder — fill with service-account JSON")
+        if "PASTE_YOUR_PRIVATE_KEY_HERE" in txt or 'FIREBASE_CLIENT_EMAIL ""' in txt or "PASTE_AUTH_USER_PASSWORD_HERE" in txt:
+            warn("still contains placeholder — re-configure to fill real credentials")
             if not dry and is_interactive(yes):
                 ans = ask("Re-configure firmware Firebase now? (y/N)", "n")
                 if ans.lower().startswith("y"):
                     force = True
                 else:
-                    dim("Firebase Console → Project Settings → Service Accounts → Generate new private key")
+                    dim("Firebase Console → Project Settings → Web API Key + Authentication → Users")
                     return True
             else:
                 dim("re-run with --force to fill step-by-step")
@@ -289,118 +289,47 @@ def ensure_firebase_config(force=False, dry=False, yes=False):
             dim("looks filled")
         jsons = list((ROOT / "src" / "network").glob("*firebase-adminsdk*.json"))
         if jsons:
-            ok(f"service-account JSON found: {jsons[0].name}")
+            ok(f"service-account JSON found: {jsons[0].name} (for hosting_deploy.py only)")
         else:
-            warn("no *firebase-adminsdk*.json in src/network/ — needed for tools/hosting_deploy.py")
-            dim("Save the downloaded JSON as src/network/<project>-firebase-adminsdk-*.json")
+            warn("no *firebase-adminsdk*.json in src/network/ — needed ONLY for tools/hosting_deploy.py (not firmware)")
+            dim("Save the downloaded JSON as src/network/<project>-firebase-adminsdk-*.json if using CLI deploy")
         if not force:
             return True
 
     if dry:
         info(f"would run step-by-step wizard to create {FIREBASE_TARGET.name}")
-        info("fields: project_id, db_url, client_email, private_key  (or import service-account JSON)")
+        info("fields: project_id, db_url, api_key, auth_email, auth_password  (email/password Firebase Auth user)")
         return True
 
     interactive = is_interactive(yes)
 
-    # optional JSON import
-    sa_values = None
-    sa_json_dest = None
-    if interactive:
-        print(color("    Firmware uses service-account JWT (not web apiKey).", "dim"))
-        dim("Firebase Console → Project Settings → Service Accounts → Generate new private key → downloads JSON")
-        json_hint = ""
-        # check existing JSONs to suggest
-        existing_jsons = list((ROOT / "src" / "network").glob("*firebase-adminsdk*.json"))
-        if existing_jsons:
-            json_hint = f" (found {existing_jsons[0].name})"
-        path_in = ask(f"Path to service-account JSON (Enter to fill manually){json_hint}", "")
-        if path_in:
-            p = Path(path_in).expanduser()
-            if not p.is_absolute():
-                # try relative to ROOT
-                alt = ROOT / path_in
-                if alt.exists():
-                    p = alt
-            if p.exists():
-                sa_values = parse_service_account_json(p)
-                if sa_values:
-                    ok(f"parsed JSON: project_id={sa_values['project_id']}, client_email={sa_values['client_email']}")
-                    # copy JSON into src/network if not already there
-                    dest = ROOT / "src" / "network" / p.name
-                    if p.resolve() != dest.resolve():
-                        try:
-                            shutil.copy2(p, dest)
-                            ok(f"copied service-account JSON → {dest.relative_to(ROOT)}")
-                            sa_json_dest = dest
-                        except Exception as e:
-                            warn(f"copy failed: {e}")
-                    else:
-                        sa_json_dest = dest
-                else:
-                    warn("JSON parse failed — falling back to manual entry")
-            else:
-                warn(f"file not found: {p} — falling back to manual entry")
-
     # gather values
-    if sa_values and sa_values.get("project_id"):
-        # auto-fill from JSON, still allow step-by-step override
-        project_id = sa_values.get("project_id", "esp32-electricity-counter")
-        client_email = sa_values.get("client_email", "")
-        private_key = sa_values.get("private_key", "")
-        # derive db_url from project_id if not known
-        default_db_url = f"https://{project_id}-default-rtdb.firebaseio.com"
-        if interactive:
-            print(color("    Confirm / override imported values (Enter to keep):", "dim"))
-            project_id = ask("project_id", project_id)
-            db_url = ask("database URL (FIREBASE_DB_URL)", default_db_url)
-            client_email = ask("client_email (service account email)", client_email)
-            # private_key is multi-line; show truncated
-            pk_preview = private_key[:40].replace("\n", "\\n") + "..." if len(private_key) > 40 else private_key.replace("\n", "\\n")
-            dim(f"current private_key preview: {pk_preview}")
-            dim("To override key, paste new -----BEGIN ... -----END (multi-line supported) or Enter to keep")
-            pk_in = ask_private_key("")
-            if pk_in and "BEGIN PRIVATE KEY" in pk_in:
-                private_key = pk_in
-                if "\\n" in private_key and "\n" not in private_key:
-                    private_key = private_key.replace("\\n", "\n")
-            # else keep imported
-        else:
-            db_url = default_db_url
-        values = {"project_id": project_id, "db_url": db_url, "client_email": client_email, "private_key": private_key}
-        write_firebase_config(values, FIREBASE_TARGET)
-        return True
-
-    # manual step-by-step (or non-interactive defaults)
     if interactive:
-        print(color("    Fill firmware Firebase values step-by-step (Enter to keep default):", "dim"))
+        print(color("    Firmware uses Web API Key + email/password auth.", "dim"))
+        dim("Web API Key: Firebase Console → Project Settings → General → Web API Key (AIza...)")
+        dim("Auth user:   Firebase Console → Authentication → enable Email/Password, then add a user")
         project_id = ask("project_id", "esp32-electricity-counter")
         db_url = ask("FIREBASE_DB_URL (https://<project>-default-rtdb.firebaseio.com)", f"https://{project_id}-default-rtdb.firebaseio.com")
-        client_email = ask("FIREBASE_CLIENT_EMAIL (service account email)", "")
-        # private key: read multi-line (paste) with helper
-        print(color("    Paste private_key (single line with \\n or multi-line paste):", "dim"))
-        dim("Example: -----BEGIN PRIVATE KEY-----\\nMIIE...\\n-----END PRIVATE KEY-----")
-        dim("For multi-line paste, paste all lines including BEGIN/END — wizard reads until END")
-        private_key = ask_private_key("PASTE_YOUR_PRIVATE_KEY_HERE")
-        if "PASTE_YOUR" in private_key:
-            warn("private_key still placeholder — Firebase will not connect until filled")
-        values = {"project_id": project_id, "db_url": db_url, "client_email": client_email, "private_key": private_key}
+        api_key = ask("FIREBASE_API_KEY (Web API Key / AIza...)", "")
+        auth_email = ask("FIREBASE_AUTH_EMAIL (Firebase Auth user email)", "")
+        auth_password = ask("FIREBASE_AUTH_PASSWORD (that user's password)", "")
+        values = {"project_id": project_id, "db_url": db_url,
+                  "api_key": api_key, "auth_email": auth_email, "auth_password": auth_password}
         write_firebase_config(values, FIREBASE_TARGET)
-        if not private_key or "PASTE_YOUR" in private_key or not client_email:
-            warn("FIREBASE_CLIENT_EMAIL / PRIVATE_KEY incomplete — device Cloud mode will fail")
-            dim("Re-run with --force after you have the service-account JSON")
-        # remind about JSON file for hosting_deploy.py
+        if not api_key or "PASTE" in api_key or not auth_email or "PASTE" in auth_email or not auth_password or "PASTE" in auth_password:
+            warn("FIREBASE_* incomplete — device Cloud mode will be disabled until filled")
+            dim("Firebase Console → Project Settings → Web API Key; Authentication → Users → Add user (enable Email/Password)")
+        # remind about JSON file for hosting_deploy.py (optional, not firmware)
         jsons = list((ROOT / "src" / "network").glob("*firebase-adminsdk*.json"))
         if not jsons:
-            warn("no *firebase-adminsdk*.json in src/network/ — needed for tools/hosting_deploy.py")
-            dim("Save the downloaded JSON as src/network/<project>-firebase-adminsdk-*.json")
+            dim("(optional) *firebase-adminsdk*.json only needed for tools/hosting_deploy.py — not the firmware")
         return True
     else:
         # non-interactive manual mode: just copy example
         if FIREBASE_EXAMPLE.exists():
             shutil.copy2(FIREBASE_EXAMPLE, FIREBASE_TARGET)
             ok(f"created {FIREBASE_TARGET.relative_to(ROOT)} from example (non-interactive)")
-            warn("FIREBASE_CLIENT_EMAIL / PRIVATE_KEY still empty — re-run with --force (interactive) or paste JSON")
+            warn("FIREBASE_API_KEY / AUTH_EMAIL / AUTH_PASSWORD empty — re-run with --force (interactive)")
             return True
         return False
 
