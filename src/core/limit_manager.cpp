@@ -80,16 +80,19 @@ void LimitManager::updateBuzzer() {
 }
 
 void LimitManager::rolloverIfNeeded() {
+  static bool rolloverDoneThisBoot = false;
+  if (rolloverDoneThisBoot) return;
+
   time_t now = time(nullptr);
   if (now <= 1600000000) return;  // NTP not synced yet
 
   struct tm t;
   localtime_r(&now, &t);
-  // Billing cycle anchored to MONTHLY_RESET_DAY (e.g. 26th → 25th).
-  // Effective month increments on/after the reset day at 00:00 UTC.
   int y = t.tm_year + 1900;
   int m = t.tm_mon + 1;
   int d = t.tm_mday;
+  // Billing cycle anchored to MONTHLY_RESET_DAY (e.g. 26th → 25th).
+  // Effective month increments on/after the reset day at 00:00 UTC.
   if (d >= MONTHLY_RESET_DAY) {
     m += 1;
     if (m > 12) { m = 1; y += 1; }
@@ -98,7 +101,11 @@ void LimitManager::rolloverIfNeeded() {
 
   if (billingMonth == nvs->loadLastMonth()) return;
 
+  rolloverDoneThisBoot = true;
+  Serial.printf("  [ROLLOVER] billingMonth=%ld  (was %ld) — zeroing all counters\n",
+                (long)billingMonth, (long)nvs->loadLastMonth());
   nvs->saveLastMonth(billingMonth);
+  nvs->commit();  // persist immediately — prevents repeat on next boot
 
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {
     powerCalc->setEnergyKWh(ch, 0.0f);
