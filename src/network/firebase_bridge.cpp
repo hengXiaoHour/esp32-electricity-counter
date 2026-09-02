@@ -136,17 +136,19 @@ void FirebaseBridge::begin(NVSManager &nvsRef,
 }
 
 bool FirebaseBridge::configured() const {
-  static const bool keyOk =
-      strlen(FIREBASE_PRIVATE_KEY) >= 512 &&           // valid RSA PEM ~1200+ chars
-      strstr(FIREBASE_PRIVATE_KEY, "…") == nullptr &&  // reject truncated/placeholder
-      strstr(FIREBASE_PRIVATE_KEY, "BEGIN PRIVATE KEY") != nullptr &&
-      strstr(FIREBASE_PRIVATE_KEY, "END PRIVATE KEY") != nullptr;
-  bool ok = strlen(FIREBASE_DB_URL) > 0 &&
-            strlen(FIREBASE_CLIENT_EMAIL) > 0 && keyOk;
-  if (!ok && strlen(FIREBASE_PRIVATE_KEY) > 0)
-    Serial.printf("  %-19sWARN: RSA private key invalid/truncated — "
-                  "Cloud mode disabled (%u chars)\n",
-                  "Firebase", strlen(FIREBASE_PRIVATE_KEY));
+  bool apiKeyOk = strlen(FIREBASE_API_KEY) > 10 &&   // AIza<35+ hex>
+                  strncmp(FIREBASE_API_KEY, "AIza", 4) == 0;
+  bool emailOk = strlen(FIREBASE_AUTH_EMAIL) > 5 &&
+                 strstr(FIREBASE_AUTH_EMAIL, "@") != nullptr &&
+                 strstr(FIREBASE_AUTH_EMAIL, "PASTE_") == nullptr;
+  bool passOk = strlen(FIREBASE_AUTH_PASSWORD) >= 6 &&
+                strstr(FIREBASE_AUTH_PASSWORD, "PASTE_") == nullptr;
+  bool ok = strlen(FIREBASE_DB_URL) > 0 && apiKeyOk && emailOk && passOk;
+  if (!ok)
+    Serial.printf("  %-19sWARN: invalid/incomplete API-key or auth credentials — "
+                  "Cloud mode disabled (apiKey=%d email=%d pass=%d, db=%d)\n",
+                  "Firebase", apiKeyOk ? 1 : 0, emailOk ? 1 : 0,
+                  passOk ? 1 : 0, strlen(FIREBASE_DB_URL) > 0 ? 1 : 0);
   return ok;
 }
 
