@@ -136,9 +136,18 @@ void FirebaseBridge::begin(NVSManager &nvsRef,
 }
 
 bool FirebaseBridge::configured() const {
-  return strlen(FIREBASE_DB_URL) > 0 &&
-         strlen(FIREBASE_CLIENT_EMAIL) > 0 &&
-         strlen(FIREBASE_PRIVATE_KEY) > 0;
+  static const bool keyOk =
+      strlen(FIREBASE_PRIVATE_KEY) >= 512 &&           // valid RSA PEM ~1200+ chars
+      strstr(FIREBASE_PRIVATE_KEY, "…") == nullptr &&  // reject truncated/placeholder
+      strstr(FIREBASE_PRIVATE_KEY, "BEGIN PRIVATE KEY") != nullptr &&
+      strstr(FIREBASE_PRIVATE_KEY, "END PRIVATE KEY") != nullptr;
+  bool ok = strlen(FIREBASE_DB_URL) > 0 &&
+            strlen(FIREBASE_CLIENT_EMAIL) > 0 && keyOk;
+  if (!ok && strlen(FIREBASE_PRIVATE_KEY) > 0)
+    Serial.printf("  %-19sWARN: RSA private key invalid/truncated — "
+                  "Cloud mode disabled (%u chars)\n",
+                  "Firebase", strlen(FIREBASE_PRIVATE_KEY));
+  return ok;
 }
 
 void FirebaseBridge::start() {
