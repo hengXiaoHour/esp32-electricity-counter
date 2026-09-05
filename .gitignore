@@ -5,7 +5,7 @@ __pycache__/
 
 # Firebase credentials + local config (never commit)
 src/network/firebase_config.h
-src/network/*firebase-adminsdk*.json
+*firebase-adminsdk*.json
 frontend/config.js
 .firebase/
 

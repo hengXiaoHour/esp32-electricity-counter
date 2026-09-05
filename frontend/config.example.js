@@ -15,7 +15,7 @@
 //               isAdmin() list in database.rules.json (that file is the real
 //               enforcement; this list only drives the UI state).
 window.FB_CONFIG = {
-  apiKey: "AIzaSyA1BCYnxBc9q_ONa58TTkGimlGPn0wyvj0",
+  apiKey: "YOUR_WEB_API_KEY",
   authDomain: "esp32-electricity-counter.firebaseapp.com",
   databaseURL: "https://esp32-electricity-counter-default-rtdb.firebaseio.com",
   deviceId: "esp-000000",
