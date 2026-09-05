@@ -7,26 +7,26 @@
         ".write": false,
         "latest": {
           ".read": true,
-          ".write": "auth != null && (auth.token.email == 'heng.xiao.hour@gmail.com' || auth.token.email == 'firebase-adminsdk-fbsvc@esp32-electricity-counter.iam.gserviceaccount.com')"
+          ".write": "auth != null && (auth.token.email == 'heng.xiao.hour@gmail.com' || auth.token.email == 'esp32-counter@chenla.com')"
         },
         "commands": {
-          ".read": "auth != null && (auth.token.email == 'heng.xiao.hour@gmail.com' || auth.token.email == 'firebase-adminsdk-fbsvc@esp32-electricity-counter.iam.gserviceaccount.com')",
+          ".read": "auth != null && (auth.token.email == 'heng.xiao.hour@gmail.com' || auth.token.email == 'esp32-counter@chenla.com')",
           "$cmd": {
-            ".write": "auth != null && (auth.token.email == 'heng.xiao.hour@gmail.com' || auth.token.email == 'firebase-adminsdk-fbsvc@esp32-electricity-counter.iam.gserviceaccount.com')"
+            ".write": "auth != null && (auth.token.email == 'heng.xiao.hour@gmail.com' || auth.token.email == 'esp32-counter@chenla.com')"
           }
         },
         "ota": {
-          ".read": "auth != null && (auth.token.email == 'heng.xiao.hour@gmail.com' || auth.token.email == 'firebase-adminsdk-fbsvc@esp32-electricity-counter.iam.gserviceaccount.com')",
-          ".write": "auth != null && (auth.token.email == 'heng.xiao.hour@gmail.com' || auth.token.email == 'firebase-adminsdk-fbsvc@esp32-electricity-counter.iam.gserviceaccount.com')"
+          ".read": "auth != null && (auth.token.email == 'heng.xiao.hour@gmail.com' || auth.token.email == 'esp32-counter@chenla.com')",
+          ".write": "auth != null && (auth.token.email == 'heng.xiao.hour@gmail.com' || auth.token.email == 'esp32-counter@chenla.com')"
         },
         "firmware": {
-          ".read": "auth != null && (auth.token.email == 'heng.xiao.hour@gmail.com' || auth.token.email == 'firebase-adminsdk-fbsvc@esp32-electricity-counter.iam.gserviceaccount.com')",
-          ".write": "auth != null && (auth.token.email == 'heng.xiao.hour@gmail.com' || auth.token.email == 'firebase-adminsdk-fbsvc@esp32-electricity-counter.iam.gserviceaccount.com')"
+          ".read": "auth != null && (auth.token.email == 'heng.xiao.hour@gmail.com' || auth.token.email == 'esp32-counter@chenla.com')",
+          ".write": "auth != null && (auth.token.email == 'heng.xiao.hour@gmail.com' || auth.token.email == 'esp32-counter@chenla.com')"
         },
         "console": {
-          ".read": "auth != null && (auth.token.email == 'heng.xiao.hour@gmail.com' || auth.token.email == 'firebase-adminsdk-fbsvc@esp32-electricity-counter.iam.gserviceaccount.com')",
+          ".read": "auth != null && (auth.token.email == 'heng.xiao.hour@gmail.com' || auth.token.email == 'esp32-counter@chenla.com')",
           "$out": {
-            ".write": "auth != null && (auth.token.email == 'heng.xiao.hour@gmail.com' || auth.token.email == 'firebase-adminsdk-fbsvc@esp32-electricity-counter.iam.gserviceaccount.com')"
+            ".write": "auth != null && (auth.token.email == 'heng.xiao.hour@gmail.com' || auth.token.email == 'esp32-counter@chenla.com')"
           }
         }
       }
