@@ -1,6 +1,7 @@
 #include "limit_manager.h"
 
 #include <time.h>
+#include "../utils/log_gate.h"
 
 void LimitManager::begin(NVSManager &nvsRef,
                          PowerCalculator &powerCalcRef, SystemData *sysDataRef,
@@ -102,7 +103,7 @@ void LimitManager::rolloverIfNeeded() {
   if (billingMonth == nvs->loadLastMonth()) return;
 
   rolloverDoneThisBoot = true;
-  Serial.printf("  [ROLLOVER] billingMonth=%ld  (was %ld) — zeroing all counters\n",
+  STATUS_LOG("  [ROLLOVER] billingMonth=%ld  (was %ld) — zeroing all counters\n",
                 (long)billingMonth, (long)nvs->loadLastMonth());
   nvs->saveLastMonth(billingMonth);
   nvs->commit();  // persist immediately — prevents repeat on next boot

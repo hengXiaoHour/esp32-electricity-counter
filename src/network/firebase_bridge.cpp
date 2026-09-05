@@ -5,6 +5,7 @@
 #include "../core/limit_manager.h"
 #include "../utils/nvs_manager.h"
 #include "../utils/device_id.h"
+#include "../utils/log_gate.h"
 
 #include <addons/TokenHelper.h>
 #include <addons/RTDBHelper.h>
@@ -156,7 +157,7 @@ bool FirebaseBridge::configured() const {
 void FirebaseBridge::start() {
   if (started || !configured()) return;
 
-  Serial.printf("  %-19s%s\n", "Firebase", "CONFIGURED");
+  STATUS_LOG("  %-19s%s\n", "Firebase", "CONFIGURED");
 
   config.api_key = FIREBASE_API_KEY;
   config.database_url = FIREBASE_DB_URL;
@@ -176,7 +177,7 @@ void FirebaseBridge::start() {
   started = true;
   lastPush = 0;
   consoleErr = "";
-  Serial.printf("  Firebase bridge started (pushing %s every %u ms, "
+  STATUS_LOG("  Firebase bridge started (pushing %s every %u ms, polling %s every %u ms)\n",
                 "polling %s every %u ms)\n",
                 rtdbPath("latest").c_str(), FIREBASE_PUSH_INTERVAL_MS,
                 rtdbPath("commands").c_str(), FIREBASE_COMMAND_POLL_MS);
@@ -232,7 +233,7 @@ void FirebaseBridge::pushLatest() {
     static uint32_t lastErrLog = 0;
     if (millis() - lastErrLog > 5000) {
       lastErrLog = millis();
-      Serial.printf("  [FB] latest push failed: %s\n", fbdo.errorReason().c_str());
+      DEBUG_LOG("  [FB] latest push failed: %s\n", fbdo.errorReason().c_str());
     }
   }
 }
@@ -246,17 +247,23 @@ void FirebaseBridge::pollViewers() {
 
   FirebaseJson v;
   if (!Firebase.RTDB.getJSON(&fbdo, rtdbPath("viewers"), &v)) {
+    // Missing node reads back as null (same as pollCommands) — that means
+    // the last viewer left, not a transient error.
+    String dt = fbdo.dataType();
+    if (dt == "null" || dt.length() == 0) setViewerPresent(false);
     return;
   }
   size_t n = v.iteratorBegin();
   v.iteratorEnd();
-  bool present = (n > 0);
-  if (present != viewerPresent) {
-    viewerPresent = present;
-    Serial.printf("  [FB] viewers %s → Cloud push %s\n",
-                  present ? "present" : "empty",
-                  present ? "live (1s)" : "eco (10s)");
-  }
+  setViewerPresent(n > 0);
+}
+
+void FirebaseBridge::setViewerPresent(bool present) {
+  if (present == viewerPresent) return;
+  viewerPresent = present;
+  STATUS_LOG("  [FB] viewers %s → Cloud push %s\n",
+                present ? "present" : "empty",
+                present ? "live (1s)" : "eco (10s)");
 }
 
 void FirebaseBridge::pollCommands() {
@@ -269,7 +276,7 @@ void FirebaseBridge::pollCommands() {
     static uint32_t lastErr = 0;
     if (millis() - lastErr > 10000) {
       lastErr = millis();
-      Serial.printf("  [FB] commands poll error: %s\n", fbCmd.errorReason().c_str());
+      DEBUG_LOG("  [FB] commands poll error: %s\n", fbCmd.errorReason().c_str());
     }
     return;
   }
@@ -313,7 +320,7 @@ void FirebaseBridge::pollCommands() {
           }
           if (!ok) {
             consoleErr = fbdo.errorReason().c_str();
-            Serial.printf("  [FB] console response write failed: %s\n",
+            DEBUG_LOG("  [FB] console response write failed: %s\n",
                           consoleErr.c_str());
           } else {
             consoleErr = "";

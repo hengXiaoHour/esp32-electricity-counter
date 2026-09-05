@@ -11,6 +11,9 @@
 #include "src/ui/status_led.h"  
 #include "src/ui/buzzer.h"
 #include "src/utils/nvs_manager.h"
+#include "src/utils/log_gate.h"
+
+#include <esp_bt.h>
 
 NVSManager      nvs;
 PowerCalculator powerCalc;
@@ -157,11 +160,11 @@ void networkTask(void *pvParameters) {
         if (wifiMgr.isConnected() || wifiMgr.isApMode()) {
           serverStarted = true;
           wsServer.startServer();
-          Serial.printf("  %-19s%s\\n", "WebSocket", "STARTED");
+          Serial.printf("  %-19s%s\n", "WebSocket", "STARTED");
           // ArduinoOTA must start AFTER WiFi is up — begin() before the
           // interface has an IP leaves it deaf (notably in AP mode).
           otaHandler.begin("esp32-elec-counter");
-          Serial.printf("  %-19s%s\\n", "OTA", "STARTED");
+          Serial.printf("  %-19s%s\n", "OTA", "STARTED");
           Serial.println();
           Serial.println("  Core 0: Network (WiFi, WebSocket, Firebase, OTA)");
           Serial.println("  Core 1: Sensor (ADC, Power, Limits)");
@@ -174,14 +177,43 @@ void networkTask(void *pvParameters) {
     // Eco mode: sleep the modem + slow Cloud pushes when nobody is
     // watching. Watched = LAN WS clients, Cloud heartbeat viewers, or an
     // OTA in progress. Sensing (Core 1) always runs full-rate.
+    // The `status` / `debug` streams print live lines here so each mode
+    // shows continuous output while enabled (events alone would sit silent
+    // in steady state).
     {
       static uint32_t lastEco = 0;
+      static uint32_t lastStatusPrint = 0;
+      static uint32_t lastDebugPrint = 0;
+      bool watched = wsServer.clientCount() > 0 ||
+                     fbBridge.cloudWatched() ||
+                     otaHandler.isInProgress();
       if (millis() - lastEco >= 2000) {
         lastEco = millis();
-        bool watched = wsServer.clientCount() > 0 ||
-                       fbBridge.cloudWatched() ||
-                       otaHandler.isInProgress();
         wifiMgr.setEcoSleep(!watched);
+      }
+      if (g_statusStream && millis() - lastStatusPrint >= 2000) {
+        lastStatusPrint = millis();
+        if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+          Serial.printf("[status] up %lus | WiFi %d dBm | eco %s | viewers %s | W [%.0f %.0f %.0f %.0f %.0f %.0f]\n",
+            (unsigned long)(millis() / 1000), wifiMgr.getRSSI(),
+            watched ? "OFF" : "ON",
+            fbBridge.cloudWatched() ? "yes" : "no",
+            systemData.channels[0].activePower, systemData.channels[1].activePower,
+            systemData.channels[2].activePower, systemData.channels[3].activePower,
+            systemData.channels[4].activePower, systemData.channels[5].activePower);
+          xSemaphoreGive(dataMutex);
+        }
+      }
+      if (g_debugStream && millis() - lastDebugPrint >= 5000) {
+        lastDebugPrint = millis();
+        Serial.printf("[debug] heap %u | rssi %d | eco %s | viewers %s | ws %d | ota %s | fb %s | net %s\n",
+          (unsigned)ESP.getFreeHeap(), wifiMgr.getRSSI(),
+          watched ? "OFF" : "ON",
+          fbBridge.cloudWatched() ? "yes" : "no",
+          wsServer.clientCount(),
+          otaHandler.isInProgress() ? "ACTIVE" : "idle",
+          fbBridge.ready() ? "ready" : "down",
+          wifiMgr.isConnected() ? "STA" : (wifiMgr.isApMode() ? "AP" : "down"));
       }
     }
 
@@ -232,7 +264,7 @@ void sensorTask(void *pvParameters) {
           powerCalc.setNoiseFloor(ch, median);
           nvs.saveNoiseFloor(ch, median);
           nvs.commit();
-          Serial.printf("  [NVS] ch%d auto-zero complete (median of %d): %.3f A\n",
+          STATUS_LOG("  [NVS] ch%d auto-zero complete (median of %d): %.3f A\n",
             ch + 1, PowerCalculator::AZ_BATCHES, median);
         }
       }
@@ -277,21 +309,26 @@ void setup() {
     delay(10);
   }
 
-  Serial.println();
-  Serial.println("  =============================================");
-  Serial.println("   ESP32-S3 6-Channel Electricity Counter");
-  Serial.println("  =============================================");
-  Serial.printf("  CPU: %d MHz  |  Flash: %d MB  |  PSRAM: %s\n",
+  // Bluetooth is never used on this board — keep the controller shut down
+  // to cut idle draw and reclaim its RAM. Safe even if never enabled.
+  btStop();
+  esp_bt_controller_mem_release(ESP_BT_MODE_BTDM);
+
+  DEBUG_LOG("\n");
+  DEBUG_LOG("  =============================================\n");
+  DEBUG_LOG("   ESP32-S3 6-Channel Electricity Counter\n");
+  DEBUG_LOG("  =============================================\n");
+  DEBUG_LOG("  CPU: %d MHz  |  Flash: %d MB  |  PSRAM: %s\n",
     getCpuFrequencyMhz(), ESP.getFlashChipSize() / (1024*1024),
     psramFound() ? "OK" : "N/A");
   Serial.println();
 
-  Serial.printf("  %-19s%s\n", "NVS", "OK"); nvs.begin();
+  DEBUG_LOG("  %-19s%s\n", "NVS", "OK"); nvs.begin();
 
   // === Phase 2: Init hardware with defaults first ===
-  Serial.printf("  %-19s%s\n", "Status LED", "OK"); statusLED.begin();
-  Serial.printf("  %-19s%s\n", "Power Calculator", "OK"); powerCalc.begin();
-  Serial.printf("  %-19s%s\n", "Buzzer", "OK"); buzzer.begin(PIN_BUZZER);
+  DEBUG_LOG("  %-19s%s\n", "Status LED", "OK"); statusLED.begin();
+  DEBUG_LOG("  %-19s%s\n", "Power Calculator", "OK"); powerCalc.begin();
+  DEBUG_LOG("  %-19s%s\n", "Buzzer", "OK"); buzzer.begin(PIN_BUZZER);
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {
     powerCalc.setEnergyKWh(ch, nvs.loadEnergyKWh(ch));
   }
@@ -305,10 +342,10 @@ void setup() {
   powerCalc.rmsSamples = nvs.loadRmsSamples();
   powerCalc.voltageCal = nvs.loadVoltageCalibration();
 
-  Serial.printf("  %-19svoltage=%.1fV  current=%.1f (ch1)  RMS samples=%d\n",
+  DEBUG_LOG("  %-19svoltage=%.1fV  current=%.1f (ch1)  RMS samples=%d\n",
     "Calibration", powerCalc.voltageCal, powerCalc.currentCal[0], powerCalc.rmsSamples);
-  Serial.printf("  %-19sok\n", "Noise Floor + LPF");
-  Serial.printf("  %s\n", "Channel Config");
+  DEBUG_LOG("  %-19sok\n", "Noise Floor + LPF");
+  DEBUG_LOG("  %s\n", "Channel Config");
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {
     char name[MAX_CHANNEL_NAME_LEN];
     if (!nvs.loadChannelName(ch, name, sizeof(name))) {
@@ -319,12 +356,12 @@ void setup() {
     systemData.channels[ch].name[MAX_CHANNEL_NAME_LEN - 1] = '\0';
     systemData.channels[ch].monthlyKwhLimit = nvs.loadMonthlyKwhLimit(ch);
     systemData.channels[ch].status = STATUS_OK;
-    Serial.printf("    Ch%d  %-16s  %.1fkWh/mo\n",
+    DEBUG_LOG("    Ch%d  %-16s  %.1fkWh/mo\n",
       ch+1, name, systemData.channels[ch].monthlyKwhLimit);
   }
 
   dataMutex = xSemaphoreCreateMutex();
-  Serial.printf("  %-19s%s\n", "Mutex", "OK");
+  DEBUG_LOG("  %-19s%s\n", "Mutex", "OK");
 
   ntfyNotifier.begin(nvs.loadNtfyEnabled(), nvs.loadNtfyTopic());
   limitMgr.begin(nvs, powerCalc, &systemData, &dataMutex, &ntfyNotifier, &buzzer);
@@ -345,15 +382,15 @@ void setup() {
   wifiMgr.setPreRestartFlush(flushEnergyToNvs);
   statusLED.setMode(LED_SOLID_RED);
   if (wifiMgr.isApMode()) {
-    Serial.printf("  %-19sAP @ %s\n", "WiFi", WiFi.softAPIP().toString().c_str());
-    Serial.printf("  %-19s\"%s\" / \"%s\"\n", "SSID", wifiMgr.getSSID(), WiFiManager::AP_PASS);
+    DEBUG_LOG("  %-19sAP @ %s\n", "WiFi", WiFi.softAPIP().toString().c_str());
+    DEBUG_LOG("  %-19s\"%s\" / \"%s\"\n", "SSID", wifiMgr.getSSID(), WiFiManager::AP_PASS);
   } else {
-    Serial.printf("  %-19s%s\n", "WiFi", "CONNECTING");
+    DEBUG_LOG("  %-19s%s\n", "WiFi", "CONNECTING");
   }
 
   // otaHandler.begin() runs deferred from networkTask once WiFi is up
   // (ArduinoOTA started pre-connect never listens). See serverStarted block.
-  Serial.printf("  %-19s%s\\n", "OTA", "READY");
+  DEBUG_LOG("  %-19s%s\n", "OTA", "READY");
 
   // Firmware helper tasks. networkTask keeps priority 2 so its WebSocket
   // broadcast always preempts firebaseTask (priority 1). Firebase's blocking

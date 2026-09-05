@@ -4,13 +4,14 @@
 #include <WiFiClientSecure.h>
 
 #include "../config.h"
+#include "../utils/log_gate.h"
 
 void NtfyNotifier::begin(bool en, const String &tp) {
   enabled = en;
   topic = tp;
   pending = false;
   lastAttempt = 0;
-  Serial.printf("  [NTFY] notifier %s (topic \"%s\")\n",
+  STATUS_LOG("  [NTFY] notifier %s (topic \"%s\")\n",
     enabled ? "enabled" : "disabled", topic.c_str());
 }
 
@@ -18,7 +19,7 @@ void NtfyNotifier::setConfig(bool en, const String &tp) {
   enabled = en;
   topic = tp;
   if (!enabled) pending = false;
-  Serial.printf("  [NTFY] config updated: %s (topic \"%s\")\n",
+  STATUS_LOG("  [NTFY] config updated: %s (topic \"%s\")\n",
     enabled ? "enabled" : "disabled", topic.c_str());
 }
 
@@ -45,7 +46,7 @@ void NtfyNotifier::loop() {
   WiFiClientSecure client;
   client.setInsecure();
   if (!client.connect(NTFY_HOST, NTFY_PORT, 5000)) {
-    Serial.printf("  [NTFY] connect to %s:%d failed — will retry\n", NTFY_HOST, NTFY_PORT);
+    DEBUG_LOG("  [NTFY] connect to %s:%d failed — will retry\n", NTFY_HOST, NTFY_PORT);
     return;  // keep pending
   }
   client.setTimeout(5);
@@ -84,7 +85,7 @@ void NtfyNotifier::loop() {
   client.stop();
 
   bool success = (code >= 200 && code < 300);
-  Serial.printf("  [NTFY] push %s (HTTP %d, topic \"%s\")\n",
+  STATUS_LOG("  [NTFY] push %s (HTTP %d, topic \"%s\")\n",
     success ? "OK" : "FAILED", code, topic.c_str());
   if (success) pending = false;  // keep pending on failure -> retry
 }

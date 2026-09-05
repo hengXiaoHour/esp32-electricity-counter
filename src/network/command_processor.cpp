@@ -1,6 +1,7 @@
 #include "command_processor.h"
 #include "../core/limit_manager.h"
 #include "console_handler.h"
+#include "../utils/log_gate.h"
 
 // Reverses the JSON string escaping applied by the dashboard when it sends a
 // console line (JSON.stringify escapes ", \\ and control chars).
@@ -55,7 +56,7 @@ bool processCommand(NVSManager *nvs, SystemData *sysData,
 
   // DEBUG: log voltageCal before command processing
   if (powerCalc) {
-    Serial.printf("  [CMD] voltageCal before cmd: %.1f  msg: %.40s\n",
+    DEBUG_LOG("  [CMD] voltageCal before cmd: %.1f  msg: %.40s\n",
                   powerCalc->voltageCal, msg);
   }
 
@@ -227,7 +228,7 @@ bool processCommand(NVSManager *nvs, SystemData *sysData,
     int ci = s.indexOf("\"ch\":");
     if (ci >= 0) ch = s.substring(ci + 5).toInt();
     if (ch >= 0 && ch < NUM_CHANNELS) {
-      Serial.printf("  [RESET_CH_CAL] ch=%d  voltageCal BEFORE=%.1f\n", ch, powerCalc->voltageCal);
+      DEBUG_LOG("  [RESET_CH_CAL] ch=%d  voltageCal BEFORE=%.1f\n", ch, powerCalc->voltageCal);
       nvs->saveChannelCurrentCal(ch, DEFAULT_CURRENT_CALIBRATION);
       nvs->saveNoiseFloor(ch, 0.0f);
       nvs->saveLpfAlpha(ch, DEFAULT_LPF_ALPHA);
@@ -238,7 +239,7 @@ bool processCommand(NVSManager *nvs, SystemData *sysData,
         sysData->currentCalibration[ch] = DEFAULT_CURRENT_CALIBRATION;
         xSemaphoreGive(*dataMutex);
       }
-      Serial.printf("  [RESET_CH_CAL] ch=%d  voltageCal AFTER=%.1f\n", ch, powerCalc->voltageCal);
+      DEBUG_LOG("  [RESET_CH_CAL] ch=%d  voltageCal AFTER=%.1f\n", ch, powerCalc->voltageCal);
       handled = true;
     }
 
@@ -251,7 +252,7 @@ bool processCommand(NVSManager *nvs, SystemData *sysData,
     int ci = s.indexOf("\"ch\":");
     if (ci >= 0) ch = s.substring(ci + 5).toInt();
     if (ch < 0 || ch >= NUM_CHANNELS) {
-      Serial.printf("  [CMD] %s ignored: ch=%d out of range\n",
+      DEBUG_LOG("  [CMD] %s ignored: ch=%d out of range\n",
                     s.indexOf("\"cmd\":\"reset_channel_names\"") >= 0 ? "reset_channel_names" : "reset_ch_to_default", ch);
       handled = true;
     } else {
@@ -300,7 +301,7 @@ bool processCommand(NVSManager *nvs, SystemData *sysData,
 
   // DEBUG: log voltageCal after every handled command to detect corruption
   if (handled && powerCalc) {
-    Serial.printf("  [CMD] voltageCal after cmd: %.1f\n", powerCalc->voltageCal);
+    DEBUG_LOG("  [CMD] voltageCal after cmd: %.1f\n", powerCalc->voltageCal);
   }
 
   return handled;

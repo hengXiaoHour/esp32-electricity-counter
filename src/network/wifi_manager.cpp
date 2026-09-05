@@ -1,4 +1,5 @@
 #include "wifi_manager.h"
+#include "../utils/log_gate.h"
 
 const char *WiFiManager::AP_SSID = AP_SSID_DEFAULT;
 const char *WiFiManager::AP_PASS = AP_PASS_DEFAULT;
@@ -152,7 +153,7 @@ void WiFiManager::setEcoSleep(bool eco) {
   ecoSleep = eco;
   if (state == WIFI_CONNECTED) {
     WiFi.setSleep(eco);
-    Serial.printf("[WiFi] eco sleep %s\n", eco ? "ON" : "OFF");
+    STATUS_LOG("[WiFi] eco sleep %s\n", eco ? "ON" : "OFF");
   }
 }
 

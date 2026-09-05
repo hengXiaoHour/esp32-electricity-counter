@@ -53,6 +53,7 @@ private:
   void buildLatestJson(FirebaseJson &json);
   void pollCommands();
   void pollViewers();
+  void setViewerPresent(bool present);
 };
 
 void buildSystemJson(const SystemData &data, PowerCalculator *powerCalc,

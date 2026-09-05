@@ -9,6 +9,7 @@
 #include "../ui/buzzer.h"
 #include "../ui/status_led.h"
 #include "../utils/nvs_manager.h"
+#include "../utils/log_gate.h"
 
 ConsoleHandler consoleHandler;
 
@@ -86,7 +87,16 @@ void ConsoleHandler::exec(const String &line, String &out) {
   if (cmd.length() == 0) return;
 
   if (cmd == "status") {
-    cmdStatus(out);
+    // Toggle the live status stream (eco sleep, viewers, bridge, rollover…).
+    // Prints a snapshot when switching ON so one command does both jobs.
+    g_statusStream = !g_statusStream;
+    consoleAppendf(out, "  Status stream %s", g_statusStream ? "ON" : "OFF");
+    if (g_statusStream) cmdStatus(out);
+
+  } else if (cmd == "debug") {
+    // Toggle developer diagnostics (NVS saves, [CMD] traces, FB errors…).
+    g_debugStream = !g_debugStream;
+    consoleAppendf(out, "  Debug stream %s", g_debugStream ? "ON" : "OFF");
 
   } else if (cmd.startsWith("ch ")) {
     cmdChannel(cmd.substring(3).toInt() - 1, out);
@@ -560,7 +570,8 @@ void ConsoleHandler::cmdWifi(String &out) {
 void ConsoleHandler::cmdHelp(String &out) {
   consoleAppendf(out, "%s", "  Commands:");
   consoleAppendf(out, "%s", "    help                Show available commands");
-  consoleAppendf(out, "%s", "    status              System status overview");
+  consoleAppendf(out, "%s", "    status              Toggle live status stream (+snapshot)");
+  consoleAppendf(out, "%s", "    debug               Toggle debug diagnostics stream");
   consoleAppendf(out, "%s", "    ch <N>              Channel details (1-6)");
   consoleAppendf(out, "%s", "    cal                 Show calibration values");
   consoleAppendf(out, "%s", "    info                Firmware & hardware info");

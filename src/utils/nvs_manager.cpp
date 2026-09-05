@@ -1,8 +1,9 @@
 #include "nvs_manager.h"
+#include "log_gate.h"
 
 void NVSManager::begin() {
   prefs.begin("elec-counter", false);
-  Serial.println("  [NVS] opened namespace 'elec-counter'");
+  DEBUG_LOG("  [NVS] opened namespace 'elec-counter'\n");
 }
 
 void NVSManager::end() {
@@ -20,29 +21,29 @@ bool NVSManager::loadWiFi(String &ssid, String &password) {
 void NVSManager::saveWiFi(const String &ssid, const String &password) {
   prefs.putString("wifi_ssid", ssid);
   prefs.putString("wifi_pass", password);
-  Serial.printf("  [NVS] saved WiFi: ssid=\"%s\" pass=%d chars\n", ssid.c_str(), password.length());
+  DEBUG_LOG("  [NVS] saved WiFi: ssid=\"%s\" pass=%d chars\n", ssid.c_str(), password.length());
 }
 
 void NVSManager::saveWiFiSSID(const String &ssid) {
   prefs.putString("wifi_ssid", ssid);
-  Serial.printf("  [NVS] saved WiFi SSID: \"%s\"\n", ssid.c_str());
+  DEBUG_LOG("  [NVS] saved WiFi SSID: \"%s\"\n", ssid.c_str());
 }
 
 void NVSManager::saveWiFiPass(const String &pass) {
   prefs.putString("wifi_pass", pass);
-  Serial.printf("  [NVS] saved WiFi pass: %d chars\n", pass.length());
+  DEBUG_LOG("  [NVS] saved WiFi pass: %d chars\n", pass.length());
 }
 
 void NVSManager::clearWiFi() {
   prefs.remove("wifi_ssid");
   prefs.remove("wifi_pass");
-  Serial.println("  [NVS] cleared WiFi credentials");
+  DEBUG_LOG("  [NVS] cleared WiFi credentials\n");
 }
 
 void NVSManager::saveWiFiMode(uint8_t mode) {
   prefs.putUChar("wifi_mode", mode);
   const char *modeStr[] = {"AUTO", "STA", "AP"};
-  Serial.printf("  [NVS] saved WiFi mode: %s (%d)\n",
+  DEBUG_LOG("  [NVS] saved WiFi mode: %s (%d)\n",
     mode <= 2 ? modeStr[mode] : "?", mode);
 }
 
@@ -72,12 +73,12 @@ bool NVSManager::loadChannelName(uint8_t channel, char *name, size_t nameLen) {
 void NVSManager::saveChannelName(uint8_t channel, const char *name) {
   String keyName = channelKey(channel, "name");
   prefs.putString(keyName.c_str(), name);
-  Serial.printf("  [NVS] ch%d name: \"%s\"\n", channel + 1, name);
+  DEBUG_LOG("  [NVS] ch%d name: \"%s\"\n", channel + 1, name);
 }
 
 void NVSManager::clearChannelName(uint8_t channel) {
   prefs.remove(channelKey(channel, "name").c_str());
-  Serial.printf("  [NVS] ch%d name cleared\n", channel + 1);
+  DEBUG_LOG("  [NVS] ch%d name cleared\n", channel + 1);
 }
 
 // --- Monthly kWh Limit ---
@@ -90,7 +91,7 @@ float NVSManager::loadMonthlyKwhLimit(uint8_t channel) {
 void NVSManager::saveMonthlyKwhLimit(uint8_t channel, float limit) {
   String key = channelKey(channel, "mkwh");
   prefs.putFloat(key.c_str(), limit);
-  Serial.printf("  [NVS] ch%d monthly kWh limit: %.1f kWh\n", channel + 1, limit);
+  DEBUG_LOG("  [NVS] ch%d monthly kWh limit: %.1f kWh\n", channel + 1, limit);
 }
 
 // --- Calibration (NVS-backed) ---
@@ -101,7 +102,7 @@ float NVSManager::loadVoltageCalibration() {
 
 void NVSManager::saveVoltageCalibration(float value) {
   prefs.putFloat("volt_cal", value);
-  Serial.printf("  [NVS] saved voltage calibration: %.1f\n", value);
+  DEBUG_LOG("  [NVS] saved voltage calibration: %.1f\n", value);
 }
 
 float NVSManager::loadCurrentCalibration() {
@@ -110,7 +111,7 @@ float NVSManager::loadCurrentCalibration() {
 
 void NVSManager::saveCurrentCalibration(float value) {
   prefs.putFloat("curr_cal", value);
-  Serial.printf("  [NVS] saved current calibration: %.1f\n", value);
+  DEBUG_LOG("  [NVS] saved current calibration: %.1f\n", value);
 }
 
 float NVSManager::loadChannelCurrentCal(uint8_t channel) {
@@ -123,7 +124,7 @@ float NVSManager::loadChannelCurrentCal(uint8_t channel) {
 void NVSManager::saveChannelCurrentCal(uint8_t channel, float value) {
   String key = channelKey(channel, "ccal");
   prefs.putFloat(key.c_str(), value);
-  Serial.printf("  [NVS] ch%d current calibration: %.1f\n", channel + 1, value);
+  DEBUG_LOG("  [NVS] ch%d current calibration: %.1f\n", channel + 1, value);
 }
 
 // --- Noise Floor ---
@@ -136,7 +137,7 @@ float NVSManager::loadNoiseFloor(uint8_t channel) {
 void NVSManager::saveNoiseFloor(uint8_t channel, float value) {
   String key = channelKey(channel, "nf");
   prefs.putFloat(key.c_str(), value);
-  Serial.printf("  [NVS] ch%d noise floor: %.3f A\n", channel + 1, value);
+  DEBUG_LOG("  [NVS] ch%d noise floor: %.3f A\n", channel + 1, value);
 }
 
 // --- LPF Alpha ---
@@ -149,7 +150,7 @@ float NVSManager::loadLpfAlpha(uint8_t channel) {
 void NVSManager::saveLpfAlpha(uint8_t channel, float value) {
   String key = channelKey(channel, "lpf");
   prefs.putFloat(key.c_str(), value);
-  Serial.printf("  [NVS] ch%d LPF alpha: %.2f\n", channel + 1, value);
+  DEBUG_LOG("  [NVS] ch%d LPF alpha: %.2f\n", channel + 1, value);
 }
 
 // --- RMS Samples ---
@@ -160,7 +161,7 @@ uint16_t NVSManager::loadRmsSamples() {
 
 void NVSManager::saveRmsSamples(uint16_t value) {
   prefs.putFloat("rms_samp", (float)value);
-  Serial.printf("  [NVS] RMS samples: %d\n", value);
+  DEBUG_LOG("  [NVS] RMS samples: %d\n", value);
 }
 
 // --- Default Names ---
@@ -201,7 +202,7 @@ String NVSManager::loadNtfyTopic() {
 
 void NVSManager::saveNtfyTopic(const String &topic) {
   prefs.putString("ntfy_topic", topic);
-  Serial.printf("  [NVS] saved ntfy topic: \"%s\"\n", topic.c_str());
+  DEBUG_LOG("  [NVS] saved ntfy topic: \"%s\"\n", topic.c_str());
 }
 
 bool NVSManager::loadNtfyEnabled() {
@@ -210,7 +211,7 @@ bool NVSManager::loadNtfyEnabled() {
 
 void NVSManager::saveNtfyEnabled(bool on) {
   prefs.putBool("ntfy_enable", on);
-  Serial.printf("  [NVS] saved ntfy enabled: %s\n", on ? "true" : "false");
+  DEBUG_LOG("  [NVS] saved ntfy enabled: %s\n", on ? "true" : "false");
 }
 
 // --- Monthly rollover marker ---
@@ -221,12 +222,12 @@ int32_t NVSManager::loadLastMonth() {
 
 void NVSManager::saveLastMonth(int32_t month) {
   prefs.putLong("last_month", month);
-  Serial.printf("  [NVS] saved last month: %ld\n", (long)month);
+  DEBUG_LOG("  [NVS] saved last month: %ld\n", (long)month);
 }
 
 // --- Factory Reset ---
 
 void NVSManager::clearAll() {
   prefs.clear();
-  Serial.println("  [NVS] ALL keys cleared — defaults will load on next boot");
+  DEBUG_LOG("  [NVS] ALL keys cleared — defaults will load on next boot\n");
 }
