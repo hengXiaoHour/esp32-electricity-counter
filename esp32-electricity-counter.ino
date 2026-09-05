@@ -310,7 +310,7 @@ void setup() {
 
   WiFi.onEvent(onWiFiEvent);
 
-  wsServer.begin(nvs, &systemData, &dataMutex, &powerCalc, &limitMgr);
+  wsServer.begin(nvs, &systemData, &dataMutex, &powerCalc, &limitMgr, &wifiMgr);
   fbBridge.begin(nvs, &systemData, &dataMutex, &powerCalc, &limitMgr);
 
    wifiMgr.begin(nvs);

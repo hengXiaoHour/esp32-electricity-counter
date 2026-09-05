@@ -1,8 +1,10 @@
 #include "websocket_server.h"
 #include "../core/limit_manager.h"
+#include "ap_portal.h"
 #include "command_processor.h"
 #include "console_handler.h"
 #include "firebase_bridge.h"
+#include "wifi_manager.h"
 #include <time.h>
 
 WebSocketServer::WebSocketServer()
@@ -15,12 +17,14 @@ WebSocketServer::~WebSocketServer() {
 
 void WebSocketServer::begin(NVSManager &nvsRef,
                             SystemData *sysDataRef, SemaphoreHandle_t *mutexRef,
-                            PowerCalculator *powerCalcRef, LimitManager *limitMgrRef) {
+                            PowerCalculator *powerCalcRef, LimitManager *limitMgrRef,
+                            WiFiManager *wifiMgrRef) {
   nvs = &nvsRef;
   powerCalc = powerCalcRef;
   sysData = sysDataRef;
   dataMutex = mutexRef;
   limitMgr = limitMgrRef;
+  wifiMgr = wifiMgrRef;
 }
 
 void WebSocketServer::startServer() {
@@ -34,6 +38,36 @@ void WebSocketServer::startServer() {
 
   server = new AsyncWebServer(80);
   server->addHandler(ws);
+
+  // AP portal on the SAME :80 server (fixes the old WebServer/AsyncWebServer
+  // double-bind). Only live while the board is actually in AP mode — the
+  // guards re-check at request time so a later STA transition 404s cleanly.
+  if (wifiMgr && wifiMgr->isApMode()) {
+    server->on("/", HTTP_GET, [this](AsyncWebServerRequest *request) {
+      if (!wifiMgr || !wifiMgr->isApMode()) {
+        request->send(404, "text/plain", "Not found");
+        return;
+      }
+      request->send_P(200, "text/html", AP_PAGE_HTML, [this](const String &var) -> String {
+        if (var == "APSSID" && wifiMgr) return String(wifiMgr->getSSID());
+        return String();
+      });
+    });
+    server->on("/save", HTTP_POST, [this](AsyncWebServerRequest *request) {
+      if (!wifiMgr || !wifiMgr->isApMode()) {
+        request->send(404, "text/plain", "Not found");
+        return;
+      }
+      String ssid, pass;
+      if (request->hasParam("ssid", true)) ssid = request->getParam("ssid", true)->value();
+      if (request->hasParam("pass", true)) pass = request->getParam("pass", true)->value();
+      if (!wifiMgr->saveCredentialsAndConnect(ssid, pass)) {
+        request->send(400, "text/plain", "SSID required");
+        return;
+      }
+      request->send_P(200, "text/html", AP_SAVED_HTML);
+    });
+  }
 
   server->onNotFound([](AsyncWebServerRequest *request) {
     request->send(404, "text/plain", "Not found");

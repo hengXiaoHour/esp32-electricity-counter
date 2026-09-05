@@ -9,7 +9,6 @@ void WiFiManager::begin(NVSManager &nvsRef) {
   retryCount = 0;
   lastRetry = 0;
   rssi = 0;
-  httpServer = nullptr;
 
   // Load WiFi credentials
   nvs->loadWiFi(configuredSSID, configuredPass);
@@ -40,9 +39,9 @@ void WiFiManager::loop() {
       flapCount = 0;
       wifiBootFailures = 0;
       rssi = WiFi.RSSI();
-      if (httpServer) {
-        stopAPMode();
-      }
+      // DNS only runs while in AP mode — shut it down on the way to STA.
+      // DNSServer::stop() on a never-started server is a safe no-op.
+      stopAPMode();
     } else if (millis() - connectStart >= WIFI_CONNECT_TIMEOUT_MS) {
       handleConnectTimeout();
     } else if (millis() - lastRetry >= WIFI_RETRY_INTERVAL_MS) {
@@ -73,9 +72,6 @@ void WiFiManager::loop() {
 
   if (state == WIFI_AP_MODE) {
     dnsServer.processNextRequest();
-    if (httpServer) {
-      httpServer->handleClient();
-    }
   }
 }
 
@@ -134,94 +130,28 @@ void WiFiManager::startAPMode() {
   IPAddress apIP(192, 168, 4, 1);
   WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
 
-  // Start DNS server to capture all requests
+  // DNS captive-portal redirect stays here (port 53, no conflict).
+  // HTTP portal pages now live on the shared AsyncWebServer:80
+  // (WebSocketServer::startServer registers them in AP mode).
   dnsServer.start(53, "*", apIP);
-
-  // Start HTTP server for config page
-  if (!httpServer) {
-    httpServer = new WebServer(80);
-  }
-
-  httpServer->on("/", [this]() { handleAPRoot(); });
-  httpServer->on("/save", [this]() { handleAPSave(); });
-  httpServer->onNotFound([this]() { handleAPNotFound(); });
-  httpServer->begin();
 }
 
 void WiFiManager::stopAPMode() {
-  if (httpServer) {
-    httpServer->stop();
-    delete httpServer;
-    httpServer = nullptr;
-  }
   dnsServer.stop();
 }
 
-void WiFiManager::handleAPRoot() {
-  String html = R"rawliteral(
-<!DOCTYPE html>
-<html>
-<head><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ESP32 WiFi Setup</title>
-<style>
-body{font-family:sans-serif;margin:20px;max-width:400px}
-input{width:100%;padding:8px;margin:6px 0;box-sizing:border-box}
-button{width:100%;padding:10px;background:#2196F3;color:#fff;border:none;border-radius:4px;font-size:16px}
-</style>
-</head>
-<body>
-<h2>ESP32 Electricity Counter</h2>
-<p>Configure WiFi</p>
-<form action="/save" method="POST">
-<label>SSID</label>
-<input type="text" name="ssid" required>
-<label>Password</label>
-<input type="password" name="pass">
-<button type="submit">Save & Connect</button>
-</form>
-</body>
-</html>
-)rawliteral";
-  httpServer->send(200, "text/html", html);
-}
+bool WiFiManager::saveCredentialsAndConnect(const String &ssid, const String &pass) {
+  String s = ssid;
+  s.trim();
+  if (s.length() == 0) return false;
 
-void WiFiManager::handleAPSave() {
-  String ssid = httpServer->arg("ssid");
-  String pass = httpServer->arg("pass");
-
-  if (ssid.length() == 0) {
-    httpServer->send(400, "text/plain", "SSID required");
-    return;
-  }
-
-  nvs->saveWiFi(ssid, pass);
-  configuredSSID = ssid;
+  nvs->saveWiFi(s, pass);
+  configuredSSID = s;
   configuredPass = pass;
 
-  String html = R"rawliteral(
-<!DOCTYPE html>
-<html>
-<head><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Saved</title>
-<style>body{font-family:sans-serif;margin:20px;text-align:center;padding-top:40px}</style>
-</head>
-<body>
-<h2>Saved!</h2>
-<p>Connecting to )rawliteral" + ssid + R"rawliteral(...</p>
-<p>The device will restart. Reconnect to your WiFi and open the dashboard.</p>
-</body>
-</html>
-)rawliteral";
-
-  httpServer->send(200, "text/html", html);
-
-  delay(100);
   state = WIFI_CONNECTING;
   retryCount = 0;
   stopAPMode();
   connectToWiFi();
-}
-
-void WiFiManager::handleAPNotFound() {
-  httpServer->send(304, "text/plain", "");
+  return true;
 }

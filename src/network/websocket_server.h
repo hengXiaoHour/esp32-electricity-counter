@@ -7,6 +7,7 @@
 #include "../core/power_calculator.h"
 
 class LimitManager;
+class WiFiManager;
 
 class WebSocketServer {
 public:
@@ -15,7 +16,8 @@ public:
 
   void begin(NVSManager &nvs,
              SystemData *sysData, SemaphoreHandle_t *mutex,
-             PowerCalculator *powerCalc, LimitManager *limitMgr);
+             PowerCalculator *powerCalc, LimitManager *limitMgr,
+             WiFiManager *wifiMgr);
   void startServer();
   void stopServer();
   bool isRunning() const { return started; }
@@ -32,6 +34,7 @@ private:
   SystemData *sysData;
   SemaphoreHandle_t *dataMutex;
   LimitManager *limitMgr;
+  WiFiManager *wifiMgr;
 
   uint32_t lastBroadcast;
   bool started;

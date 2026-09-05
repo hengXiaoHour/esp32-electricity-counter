@@ -2,7 +2,6 @@
 
 #include <WiFi.h>
 #include <DNSServer.h>
-#include <WebServer.h>
 #include "../config.h"
 #include "../utils/nvs_manager.h"
 
@@ -25,6 +24,11 @@ public:
   int8_t getRSSI() const            { return rssi; }
   const char *getSSID() const;
 
+  // Store STA credentials from the AP portal (served by WebSocketServer on
+  // the shared AsyncWebServer) and switch to STA connect. Returns false
+  // when the SSID is empty.
+  bool saveCredentialsAndConnect(const String &ssid, const String &pass);
+
   // AP credentials for fallback mode
   static const char *AP_SSID;
   static const char *AP_PASS;
@@ -40,18 +44,12 @@ private:
   int8_t rssi;
 
   DNSServer dnsServer;
-  WebServer *httpServer;
 
   void connectToWiFi();
   void startAPMode();
   void stopAPMode();
   void checkConnection();
   void handleConnectTimeout();
-
-  // AP config web page handlers
-  void handleAPRoot();
-  void handleAPSave();
-  void handleAPNotFound();
 };
 
 // AP credentials
