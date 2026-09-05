@@ -130,6 +130,7 @@ void WiFiManager::startAPMode() {
   WiFi.mode(WIFI_AP);
   WiFi.softAP(AP_SSID, AP_PASS);
   WiFi.setTxPower(WIFI_POWER_21dBm);  // S3 max — longest range, more heat
+  WiFi.setSleep(false);               // same as STA — best RX, more power
 
   IPAddress apIP(192, 168, 4, 1);
   WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
