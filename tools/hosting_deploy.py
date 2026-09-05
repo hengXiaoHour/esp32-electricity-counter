@@ -30,7 +30,22 @@ from firebase_rest import get_access_token, rest  # noqa: E402
 
 SITE_ID = "esp32-electricity-counter"
 PROJECT = "esp32-electricity-counter"
-KEY = ROOT / "src/network/esp32-electricity-counter-firebase-adminsdk-fbsvc-d7177737f0.json"
+_KEY_DEFAULT = ROOT / "src/network/esp32-electricity-counter-firebase-adminsdk-fbsvc-d7177737f0.json"
+
+
+def _resolve_key():
+    cands = [_KEY_DEFAULT]
+    cands += sorted(ROOT.glob("*firebase-adminsdk*.json"))
+    cands += sorted((ROOT / "src" / "network").glob("*firebase-adminsdk*.json"))
+    cands += sorted((ROOT / "doc").glob("*firebase-adminsdk*.json"))
+    for c in cands:
+        if c.exists():
+            return c
+    print("no *firebase-adminsdk*.json found (repo root, src/network/, doc/)")
+    sys.exit(1)
+
+
+KEY = _resolve_key()
 PUBLIC = ROOT / "frontend"
 
 HOSTING = "https://firebasehosting.googleapis.com/v1beta1"
