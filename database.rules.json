@@ -28,6 +28,13 @@
           "$out": {
             ".write": "auth != null && (auth.token.email == 'heng.xiao.hour@gmail.com' || auth.token.email == 'esp32-counter@chenla.com')"
           }
+        },
+        "viewers": {
+          ".read": true,
+          "$v": {
+            ".write": true,
+            ".validate": "newData.hasChildren(['ts'])"
+          }
         }
       }
     }

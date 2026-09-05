@@ -24,6 +24,11 @@ public:
   int8_t getRSSI() const            { return rssi; }
   const char *getSSID() const;
 
+  // Eco mode: enable/disable modem sleep to save power when nobody is
+  // watching. Only acts while STA-connected (an AP must keep beaconing).
+  // Redundant calls are cheap no-ops.
+  void setEcoSleep(bool eco);
+
   // Store STA credentials from the AP portal (served by WebSocketServer on
   // the shared AsyncWebServer) and switch to STA connect. Returns false
   // when the SSID is empty.
@@ -51,6 +56,7 @@ private:
   DNSServer dnsServer;
 
   void (*preRestartFlush)() = nullptr;
+  bool ecoSleep = false;
 
   void connectToWiFi();
   void startAPMode();

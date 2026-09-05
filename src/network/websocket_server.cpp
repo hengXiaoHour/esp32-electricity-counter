@@ -90,6 +90,10 @@ void WebSocketServer::loop() {
   if (ws) ws->cleanupClients();
 }
 
+size_t WebSocketServer::clientCount() const {
+  return (ws) ? ws->count() : 0;
+}
+
 void WebSocketServer::broadcastData(const SystemData &data) {
   if (!started || !ws || ws->count() == 0) return;
   if (millis() - lastBroadcast < WS_UPDATE_INTERVAL_MS) return;

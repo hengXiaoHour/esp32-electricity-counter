@@ -104,6 +104,7 @@ void WiFiManager::connectToWiFi() {
   WiFi.begin(configuredSSID.c_str(), configuredPass.c_str());
   WiFi.setTxPower(WIFI_POWER_21dBm);  // S3 max — longest range, more heat
   WiFi.setSleep(false);               // no modem sleep — best RX, more power
+  ecoSleep = false;
   configTime(0, 0, "pool.ntp.org", "time.google.com");
 }
 
@@ -131,6 +132,7 @@ void WiFiManager::startAPMode() {
   WiFi.softAP(AP_SSID, AP_PASS);
   WiFi.setTxPower(WIFI_POWER_21dBm);  // S3 max — longest range, more heat
   WiFi.setSleep(false);               // same as STA — best RX, more power
+  ecoSleep = false;
 
   IPAddress apIP(192, 168, 4, 1);
   WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
@@ -143,6 +145,15 @@ void WiFiManager::startAPMode() {
 
 void WiFiManager::stopAPMode() {
   dnsServer.stop();
+}
+
+void WiFiManager::setEcoSleep(bool eco) {
+  if (eco == ecoSleep) return;
+  ecoSleep = eco;
+  if (state == WIFI_CONNECTED) {
+    WiFi.setSleep(eco);
+    Serial.printf("[WiFi] eco sleep %s\n", eco ? "ON" : "OFF");
+  }
 }
 
 bool WiFiManager::saveCredentialsAndConnect(const String &ssid, const String &pass) {

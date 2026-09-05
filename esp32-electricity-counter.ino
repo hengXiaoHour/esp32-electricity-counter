@@ -171,6 +171,20 @@ void networkTask(void *pvParameters) {
       }
     }
 
+    // Eco mode: sleep the modem + slow Cloud pushes when nobody is
+    // watching. Watched = LAN WS clients, Cloud heartbeat viewers, or an
+    // OTA in progress. Sensing (Core 1) always runs full-rate.
+    {
+      static uint32_t lastEco = 0;
+      if (millis() - lastEco >= 2000) {
+        lastEco = millis();
+        bool watched = wsServer.clientCount() > 0 ||
+                       fbBridge.cloudWatched() ||
+                       otaHandler.isInProgress();
+        wifiMgr.setEcoSleep(!watched);
+      }
+    }
+
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
       wsServer.broadcastData(systemData);
       xSemaphoreGive(dataMutex);

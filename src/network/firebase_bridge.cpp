@@ -123,7 +123,8 @@ void buildSystemJson(const SystemData &data, PowerCalculator *powerCalc,
 FirebaseBridge::FirebaseBridge()
   : nvs(nullptr), sysData(nullptr), dataMutex(nullptr),
     powerCalc(nullptr), limitMgr(nullptr),
-    started(false), lastPush(0), lastCommandPoll(0) {}
+    started(false), lastPush(0), lastCommandPoll(0),
+    lastViewerPoll(0), viewerPresent(false) {}
 
 void FirebaseBridge::begin(NVSManager &nvsRef,
                            SystemData *sysDataRef, SemaphoreHandle_t *mutexRef,
@@ -192,11 +193,18 @@ void FirebaseBridge::loop() {
     lastCommandPoll = millis();
     pollCommands();
   }
+
+  if (millis() - lastViewerPoll >= FIREBASE_VIEWER_POLL_MS) {
+    lastViewerPoll = millis();
+    pollViewers();
+  }
 }
 
 void FirebaseBridge::pushLatest() {
   if (!started || !ready()) return;
-  if (millis() - lastPush < FIREBASE_PUSH_INTERVAL_MS) return;
+  uint32_t interval = viewerPresent ? FIREBASE_PUSH_INTERVAL_MS
+                                    : FIREBASE_ECO_PUSH_INTERVAL_MS;
+  if (millis() - lastPush < interval) return;
   lastPush = millis();
 
   String json;
@@ -226,6 +234,28 @@ void FirebaseBridge::pushLatest() {
       lastErrLog = millis();
       Serial.printf("  [FB] latest push failed: %s\n", fbdo.errorReason().c_str());
     }
+  }
+}
+
+// Presence check for eco mode: any dashboard holding this board open keeps
+// a heartbeat child under /viewers/<clientId> (refreshed every 15 s,
+// onDisconnect-removed). Non-empty node = watched. Transient read errors
+// keep the last known state so eco doesn't flap on a bad poll.
+void FirebaseBridge::pollViewers() {
+  if (!ready()) return;
+
+  FirebaseJson v;
+  if (!Firebase.RTDB.getJSON(&fbdo, rtdbPath("viewers"), &v)) {
+    return;
+  }
+  size_t n = v.iteratorBegin();
+  v.iteratorEnd();
+  bool present = (n > 0);
+  if (present != viewerPresent) {
+    viewerPresent = present;
+    Serial.printf("  [FB] viewers %s → Cloud push %s\n",
+                  present ? "present" : "empty",
+                  present ? "live (1s)" : "eco (10s)");
   }
 }
 

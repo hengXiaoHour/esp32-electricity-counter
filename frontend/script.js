@@ -11,6 +11,9 @@ let lastEventKey = '';
 let lastToastEventKey = '';
 let chartBuf = {};
 let connMode = 'local';            // 'local' | 'cloud' | 'demo'
+let cloudHeartbeat = null;        // eco-mode presence heartbeat timer
+let cloudClientId = null;         // this tab's /viewers key
+let cloudHeartbeatPath = null;    // full RTDB path of our heartbeat entry
 let cloudDb = null;
 let selectedDeviceId = null;       // board picked in the Cloud dropdown
 let cloudLatestRef = null;
@@ -289,6 +292,7 @@ function handleDisconnect() {
   userDisconnect = true;
   if (demoInterval) clearInterval(demoInterval);
   if (cloudWatchdog) clearInterval(cloudWatchdog);
+  stopHeartbeat();
   if (cloudLatestRef && cloudDb) { cloudLatestRef.off(); cloudLatestRef = null; }
   if (cloudConsoleRef && cloudDb) { cloudConsoleRef.off(); cloudConsoleRef = null; }
   if (ws) {
@@ -451,6 +455,7 @@ function connectCloud() {
     if (wifi) wifi.setAttribute('class', 'wifi lv0');
     showDashboard();
     startCloudWatchdog();
+    startHeartbeat();
   } catch (err) {
     setConnectStatus('Cloud connect failed: ' + err.message, 'disconnected');
   }
@@ -498,6 +503,44 @@ function startCloudWatchdog() {
       if (cs2) cs2.textContent = 'Connected';
     }
   }, 2000);
+}
+
+// Eco-mode presence heartbeat: while a Cloud dashboard is open, keep a
+// timestamp entry under /devices/<id>/viewers/<tabId> so the board knows
+// someone is watching (live 1s push, no modem sleep). Refreshed every 15 s,
+// onDisconnect-removed. Guests included — the RTDB rule lets anyone write
+// their own viewer key (worst case: a stranger keeps the board awake).
+function startHeartbeat() {
+  stopHeartbeat();
+  try {
+    cloudClientId = sessionStorage.getItem('esp32monitor_cid');
+    if (!cloudClientId) {
+      cloudClientId = 'c' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      sessionStorage.setItem('esp32monitor_cid', cloudClientId);
+    }
+  } catch (e) {
+    cloudClientId = 'c' + Math.random().toString(36).slice(2);
+  }
+  cloudHeartbeatPath = cloudDevPath() + '/viewers/' + cloudClientId;
+  const beat = () => {
+    try {
+      cloudDb.ref(cloudHeartbeatPath).set({ ts: firebase.database.ServerValue.TIMESTAMP });
+    } catch (e) {}
+  };
+  beat();
+  try {
+    cloudDb.ref(cloudHeartbeatPath).onDisconnect().remove();
+  } catch (e) {}
+  cloudHeartbeat = setInterval(beat, 15000);
+}
+
+function stopHeartbeat() {
+  if (cloudHeartbeat) { clearInterval(cloudHeartbeat); cloudHeartbeat = null; }
+  if (cloudDb && cloudHeartbeatPath) {
+    try { cloudDb.ref(cloudHeartbeatPath).remove().catch(() => {}); } catch (e) {}
+  }
+  cloudClientId = null;
+  cloudHeartbeatPath = null;
 }
 
 // Route a command to the active transport (WS / Firebase / demo).
