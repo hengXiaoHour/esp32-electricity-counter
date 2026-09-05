@@ -147,7 +147,11 @@ void networkTask(void *pvParameters) {
         if (wifiMgr.isConnected() || wifiMgr.isApMode()) {
           serverStarted = true;
           wsServer.startServer();
-          Serial.printf("  %-19s%s\n", "WebSocket", "STARTED");
+          Serial.printf("  %-19s%s\\n", "WebSocket", "STARTED");
+          // ArduinoOTA must start AFTER WiFi is up — begin() before the
+          // interface has an IP leaves it deaf (notably in AP mode).
+          otaHandler.begin("esp32-elec-counter");
+          Serial.printf("  %-19s%s\\n", "OTA", "STARTED");
           Serial.println();
           Serial.println("  Core 0: Network (WiFi, WebSocket, Firebase, OTA)");
           Serial.println("  Core 1: Sensor (ADC, Power, Limits)");
@@ -322,8 +326,9 @@ void setup() {
     Serial.printf("  %-19s%s\n", "WiFi", "CONNECTING");
   }
 
-  otaHandler.begin("esp32-elec-counter");
-  Serial.printf("  %-19s%s\n", "OTA", "OK");
+  // otaHandler.begin() runs deferred from networkTask once WiFi is up
+  // (ArduinoOTA started pre-connect never listens). See serverStarted block.
+  Serial.printf("  %-19s%s\\n", "OTA", "READY");
 
   // Firmware helper tasks. networkTask keeps priority 2 so its WebSocket
   // broadcast always preempts firebaseTask (priority 1). Firebase's blocking
