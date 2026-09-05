@@ -117,6 +117,7 @@ void WiFiManager::handleConnectTimeout() {
     startAPMode();
     return;
   }
+  if (preRestartFlush) preRestartFlush();  // persist counters before reboot
   ESP.restart();
 }
 

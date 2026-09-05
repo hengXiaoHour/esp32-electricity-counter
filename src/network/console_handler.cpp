@@ -339,8 +339,17 @@ void ConsoleHandler::cmdNvsDebug(String &out) {
                  rr, rc, rv);
 }
 
+void ConsoleHandler::flushEnergy() {
+  if (!nvs || !powerCalc) return;
+  for (int ch = 0; ch < NUM_CHANNELS; ch++) {
+    nvs->saveEnergyKWh(ch, powerCalc->getEnergyKWh(ch));
+  }
+  nvs->commit();
+}
+
 void ConsoleHandler::cmdReboot(String &out) {
   consoleAppendf(out, "%s", "  Rebooting...");
+  flushEnergy();
   nvs->end();
   delay(1000);
   ESP.restart();
@@ -440,6 +449,7 @@ void ConsoleHandler::cmdSetWifi(const String &args, String &out) {
     if (ssid.length() > 0) {
       nvs->saveWiFiMode(1);
       consoleAppendf(out, "  Connecting to \"%s\"... rebooting", ssid.c_str());
+      flushEnergy();
       nvs->commit();
       delay(100);
       ESP.restart();

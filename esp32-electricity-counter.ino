@@ -87,6 +87,16 @@ static void updateSharedData() {
   }
 }
 
+// Push RAM energy counters to NVS + commit. Registered as WiFiManager's
+// pre-restart hook so the STA connect-timeout reboot never loses counter
+// data (the 5 s sensorTask save alone can lag behind by a full interval).
+static void flushEnergyToNvs() {
+  for (int ch = 0; ch < NUM_CHANNELS; ch++) {
+    nvs.saveEnergyKWh(ch, powerCalc.getEnergyKWh(ch));
+  }
+  nvs.commit();
+}
+
 // ==============================
 // FreeRTOS Tasks
 // ==============================
@@ -318,6 +328,7 @@ void setup() {
   fbBridge.begin(nvs, &systemData, &dataMutex, &powerCalc, &limitMgr);
 
    wifiMgr.begin(nvs);
+  wifiMgr.setPreRestartFlush(flushEnergyToNvs);
   statusLED.setMode(LED_SOLID_RED);
   if (wifiMgr.isApMode()) {
     Serial.printf("  %-19sAP @ %s\n", "WiFi", WiFi.softAPIP().toString().c_str());

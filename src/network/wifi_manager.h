@@ -29,6 +29,11 @@ public:
   // when the SSID is empty.
   bool saveCredentialsAndConnect(const String &ssid, const String &pass);
 
+  // Runs before ESP.restart() in the STA connect-timeout path so counter
+  // data survives the reboot. Set by the sketch (WiFiManager can't see the
+  // power calculator); may be null.
+  void setPreRestartFlush(void (*cb)()) { preRestartFlush = cb; }
+
   // AP credentials for fallback mode
   static const char *AP_SSID;
   static const char *AP_PASS;
@@ -44,6 +49,8 @@ private:
   int8_t rssi;
 
   DNSServer dnsServer;
+
+  void (*preRestartFlush)() = nullptr;
 
   void connectToWiFi();
   void startAPMode();
