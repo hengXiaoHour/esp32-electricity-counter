@@ -93,38 +93,6 @@ def ask(prompt, default="", allow_empty=True):
 def is_interactive(yes_flag):
     return not yes_flag
 
-def ask_private_key(default="PASTE_YOUR_PRIVATE_KEY_HERE"):
-    """Read private_key with multi-line support (paste -----BEGIN ... -----END)."""
-    first = ask("private_key", default)
-    # if user kept default or single-line escaped, return as-is
-    if first == default:
-        return first
-    # if BEGIN without END, read continuation lines until END
-    if "BEGIN PRIVATE KEY" in first and "END PRIVATE KEY" not in first:
-        lines = [first]
-        # next lines are raw pasted lines (no prompt prefix needed, but we show hint)
-        dim("  (reading pasted key — keep pasting until -----END PRIVATE KEY-----)")
-        while True:
-            try:
-                nxt = input().rstrip("\n")
-            except EOFError:
-                break
-            # allow empty lines inside key
-            lines.append(nxt)
-            if "END PRIVATE KEY" in nxt:
-                break
-            # safety: stop if too many lines
-            if len(lines) > 40:
-                break
-        pk = "\n".join(lines)
-        return pk
-    # handle single-line escaped \n → real newlines
-    if "\\n" in first and "\n" not in first:
-        # only convert if it looks like a key (contains BEGIN)
-        if "BEGIN" in first:
-            return first.replace("\\n", "\n")
-    return first
-
 def parse_frontend_config(path: Path):
     """Extract current values from existing config.js if any."""
     defaults = {
@@ -274,7 +242,9 @@ def ensure_firebase_config(force=False, dry=False, yes=False):
     if FIREBASE_TARGET.exists() and not force:
         ok(f"exists: {FIREBASE_TARGET.relative_to(ROOT)} (kept)")
         txt = FIREBASE_TARGET.read_text()
-        if "PASTE_YOUR_PRIVATE_KEY_HERE" in txt or 'FIREBASE_CLIENT_EMAIL ""' in txt or "PASTE_AUTH_USER_PASSWORD_HERE" in txt:
+        if ('FIREBASE_API_KEY ""' in txt or 'FIREBASE_AUTH_EMAIL ""' in txt
+                or 'FIREBASE_AUTH_PASSWORD ""' in txt or "PASTE_" in txt
+                or "FIREBASE_AUTH_EMAIL" not in txt):
             warn("still contains placeholder — re-configure to fill real credentials")
             if not dry and is_interactive(yes):
                 ans = ask("Re-configure firmware Firebase now? (y/N)", "n")
@@ -511,7 +481,7 @@ def main():
     ap.add_argument("--force", action="store_true", help="re-run wizard even if configs exist")
     ap.add_argument("--yes", action="store_true", help="non-interactive (assume defaults, auto-install)")
     ap.add_argument("--device-id", help="set frontend deviceId non-interactively (e.g. esp-abc123)")
-    ap.add_argument("--service-account", help="path to service-account JSON to auto-fill firmware config")
+    ap.add_argument("--service-account", help="copy service-account JSON into src/network/ for tools/hosting_deploy.py (firmware does not use it)")
     args = ap.parse_args()
 
     if args.compile:
@@ -537,7 +507,6 @@ def main():
     # handle --service-account non-interactive import
     # NOTE: firmware now uses Web API Key + email/password auth (no private key).
     # --service-account only copies the adminsdk JSON for tools/hosting_deploy.py.
-    service_import_ok = False
     if args.service_account and not dry:
         p = Path(args.service_account).expanduser()
         if not p.is_absolute():
@@ -553,7 +522,6 @@ def main():
                         shutil.copy2(p, dest)
                         ok(f"copied service-account JSON → {dest.relative_to(ROOT)} (for hosting_deploy.py)")
                     warn("firmware does NOT use the service account — set FIREBASE_API_KEY + FIREBASE_AUTH_EMAIL/PASSWORD in src/network/firebase_config.h instead")
-                    service_import_ok = True
                 except Exception as e:
                     warn(f"service-account copy failed: {e}")
             else:
@@ -566,14 +534,8 @@ def main():
         cli_overrides["deviceId"] = args.device_id
 
     results = []
-    # if service-account import succeeded, skip wizard (prevents --yes/--force overwriting)
-    fw_already = service_import_ok
     results.append(("frontend/config.js", ensure_frontend_config(force=args.force, dry=dry, yes=args.yes, cli_overrides=cli_overrides)))
-    if fw_already:
-        print(f"\n{color('[2/5] Firmware Firebase config', 'cyan')}  src/network/firebase_config.h  — already filled via --service-account (skip)")
-        results.append(("firebase_config.h", True))
-    else:
-        results.append(("firebase_config.h", ensure_firebase_config(force=args.force, dry=dry, yes=args.yes)))
+    results.append(("firebase_config.h", ensure_firebase_config(force=args.force, dry=dry, yes=args.yes)))
     results.append(("python deps", check_python_deps(dry=dry)))
     results.append(("arduino", check_arduino(install=auto_install, dry=dry, yes=args.yes)))
     results.append(("firebase", check_firebase()))
