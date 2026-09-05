@@ -235,6 +235,19 @@ function promptInstall() {
     if (e.key === 'Escape') closeEditModal();
   });
 
+  // Eco presence: explicit Disconnect already calls stopHeartbeat().
+  // These cover the paths it misses — tab close/navigate (pagehide,
+  // best-effort; onDisconnect is the backup) and background tabs
+  // (pause heartbeat while hidden so the board drops to eco).
+  window.addEventListener('pagehide', () => { try { stopHeartbeat(); } catch (e) {} });
+  window.addEventListener('beforeunload', () => { try { stopHeartbeat(); } catch (e) {} });
+  document.addEventListener('visibilitychange', () => {
+    try {
+      if (document.hidden) { stopHeartbeat(); }
+      else if (connMode === 'cloud' && cloudDb) { startHeartbeat(); }
+    } catch (e) {}
+  });
+
   initCharts();
 
   window.addEventListener('resize', () => {
