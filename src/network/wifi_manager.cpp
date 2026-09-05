@@ -102,6 +102,8 @@ void WiFiManager::connectToWiFi() {
   connectStart = millis();
   WiFi.mode(WIFI_STA);
   WiFi.begin(configuredSSID.c_str(), configuredPass.c_str());
+  WiFi.setTxPower(WIFI_POWER_21dBm);  // S3 max — longest range, more heat
+  WiFi.setSleep(false);               // no modem sleep — best RX, more power
   configTime(0, 0, "pool.ntp.org", "time.google.com");
 }
 
@@ -127,6 +129,7 @@ void WiFiManager::startAPMode() {
 
   WiFi.mode(WIFI_AP);
   WiFi.softAP(AP_SSID, AP_PASS);
+  WiFi.setTxPower(WIFI_POWER_21dBm);  // S3 max — longest range, more heat
 
   IPAddress apIP(192, 168, 4, 1);
   WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
