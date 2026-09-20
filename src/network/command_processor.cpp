@@ -113,6 +113,8 @@ bool processCommand(NVSManager *nvs, SystemData *sysData,
         sysData->channels[ch].energyKWh = val;
         xSemaphoreGive(*dataMutex);
       }
+      // Audited: previously this silent write left zero trace in the log.
+      if (limitMgr) limitMgr->logEnergyWrite((uint8_t)ch, val, "Test inject");
       handled = true;
     }
 
