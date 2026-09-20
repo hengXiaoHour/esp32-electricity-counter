@@ -37,9 +37,9 @@ void LimitManager::checkLimits() {
     float limit = sysData->channels[ch].monthlyKwhLimit;
 
     if (limit > 0 && energy >= limit) {
-      sysData->channels[ch].status = STATUS_TRIPPED;
       if (!tripNotified[ch]) {
         tripNotified[ch] = true;
+        autoRecoverLogged[ch] = false;  // allow one recover log per trip
         logEvent(ch, STATUS_TRIPPED, "Monthly limit reached — over budget", energy);
         if (ntfy) {
           char buf[96];
@@ -49,12 +49,22 @@ void LimitManager::checkLimits() {
       }
       if (powerCalc->getPowerFactor(ch) < AUTO_RECOVER_PF) {
         sysData->channels[ch].status = STATUS_OK;
-        if (tripNotified[ch]) {
-          tripNotified[ch] = false;
+        // Latch stays SET here: energy is still over budget, so clearing
+        // it would re-arm the trip and re-log + re-notify + re-beep on the
+        // very next cycle (event-log flood). Re-arm happens only in the
+        // else branch, once energy is back under the limit.
+        if (!autoRecoverLogged[ch]) {
+          autoRecoverLogged[ch] = true;
           logEvent(ch, STATUS_OK, "Auto-recovered — load removed", energy);
         }
+      } else {
+        sysData->channels[ch].status = STATUS_TRIPPED;
       }
     } else {
+      // Energy back under the limit (manual reset / monthly rollover):
+      // re-arm the trip so the next over-budget excursion notifies again.
+      tripNotified[ch] = false;
+      autoRecoverLogged[ch] = false;
       sysData->channels[ch].status = STATUS_OK;
     }
   }
