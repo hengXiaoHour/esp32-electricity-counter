@@ -139,6 +139,7 @@ void LimitManager::resetCounter(uint8_t ch) {
   sysData->channels[ch].energyKWh = 0.0f;
   sysData->channels[ch].status = STATUS_OK;
   tripNotified[ch] = false;
+  autoRecoverLogged[ch] = false;
   if (buzzer) buzzer->stop();
   nvs->saveEnergyKWh(ch, 0.0f);
   logEvent(ch, STATUS_OK, "Manual reset — counter zeroed", 0.0f);
