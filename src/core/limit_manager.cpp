@@ -147,6 +147,18 @@ void LimitManager::resetCounter(uint8_t ch) {
   xSemaphoreGive(*dataMutex);
 }
 
+void LimitManager::logEnergyWrite(uint8_t ch, float v, const char *src) {
+  if (ch >= NUM_CHANNELS || !sysData || !dataMutex) return;
+
+  if (xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) != pdTRUE) return;
+
+  char msg[EVENT_MSG_LEN];
+  snprintf(msg, sizeof(msg), "%s — energy set", src ? src : "Inject");
+  logEvent(ch, STATUS_OK, msg, v);
+
+  xSemaphoreGive(*dataMutex);
+}
+
 void LimitManager::logEvent(uint8_t ch, ChannelStatus s, const char *msg, float v) {
   if (sysData->eventCount < EVENT_LOG_SIZE) {
     Event &ev = sysData->events[sysData->eventCount];
