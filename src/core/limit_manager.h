@@ -20,6 +20,11 @@ public:
   // Manual counter reset (user-triggered). Zeroes the channel's energy.
   void resetCounter(uint8_t ch);
 
+  // Audit trail for silent energy writes (test_inject / inject). These
+  // bypass resetCounter(), so without this they leave zero trace in the
+  // event log. Takes dataMutex internally; never call while holding it.
+  void logEnergyWrite(uint8_t ch, float v, const char *src);
+
 private:
   NVSManager *nvs;
   PowerCalculator *powerCalc;
