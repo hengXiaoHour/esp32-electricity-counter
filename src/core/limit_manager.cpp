@@ -154,7 +154,7 @@ void LimitManager::logEnergyWrite(uint8_t ch, float v, const char *src) {
 
   char msg[EVENT_MSG_LEN];
   snprintf(msg, sizeof(msg), "%s — energy set", src ? src : "Inject");
-  logEvent(ch, STATUS_OK, msg, v);
+  logForensicEvent(ch, STATUS_OK, msg, v);
 
   xSemaphoreGive(*dataMutex);
 }
