@@ -28,6 +28,20 @@ void LimitManager::loop() {
   checkLimits();
   updateBuzzer();
 
+  // One-shot boot marker. Deferred until NTP time is valid so the event
+  // carries a real timestamp (in setup() the clock is still ~1970).
+  // Falls back after 5 min uptime so offline boards still record it.
+  // Forensic-persisted like all critical events: proves a restart took
+  // place even if the RAM log is wiped again afterwards.
+  if (!bootEventLogged) {
+    time_t now = time(nullptr);
+    if (now > 1600000000 || millis() > 300000UL) {
+      bootEventLogged = true;
+      logForensicEvent(0, STATUS_OK, "Boot — NVS energies reloaded", 0.0f);
+      STATUS_LOG("  [BOOT] event logged (epoch %ld)\n", (long)now);
+    }
+  }
+
   xSemaphoreGive(*dataMutex);
 }
 
