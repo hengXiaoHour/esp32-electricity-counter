@@ -37,6 +37,9 @@ private:
   // Logged the one "Auto-recovered" event for the current trip. Prevents
   // re-logging the recovery every cycle while energy stays over budget.
   bool autoRecoverLogged[NUM_CHANNELS];
+  // One-shot boot marker (see loop()): proves a restart happened and when,
+  // so a counter drop can be attributed to reboot + NVS reload afterwards.
+  bool bootEventLogged = false;
   uint8_t tripCycleIndex = 0;
 
   void logEvent(uint8_t ch, ChannelStatus s, const char *msg, float v);
