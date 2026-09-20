@@ -40,6 +40,11 @@ private:
   uint8_t tripCycleIndex = 0;
 
   void logEvent(uint8_t ch, ChannelStatus s, const char *msg, float v);
+  // Critical events: RAM log + persist tail of the ring to NVS flash so
+  // the trail survives a reboot (and reaches Firebase on reconnect).
+  // Call ONLY with dataMutex already held (all current callers do).
+  void logForensicEvent(uint8_t ch, ChannelStatus s, const char *msg, float v);
+  void persistForensic();
   void rolloverIfNeeded();
   void checkLimits();
   void updateBuzzer();
