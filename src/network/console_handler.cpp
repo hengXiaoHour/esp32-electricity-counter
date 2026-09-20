@@ -133,6 +133,8 @@ void ConsoleHandler::exec(const String &line, String &out) {
           sysData->channels[ch].energyKWh = kwh;
           xSemaphoreGive(*dataMutex);
         }
+        // Audited: previously this silent write left zero trace in the log.
+        if (limitMgr) limitMgr->logEnergyWrite((uint8_t)ch, kwh, "Console inject");
         consoleAppendf(out, "  Ch%d energy injected: %.3f kWh", ch + 1, kwh);
       } else {
         consoleAppendf(out, "%s", "  Usage: inject <ch 1-6> <kwh>");
