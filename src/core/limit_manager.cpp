@@ -159,6 +159,22 @@ void LimitManager::logEnergyWrite(uint8_t ch, float v, const char *src) {
   xSemaphoreGive(*dataMutex);
 }
 
+void LimitManager::logForensicEvent(uint8_t ch, ChannelStatus s, const char *msg, float v) {
+  logEvent(ch, s, msg, v);
+  persistForensic();
+}
+
+void LimitManager::persistForensic() {
+  if (!sysData || !nvs) return;
+  // Snapshot the tail of the RAM ring (chronological) into flash.
+  uint8_t total = sysData->eventCount;
+  uint8_t keep = (total < NVSManager::FORENSIC_KEEP) ? total : NVSManager::FORENSIC_KEEP;
+  if (keep == 0) return;
+  // Ring buffer: index 0 is oldest, eventCount-1 newest (see logEvent).
+  const Event *tail = &sysData->events[total - keep];
+  nvs->saveForensicEvents(tail, keep);
+}
+
 void LimitManager::logEvent(uint8_t ch, ChannelStatus s, const char *msg, float v) {
   if (sysData->eventCount < EVENT_LOG_SIZE) {
     Event &ev = sysData->events[sysData->eventCount];
