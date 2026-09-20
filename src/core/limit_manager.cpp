@@ -127,7 +127,7 @@ void LimitManager::rolloverIfNeeded() {
     autoRecoverLogged[ch] = false;
   }
   if (buzzer) buzzer->stop();
-  logEvent(0, STATUS_OK, "Monthly reset — counters zeroed", 0.0f);
+  logForensicEvent(0, STATUS_OK, "Monthly reset — counters zeroed", 0.0f);
 }
 
 void LimitManager::resetCounter(uint8_t ch) {
