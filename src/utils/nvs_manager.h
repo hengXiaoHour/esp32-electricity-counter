@@ -62,6 +62,17 @@ public:
   int32_t loadLastMonth();
   void saveLastMonth(int32_t month);
 
+  // Forensic event ring: the last FORENSIC_KEEP events, persisted to flash
+  // so the trail survives a reboot (RAM log is wiped; Firebase is
+  // unreachable while WiFi is down). Written only for critical events
+  // (trip / manual reset / rollover / inject) — a few writes a day max,
+  // negligible flash wear. Restored into sysData.events in setup() and
+  // from there rides the normal Firebase push on reconnect.
+  static const uint8_t FORENSIC_KEEP = 10;
+  void saveForensicEvents(const Event *events, uint8_t count);
+  // Returns restored count (0 = nothing stored / magic mismatch).
+  uint8_t loadForensicEvents(Event *out, uint8_t maxCount);
+
   // Commit pending writes to flash (required for persistence across reboot)
   void commit();
 
