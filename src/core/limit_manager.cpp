@@ -16,6 +16,7 @@ void LimitManager::begin(NVSManager &nvsRef,
 
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {
     tripNotified[ch] = false;
+    autoRecoverLogged[ch] = false;
   }
 }
 
