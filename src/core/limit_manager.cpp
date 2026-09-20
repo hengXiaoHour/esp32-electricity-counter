@@ -124,6 +124,7 @@ void LimitManager::rolloverIfNeeded() {
     sysData->channels[ch].energyKWh = 0.0f;
     sysData->channels[ch].status = STATUS_OK;
     tripNotified[ch] = false;
+    autoRecoverLogged[ch] = false;
   }
   if (buzzer) buzzer->stop();
   logEvent(0, STATUS_OK, "Monthly reset — counters zeroed", 0.0f);
