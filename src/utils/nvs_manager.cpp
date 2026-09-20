@@ -225,6 +225,42 @@ void NVSManager::saveLastMonth(int32_t month) {
   DEBUG_LOG("  [NVS] saved last month: %ld\n", (long)month);
 }
 
+// --- Forensic event ring (reboot-proof trail) ---
+
+#define FORENSIC_MAGIC 0x46565231UL  // "FVR1"
+#define FORENSIC_KEY "fev_ring"
+
+struct ForensicBlob {
+  uint32_t magic;
+  uint8_t count;
+  Event slots[NVSManager::FORENSIC_KEEP];
+};
+
+void NVSManager::saveForensicEvents(const Event *events, uint8_t count) {
+  if (!events || count == 0) return;
+  if (count > FORENSIC_KEEP) count = FORENSIC_KEEP;
+  ForensicBlob blob;
+  blob.magic = FORENSIC_MAGIC;
+  blob.count = count;
+  // Caller passes the TAIL of the RAM ring; store in chronological order.
+  memcpy(blob.slots, events, count * sizeof(Event));
+  prefs.putBytes(FORENSIC_KEY, &blob, sizeof(uint32_t) + sizeof(uint8_t) + count * sizeof(Event));
+}
+
+uint8_t NVSManager::loadForensicEvents(Event *out, uint8_t maxCount) {
+  if (!out || maxCount == 0) return 0;
+  ForensicBlob blob;
+  memset(&blob, 0, sizeof(blob));
+  size_t n = prefs.getBytes(FORENSIC_KEY, &blob, sizeof(blob));
+  if (n < sizeof(uint32_t) + sizeof(uint8_t)) return 0;
+  if (blob.magic != FORENSIC_MAGIC) return 0;
+  if (blob.count == 0 || blob.count > FORENSIC_KEEP) return 0;
+  if (n < sizeof(uint32_t) + sizeof(uint8_t) + blob.count * sizeof(Event)) return 0;
+  uint8_t keep = (blob.count < maxCount) ? blob.count : maxCount;
+  memcpy(out, blob.slots, keep * sizeof(Event));
+  return keep;
+}
+
 // --- Factory Reset ---
 
 void NVSManager::clearAll() {
