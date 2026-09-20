@@ -34,6 +34,9 @@ private:
   Buzzer *buzzer;
 
   bool tripNotified[NUM_CHANNELS];
+  // Logged the one "Auto-recovered" event for the current trip. Prevents
+  // re-logging the recovery every cycle while energy stays over budget.
+  bool autoRecoverLogged[NUM_CHANNELS];
   uint8_t tripCycleIndex = 0;
 
   void logEvent(uint8_t ch, ChannelStatus s, const char *msg, float v);
