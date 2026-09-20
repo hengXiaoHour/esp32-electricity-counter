@@ -40,7 +40,7 @@ void LimitManager::checkLimits() {
       if (!tripNotified[ch]) {
         tripNotified[ch] = true;
         autoRecoverLogged[ch] = false;  // allow one recover log per trip
-        logEvent(ch, STATUS_TRIPPED, "Monthly limit reached — over budget", energy);
+        logForensicEvent(ch, STATUS_TRIPPED, "Monthly limit reached — over budget", energy);
         if (ntfy) {
           char buf[96];
           snprintf(buf, sizeof(buf), "Ch%d reached its monthly limit (%.1f kWh)", ch + 1, energy);
