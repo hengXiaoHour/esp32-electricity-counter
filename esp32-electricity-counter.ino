@@ -325,6 +325,17 @@ void setup() {
 
   DEBUG_LOG("  %-19s%s\n", "NVS", "OK"); nvs.begin();
 
+  // Restore the forensic event tail saved to flash before the last reboot
+  // (RAM log is wiped on restart; Firebase is unreachable while WiFi is
+  // down). Restored entries ride the normal Firebase push on reconnect.
+  {
+    uint8_t n = nvs.loadForensicEvents(systemData.events, EVENT_LOG_SIZE);
+    systemData.eventCount = n;
+    if (n > 0) {
+      STATUS_LOG("  [NVS] restored %d forensic event(s) from flash\n", n);
+    }
+  }
+
   // === Phase 2: Init hardware with defaults first ===
   DEBUG_LOG("  %-19s%s\n", "Status LED", "OK"); statusLED.begin();
   DEBUG_LOG("  %-19s%s\n", "Power Calculator", "OK"); powerCalc.begin();
