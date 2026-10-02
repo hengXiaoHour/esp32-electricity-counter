@@ -852,16 +852,6 @@ function openEditModal(idx) {
   document.getElementById('editModal').classList.remove('hidden');
 }
 
-function openResetModal(idx) {
-  if (!requirePin()) return;
-  populateChannelSelect();
-  const sel = document.getElementById('modalChSelect');
-  sel.value = idx;
-  onModalChannelChange();
-  setModalMode('reset');
-  document.getElementById('editModal').classList.remove('hidden');
-}
-
 function onModalChannelChange() {
   const idx = parseInt(document.getElementById('modalChSelect').value, 10);
   activeEditChIdx = idx;

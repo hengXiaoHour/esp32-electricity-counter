@@ -62,7 +62,6 @@ html.has-session #app { display: grid !important; }
   background-repeat: no-repeat; background-position: right 12px center;
 }
 .connect-row select:focus { border-color: var(--trip); }
-.connect-pick-label { font-size: 0.72rem; color: var(--text-2); font-family: var(--font-mono); margin-bottom: -8px; }
 .btn-primary { padding: 11px 18px; border: none; border-radius: 6px; background: var(--trip); color: #fff;
   font-weight: 700; font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase;
   cursor: pointer; transition: background 0.15s, transform 0.1s;
@@ -72,7 +71,6 @@ html.has-session #app { display: grid !important; }
 .btn-primary:active { transform: scale(0.98); }
 .btn-primary.btn-inline { padding: 8px 14px; font-size: 0.72rem; }
 .connect-status { font-size: 0.78rem; padding: 8px 12px; border-radius: 5px; margin-bottom: 12px; font-family: var(--font-mono); background: rgba(255, 255, 255, 0.03); }
-.connect-status.connecting { color: var(--warn); }
 .connect-status.connected { color: var(--ok); }
 .connect-status.disconnected { color: var(--trip); }
 .install-row { margin-top: 14px; display: flex; justify-content: center; }
@@ -118,11 +116,6 @@ html.has-session #app { display: grid !important; }
 .side-footer { border-top: 1px solid var(--border); padding: 8px 0; }
 
 /* Auth */
-.auth-box { padding: 8px 8px 4px; }
-.auth-user-row { padding: 4px 8px 6px; }
-.auth-email { display: block; font-size: 0.68rem; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; }
-.auth-btn { justify-content: flex-start; }
-.auth-btn.active { color: var(--ok); }
 .role-badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 0.66rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
 .role-badge.role-admin { background: rgba(95, 180, 130, 0.16); color: var(--ok); border: 1px solid rgba(95, 180, 130, 0.4); }
 .role-badge.role-guest { background: rgba(139, 142, 155, 0.14); color: var(--text-3); border: 1px solid var(--border-2); }
@@ -155,10 +148,10 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
 .conn-txt { font-size: 0.72rem; color: var(--ok); }
 .wifi { width: 18px; height: 18px; color: var(--ok); }
 .wifi .bar { opacity: 0.18; }
-.wifi.lv1 .bar:nth-child(-n+1),
-.wifi.lv2 .bar:nth-child(-n+2),
-.wifi.lv3 .bar:nth-child(-n+3),
-.wifi.lv4 .bar:nth-child(-n+4) { opacity: 1; }
+/* Only two levels exist now. rssiLevel() and its lv1/lv3/lv4 rules went with
+   the STA interface: an access point has no RSSI to report, so updateWifiIcon()
+   emits lv2 when the AP is up and lv0 when it is not. */
+.wifi.lv2 .bar:nth-child(-n+2) { opacity: 1; }
 .wifi.lv0 { color: var(--text-3); }
 .wifi.disconnected { color: var(--text-3); }
 .wifi .bar { transition: opacity 0.3s ease; }

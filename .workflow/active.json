@@ -1,6 +1,0 @@
-{
-  "task": "voltage bug fix",
-  "phase": "done",
-  "research_file": ".workflow/RESEARCH.md",
-  "notes": "FIXED 2026-08-12: removed `vAlpha = lpfAlpha[0]` voltage EMA from power_calculator.cpp collectSamples(). Build PASS (huge_app, 46% flash). Root cause: voltage channel shared channel 0's user-tunable LPF alpha; alpha=0.01 attenuates 50Hz to 64% -> 230V reads 147V. Awaiting hardware confirmation: set_lpf ch:0 val:0.01 must no longer change voltage."
-}

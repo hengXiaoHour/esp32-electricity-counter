@@ -268,10 +268,6 @@ String ConsoleHandler::takePendingOutput() {
   return s;
 }
 
-void ConsoleHandler::cmdLedTest(String &out) {
-  consoleAppendf(out, "%s", "  LED test started");
-}
-
 void ConsoleHandler::ledTestStep(ConsoleHandler *self) {
   self->ledTestPhase++;
   const int totalPhases = 11;
@@ -450,7 +446,6 @@ void ConsoleHandler::cmdClearWifi(String &out) {
   // from an older firmware in NVS. It is kept deliberately: it is the one way
   // to make sure an old SSID/password is not still sitting in flash.
   nvs->clearWiFi();
-  nvs->saveWiFiMode(0);
   nvs->commit();
   consoleAppendf(out, "%s", "  Stored WiFi credentials cleared");
   consoleAppendf(out, "%s", "  (the board is AP-only and never joins a network)");

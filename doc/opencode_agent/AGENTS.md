@@ -1,31 +1,80 @@
 # AGENTS.md — ESP32-S3 Electricity Counter
 
-## Project Summary
-ESP32-S3 firmware (Arduino C++) for monitoring 6 AC circuits with SCT-013-100 current sensors and ZMPT101B voltage sensor. Dual-core FreeRTOS: Core 0 handles networking (WiFi, WebSocket dashboard, Firebase bridge), Core 1 handles sensing (ADC sampling, power calculation, limit checking, buzzer alerts). Local ArduinoOTA supported for flashing from Arduino IDE.
+**Read `doc/ARCHITECTURE.md` first.** It is the canonical, code-derived
+reference for how this project works and why. This file deliberately does NOT
+repeat it — a second copy of the architecture is a second copy to drift.
 
-## Key Architecture
-- Main sketch: `esp32-electricity-counter.ino` at project root
-- All source modules in `src/` with snake_case naming
-- Shared `SystemData` protected by `SemaphoreHandle_t` mutex
-- NVS (Preferences) for WiFi creds, channel configs, calibration
+Everything below is what you cannot get from reading the code.
 
-## Pin Mapping
-- CT sensors: GPIO7,5,6,8,4,2
-- Voltage: GPIO1
-- Active buzzer: GPIO13 (limit-trip alert, N beeps = channel no.)
-- RGB LED: GPIO48 (WS2812, R/G swapped)
+## What this project is, in one line
 
-## Required Libraries
-- Adafruit NeoPixel
-- ESP Async WebServer
-- AsyncTCP
+An ESP32-S3 that runs **only as a WiFi access point** and **serves its own
+dashboard from flash** at `http://192.168.4.1/`. No station interface, no cloud,
+no internet required.
 
-## Hosting Model (2026-07-25)
-- **UI is hosted externally** on PC/phone (opened via browser from local file or `python3 -m http.server`)
-- ESP32 only runs the **WebSocket server** (`ws://<esp32-ip>/ws`) — no LittleFS file serving
-- Dashboard starts with a **connection panel** where the user enters the ESP32's IP address
-- Last-used IP is saved in `localStorage` for auto-reconnect on page reload
-- The ESP32 firmware should only serve the WebSocket endpoint, not HTTP static files
+## Traps — these will bite you
 
-## Patches Applied (2026-07-24)
-- AsyncTCP `status()` made const to fix compile error with ESPAsyncWebServer
+1. **Never add a station (STA) interface back.** There is no upstream network.
+   If you need new network behaviour, it runs over the board's own AP.
+2. **The board MUST serve the dashboard from flash.** The page is
+   `http://192.168.4.1`, so `ws://192.168.4.1/ws` is same-origin. A browser
+   refuses to open a `ws://` socket from an `https://` page (mixed content) —
+   which is the entire reason the dashboard is self-hosted, and why an earlier
+   read-only portal page had to exist.
+3. **The board has no clock and no way to get one.** It borrows the browser's
+   clock (`set_time`). `LimitManager::rolloverIfNeeded()` refuses to act while
+   the clock is unset, so **the monthly billing reset silently never happens
+   until a dashboard connects and lends it a time.** This is not cosmetic.
+4. **Never `.ino`-include a `src/` `.cpp`.** Arduino compiles every `.cpp` under
+   the sketch root; including one too gives multiple-definition link errors.
+5. **`commit()` on `Preferences` is `prefs.end()` + `prefs.begin()` and is NOT
+   thread-safe.** Every NVS write from both cores must hold `dataMutex`, and
+   every one must actually `commit()` or it never reaches flash.
+6. **AsyncTCP 1.1.4 needs patching on Arduino-ESP32 3.3.x.** Run
+   `python3 scripts/patch_async_tcp.py` after any library install or upgrade.
+   It is idempotent; skipping it fails the build at `ESPAsyncWebServer.h:1699`.
+7. **Admin PIN is enforced on the ESP32, not in the UI.** See
+   `src/network/auth_gate.cpp`. Hiding a button is convenience, not protection.
+   New mutating verbs are gated automatically because the check runs *before*
+   the verb dispatch — do not add verbs that bypass `processCommand()`.
+8. **Mean-remove the AC bias; do not subtract a constant.** There is
+   deliberately no `AC_BIAS_VOLTAGE`. Voltage and current are biased to
+   mid-supply and the RMS math removes that per sample.
+9. **Do not EMA-filter the voltage reference.** It did once share channel 0's
+   user-tunable LPF alpha, and a 50 Hz AC waveform through a slow EMA reads
+   ~147 V instead of ~240 V. See `lessons.md`.
+10. **The WS2812 R/G outputs are physically swapped** and compensated in
+    software. There is a comment saying so. Do not "fix" it.
+
+## Before you change anything
+
+```bash
+./scripts/verify_all.sh --build     # every gate, ~2 min
+```
+
+It checks the embedded dashboard assets byte-for-byte, unit-tests the PIN gate,
+scans the frontend for dead cloud code, verifies the documentation's claims,
+runs the real page against a mock board, and compiles with `-Werror`-style
+strictness. If you are about to touch `frontend/`, run
+`python3 scripts/embed_web.py` afterwards — the firmware serves a generated
+copy, not your edit.
+
+## Hardware facts
+
+| Signal | Pins |
+|---|---|
+| CT current ch1–6 | GPIO7, 5, 6, 8, 4, 2 |
+| Voltage reference | GPIO1 |
+| Active buzzer | GPIO13 (N beeps = channel number) |
+| RGB LED | GPIO48 (WS2812, R/G swapped) |
+
+AP network: `ESP32-Elec-Counter` / `configure123`, board IP `192.168.4.1`.
+Admin PIN default: `1234` (change it on first boot).
+
+## Never trust a checker you have only ever seen pass
+
+Every gate here was proven able to fail — assets against a real pre-migration
+binary, the PIN gate by mutation, the E2E suite against four broken copies of
+`script.js`. If you add an assertion, break the thing it claims to protect and
+confirm it goes red. Three real bugs in this codebase were only found because
+an existing test had a negative control.

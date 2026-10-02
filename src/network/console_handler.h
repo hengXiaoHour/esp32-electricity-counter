@@ -85,7 +85,6 @@ private:
   void cmdInfo(String &out);
   void cmdWifi(String &out);
   void cmdHelp(String &out);
-  void cmdLedTest(String &out);
   void cmdNvsDebug(String &out);
   void cmdReboot(String &out);
   void cmdRmsSamples(const String &args, String &out);
