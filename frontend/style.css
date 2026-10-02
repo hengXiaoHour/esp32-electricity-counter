@@ -372,3 +372,17 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
   .chart-grid.ch { grid-template-columns: 1fr; }
   #toast { bottom: 76px; }
 }
+
+/* ---- AP-only: the connect panel is now only a "you're not on the board's
+   WiFi" notice, so it explains itself instead of offering a mode picker. ---- */
+.connect-card-note {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #9a9a9a;
+  margin: 4px 0 14px;
+  padding: 10px 12px;
+  border: 1px solid #2a2f35;
+  border-radius: 6px;
+  background: #16191d;
+}
+.connect-card-note .mono { color: #e8e8e8; }

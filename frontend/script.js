@@ -1,5 +1,4 @@
 let ws = null;
-let currentIP = '';
 let userDisconnect = false;
 let activeEditChIdx = null;
 let latestChannelData = [];
@@ -10,20 +9,12 @@ let demoInterval = null;
 let lastEventKey = '';
 let lastToastEventKey = '';
 let chartBuf = {};
-let connMode = 'local';            // 'local' | 'cloud' | 'demo'
-let cloudHeartbeat = null;        // eco-mode presence heartbeat timer
-let cloudClientId = null;         // this tab's /viewers key
-let cloudHeartbeatPath = null;    // full RTDB path of our heartbeat entry
-let cloudDb = null;
-let selectedDeviceId = null;       // board picked in the Cloud dropdown
-let cloudLatestRef = null;
-let cloudConsoleRef = null;
+let connMode = 'local';            // 'local' | 'demo'
+let timeSyncTimer = null;         // re-lend the clock to the board periodically
+let lastDataTs = 0;
 let consoleHistory = [];
 let consoleHistIdx = -1;
 const CONSOLE_MAX_LINES = 400;
-let lastDataTs = 0;
-let cloudWatchdog = null;
-const CLOUD_STALE_MS = 10000;
 const CHART_MAX = 240;
 const CHART_DEFS = {
   'V': { label: 'Voltage (V)', color: '#3b82f6' },
@@ -33,108 +24,6 @@ const CHART_DEFS = {
 
 const NUM_CHANNELS = 6;
 
-// ============ Auth (Google) ============
-let authUser = null;
-let authAdmin = false;          // signed-in user email ∈ FB_CONFIG.adminEmails
-let authInitialized = false;
-
-function initAuth() {
-  // Apply the guest baseline synchronously so admin controls never flash for
-  // non-admins on reload; onAuthStateChanged upgrades to admin when it resolves.
-  applyAuthState();
-  if (!window.firebase || !window.FB_CONFIG || !window.FB_CONFIG.apiKey || !window.firebase.auth) {
-    authInitialized = false;
-    return;
-  }
-  try {
-    if (!firebase.apps.length) {
-      firebase.initializeApp({
-        apiKey: window.FB_CONFIG.apiKey,
-        authDomain: window.FB_CONFIG.authDomain,
-        databaseURL: window.FB_CONFIG.databaseURL
-      });
-    }
-    firebase.auth().onAuthStateChanged((user) => {
-      authUser = user;
-      authAdmin = !!(user && window.FB_CONFIG.adminEmails &&
-                     window.FB_CONFIG.adminEmails.indexOf(user.email) !== -1);
-      authInitialized = true;
-      applyAuthState();
-    });
-  } catch (e) {
-    console.error('Auth init failed', e);
-    authInitialized = false;
-    applyAuthState();
-  }
-}
-
-function toggleGoogleAuth() {
-  if (!window.firebase || !firebase.auth) return;
-  if (authUser) {
-    firebase.auth().signOut().catch((e) => showToast('Sign out failed: ' + e.message));
-    return;
-  }
-  if (!window.FB_CONFIG || !window.FB_CONFIG.apiKey) {
-    showToast('Google sign-in not configured (config.js)');
-    return;
-  }
-  const provider = new firebase.auth.GoogleAuthProvider();
-  firebase.auth().signInWithPopup(provider).catch((err) => {
-    // popup-closed is not an error worth showing
-    if (err.code !== 'auth/popup-closed-by-user' && err.code !== 'auth/cancelled-popup-request') {
-      showToast('Sign in failed: ' + err.message);
-    }
-  });
-}
-
-// Apply the current role to the whole UI: badge, buttons, and admin-only gating.
-function applyAuthState() {
-  const guest = !authAdmin;
-
-  // Connection is allowed for everyone; only command-sending is gated later.
-  const badge = document.getElementById('roleBadge');
-  if (badge) {
-    badge.textContent = authAdmin ? 'Admin — full control' : 'Guest — read-only';
-    badge.className = 'role-badge ' + (authAdmin ? 'role-admin' : 'role-guest');
-  }
-  const acctEmail = document.getElementById('acctEmail');
-  if (acctEmail) acctEmail.textContent = authUser ? authUser.email : 'Not signed in';
-
-  const sideEmail = document.getElementById('authEmail');
-  if (sideEmail) {
-    sideEmail.textContent = authUser ? authUser.email : '';
-    const row = document.getElementById('authUserRow');
-    if (row) row.classList.toggle('hidden', !authUser);
-  }
-  const authBtnSide = document.getElementById('authBtnSide');
-  if (authBtnSide) {
-    authBtnSide.querySelector('.nav-label').textContent = authUser ? 'Sign out of Google' : 'Sign in with Google';
-  }
-  const authBtnSettings = document.getElementById('authBtnSettings');
-  if (authBtnSettings) {
-    authBtnSettings.textContent = authUser ? 'Sign out of Google' : 'Sign in with Google';
-  }
-
-  document.body.classList.toggle('role-admin', authAdmin);
-  document.body.classList.toggle('role-guest', guest);
-
-  // If a channel edit modal is open and the user just lost admin, close it.
-  if (guest && activeEditChIdx !== null) closeEditModal();
-
-  // Role may govern cloud console access (guest = no /console read).
-  syncCloudConsoleListener();
-
-  const guestHint = document.getElementById('guestHint');
-  if (guestHint) guestHint.style.display = guest ? 'inline' : 'none';
-}
-
-function requireAdmin() {
-  if (authAdmin) return true;
-  showToast(authUser
-    ? 'This Google account is not the admin. Admin controls are locked.'
-    : 'Sign in with the admin Google account to change settings.');
-  return false;
-}
 
 // ============ PWA install prompt ============
 let deferredInstallPrompt = null;
@@ -183,70 +72,36 @@ function promptInstall() {
 }
 
 // Initial Setup
+// Initial Setup
 (function init() {
-  initAuth();
+  // ?demo=1 renders the UI with mocked data and opens no socket. The only
+  // remaining reason the demo path exists: previewing the dashboard on a
+  // machine that cannot join the board's WiFi.
+  const demo = /[?&]demo=1\b/.test(location.search);
+  connMode = demo ? 'demo' : 'local';
 
-  try {
-    const savedIP = localStorage.getItem('esp32monitor_ip');
-    if (savedIP) {
-      document.getElementById('esp32Ip').value = savedIP;
-    }
-  } catch (e) { /* localStorage unavailable (e.g. file://) */ }
+  // Restore a remembered PIN so a returning admin is not re-prompted. The
+  // board still re-validates it, so a changed PIN simply leaves us read-only.
+  adminPin = pinCached();
+  applyPinState();
 
-  // Cloud is always the default connection mode. No persisted-mode restore.
-  const modeSel = document.getElementById('connMode');
-  if (modeSel) {
-    modeSel.value = 'cloud';
-    modeSel.addEventListener('change', updateConnectFields);
-    updateConnectFields();
+  if (connMode === 'demo') {
+    startDemoMode();
+  } else {
+    handleConnect();
   }
 
-  // If a live session was saved, jump straight into the dashboard.
-  autoReconnect();
-
-  // Show the install control on load (hidden only when already installed).
   if (isStandalone()) hideInstallRow();
   else showInstallRow();
-
-  // Prefer a board the user picked before; fall back to config, then the
-  // 192.168.100.3 board (esp-858428).
-  try {
-    const savedDev = localStorage.getItem('esp32monitor_device');
-    selectedDeviceId = savedDev || (window.FB_CONFIG && window.FB_CONFIG.deviceId) || 'esp-858428';
-  } catch (e) { /* localStorage unavailable */ }
-  loadDevicePicker();
-
-  const picker = document.getElementById('devicePicker');
-  if (picker) {
-    picker.addEventListener('change', () => {
-      selectedDeviceId = picker.value || null;
-      try { localStorage.setItem('esp32monitor_device', selectedDeviceId || ''); } catch (e) {}
-      // Rebind live cloud refs to the newly selected board, if connected.
-      if (connMode === 'cloud' && cloudDb) {
-        if (cloudLatestRef) cloudLatestRef.off();
-        if (cloudConsoleRef) cloudConsoleRef.off();
-        connectCloud();
-      }
-    });
-  }
 
   // Close modal on Escape key
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeEditModal();
   });
 
-  // Eco presence: explicit Disconnect already calls stopHeartbeat().
-  // These cover the paths it misses — tab close/navigate (pagehide,
-  // best-effort; onDisconnect is the backup) and background tabs
-  // (pause heartbeat while hidden so the board drops to eco).
-  window.addEventListener('pagehide', () => { try { stopHeartbeat(); } catch (e) {} });
-  window.addEventListener('beforeunload', () => { try { stopHeartbeat(); } catch (e) {} });
-  document.addEventListener('visibilitychange', () => {
-    try {
-      if (document.hidden) { stopHeartbeat(); }
-      else if (connMode === 'cloud' && cloudDb) { startHeartbeat(); }
-    } catch (e) {}
-  });
+  // The board no longer has a cloud presence heartbeat to stop, but a trip
+  // notification fired in this tab should not outlive it.
+  window.addEventListener('pagehide', () => { try { clearPinCache(); } catch (e) {} });
 
   initCharts();
 
@@ -274,289 +129,140 @@ function toggleSidebar() {
 }
 
 // ============ Connection ============
-function connectLocal() {
-  const ip = document.getElementById('esp32Ip').value.trim();
-  if (!ip) return;
-  currentIP = ip;
-  connMode = 'local';
-  try { localStorage.setItem('esp32monitor_ip', ip); } catch (e) {}
-  setConnectStatus('Connecting to ' + ip + '...', 'connecting');
-  connectWS(ip);
+// ============ Connection ============
+// There is nothing to choose any more. The page is SERVED BY the board, so
+// location.host is the board - there is no IP to type, no mode dropdown, and
+// no cloud to fall back to. Connect, or do not.
+function deviceWSUrl() {
+  return 'ws://' + location.host + '/ws';
 }
 
 function handleConnect() {
-  const mode = document.getElementById('connMode').value;
   document.body.classList.remove('conn-mode-demo');
-  try { localStorage.setItem('esp32monitor_connmode', mode); } catch (e) {}
-  if (mode === 'cloud') return connectCloud();
-  if (mode === 'demo') return startDemoMode();
-  return connectLocal();
-}
-
-function updateConnectFields() {
-  const mode = document.getElementById('connMode').value;
-  const ipRow = document.getElementById('ipRow');
-  const cloudRow = document.getElementById('cloudRow');
-  if (ipRow) ipRow.classList.toggle('hidden', mode !== 'local');
-  if (cloudRow) cloudRow.classList.toggle('hidden', mode !== 'cloud');
+  connMode = 'local';
+  connectWS();
 }
 
 function handleDisconnect() {
   userDisconnect = true;
   if (demoInterval) clearInterval(demoInterval);
-  if (cloudWatchdog) clearInterval(cloudWatchdog);
-  stopHeartbeat();
-  if (cloudLatestRef && cloudDb) { cloudLatestRef.off(); cloudLatestRef = null; }
-  if (cloudConsoleRef && cloudDb) { cloudConsoleRef.off(); cloudConsoleRef = null; }
-  if (ws) {
-    ws.close();
-    ws = null;
-  }
+  if (timeSyncTimer) { clearInterval(timeSyncTimer); timeSyncTimer = null; }
+  if (ws) { ws.close(); ws = null; }
   connMode = 'local';
   document.body.classList.remove('conn-mode-demo');
-  try { localStorage.removeItem('esp32monitor_session'); } catch (e) {}
   showConnectPanel();
 }
 
-// Persist a live session so a page reload reconnects straight into the
-// dashboard (mode + ip + device), instead of landing back on the connect panel.
-function saveSession(mode) {
-  const s = { mode: mode };
-  if (mode === 'local') {
-    s.ip = document.getElementById('esp32Ip') ? document.getElementById('esp32Ip').value.trim() : currentIP;
-  }
-  if (mode === 'cloud') s.device = currentDeviceId();
-  try { localStorage.setItem('esp32monitor_session', JSON.stringify(s)); } catch (e) {}
+// ============ Admin PIN ============
+// The ESP32 enforces the PIN (see src/network/auth_gate.cpp); this side only
+// decides what the UI is allowed to show. Unlocking is explicit: a viewer gets
+// read-only until they enter the PIN in Settings.
+let adminPin = '';
+let pinOk = false;
+
+function pinCached() {
+  try { return sessionStorage.getItem('esp32counter_pin') || ''; } catch (e) { return ''; }
+}
+function pinCache(p) {
+  try { sessionStorage.setItem('esp32counter_pin', p || ''); } catch (e) {}
+}
+function clearPinCache() {
+  try { sessionStorage.removeItem('esp32counter_pin'); } catch (e) {}
 }
 
-function autoReconnect() {
-  let s = null;
-  try { s = JSON.parse(localStorage.getItem('esp32monitor_session') || 'null'); } catch (e) { s = null; }
-  if (!s || !s.mode) return;
-  const modeSel = document.getElementById('connMode');
-  if (modeSel) modeSel.value = s.mode;
-  updateConnectFields();
-  if (s.mode === 'cloud') {
-    if (s.device) selectedDeviceId = s.device;
-    connectCloud();
-  } else if (s.mode === 'demo') {
-    startDemoMode();
-  } else if (s.mode === 'local') {
-    if (s.ip) {
-      document.getElementById('esp32Ip').value = s.ip;
-      currentIP = s.ip;
-    }
-    connectLocal();
-  }
+function requirePin() {
+  if (pinOk) return true;
+  showToast('Enter the admin PIN in Settings first');
+  showPage('settings');
+  const row = document.getElementById('pinRow');
+  if (row) row.classList.remove('hidden');
+  return false;
 }
 
-// ============ Cloud (Firebase RTDB) mode ============
-
-// Board-scoped path: every node lives under /devices/<chip-unique-id>/.
-// The device picks its own id from its efuse MAC; the dashboard just needs
-// to know which board it is watching (see loadDevicePicker above).
-function cloudDevPath() {
-  return 'devices/' + currentDeviceId();
+function applyPinState() {
+  document.body.classList.toggle('role-admin', pinOk);
+  document.body.classList.toggle('role-guest', !pinOk);
+  const badge = document.getElementById('roleBadge');
+  if (badge) {
+    badge.textContent = pinOk ? 'Admin — full control' : 'Viewer — read-only';
+    badge.className = 'role-badge ' + (pinOk ? 'role-admin' : 'role-guest');
+  }
+  const hint = document.getElementById('guestHint');
+  if (hint) hint.style.display = pinOk ? 'none' : 'inline';
+  // Losing admin while a modal is open must close it, or a viewer would be
+  // left staring at controls that no longer do anything.
+  if (!pinOk && activeEditChIdx !== null) closeEditModal();
 }
 
-// Keep the /console child_added listener in sync with the live role. Guests
-// have no read on /console (security rules); attaching anyway would spam
-// PERMISSION_DENIED errors, so only admins hold the listener.
-function syncCloudConsoleListener() {
-  if (!cloudDb || connMode !== 'cloud') return;
-  if (cloudConsoleRef) {
-    cloudConsoleRef.off('child_added');
-    cloudConsoleRef = null;
-  }
-  if (authAdmin) {
-    cloudConsoleRef = cloudDb.ref(cloudDevPath() + '/console');
-    cloudConsoleRef.on('child_added', (snap) => {
-      const raw = snap.val();
-      const text = (typeof raw === 'string') ? raw
-                 : (raw && typeof raw.out === 'string') ? raw.out : '';
-      if (text.length) appendConsoleOutput(text);
-      snap.ref.remove().catch(() => {});
+// Asks the board whether the PIN we hold is right. Sent on connect (so a
+// remembered PIN unlocks the UI automatically) and whenever it changes.
+function verifyPin(pin) {
+  return new Promise((resolve) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return resolve(false);
+    const done = (e) => {
+      if (e.data && e.data.indexOf('PIN OK') >= 0) resolve(true);
+    };
+    const raw = ws.onmessage;
+    ws.addEventListener('message', function h(e) {
+      try {
+        const d = JSON.parse(e.data);
+        if (d && d.type === 'console') {
+          if ((d.out || '').indexOf('PIN OK') >= 0) {
+            ws.removeEventListener('message', h);
+            resolve(true);
+          } else if ((d.out || '').indexOf('PIN incorrect') >= 0) {
+            ws.removeEventListener('message', h);
+            resolve(false);
+          }
+        } else if (d && d.type === 'auth' && d.ok === false) {
+          ws.removeEventListener('message', h);
+          resolve(false);
+        }
+      } catch (x) { /* keep waiting */ }
     });
+    ws.send(JSON.stringify({ cmd: 'verify_pin', pin: pin }));
+    setTimeout(() => resolve(pinOk), 3000);
+  });
+}
+
+// Changing the PIN requires the CURRENT one - the board enforces that, since
+// set_pin goes through the same gate as every other mutation.
+function changePin() {
+  if (!requirePin()) return Promise.resolve(false);
+  const input = document.getElementById('pinNew');
+  const val = (input.value || '').trim();
+  if (val.length < 4 || val.length > 16) {
+    showToast('PIN must be 4-16 characters');
+    return Promise.resolve(false);
   }
+  return sendCommand({ cmd: 'set_pin', pin_new: val }).then(() => {
+    input.value = '';
+    // Keep the session usable without re-prompting.
+    adminPin = val;
+    pinCache(val);
+    pinOk = true;
+    applyPinState();
+    showToast('Admin PIN changed');
+    return true;
+  }).catch(() => false);
 }
 
-function currentDeviceId() {
-  if (selectedDeviceId) return selectedDeviceId;
-  if (window.FB_CONFIG && window.FB_CONFIG.deviceId) return window.FB_CONFIG.deviceId;
-  return 'esp-000000';
+async function unlockWithPin(pin) {
+  pin = (pin || '').trim();
+  if (!pin) { pinOk = false; applyPinState(); return false; }
+  const ok = await verifyPin(pin);
+  pinOk = ok;
+  if (ok) { adminPin = pin; pinCache(pin); } else { adminPin = ''; clearPinCache(); }
+  applyPinState();
+  return ok;
 }
-
-// Populate the board dropdown from RTDB /devices. Filters to boards that
-// actually pushed a /latest snapshot (online). Keeps the user-selected or
-// config-default board selected when present.
-function loadDevicePicker() {
-  const sel = document.getElementById('devicePicker');
-  if (!sel) return;
-  try {
-    if (!window.firebase || !window.FB_CONFIG || !window.FB_CONFIG.databaseURL) return;
-    if (!cloudDb) {
-      if (!firebase.apps.length) firebase.initializeApp({ databaseURL: window.FB_CONFIG.databaseURL });
-      cloudDb = firebase.database();
-    }
-    cloudDb.ref('devices').once('value').then((snap) => {
-      const val = snap.val() || {};
-      const cur = currentDeviceId();
-      sel.innerHTML = '';
-      let first = null;
-      Object.keys(val).forEach((id) => {
-        const dev = val[id];
-        if (!dev || !dev.latest) return; // not live on cloud yet
-        if (!first) first = id;
-        const opt = document.createElement('option');
-        opt.value = id;
-        opt.textContent = id;
-        sel.appendChild(opt);
-      });
-      const target = selectionMatches(cur, val) ? cur : (first || '');
-      if (target) sel.value = target;
-      selectedDeviceId = sel.value || null;
-      try { if (selectedDeviceId) localStorage.setItem('esp32monitor_device', selectedDeviceId); } catch (e) {}
-      if (sel.options.length === 0) {
-        const opt = document.createElement('option');
-        opt.value = '';
-        opt.textContent = 'no boards online';
-        sel.appendChild(opt);
-      }
-    }).catch(() => {});
-  } catch (e) {}
-}
-
-function selectionMatches(id, val) {
-  if (!id) return false;
-  const dev = val[id];
-  return !!(dev && dev.latest);
-}
-
-function connectCloud() {
-  setConnectStatus('Connecting to Firebase...', 'connecting');
-  try {
-    if (!window.firebase || !window.FB_CONFIG || !window.FB_CONFIG.databaseURL) {
-      throw new Error('config.js missing \u2014 create it from config.example.js');
-    }
-    if (!cloudDb) {
-      if (!firebase.apps.length) firebase.initializeApp({ databaseURL: window.FB_CONFIG.databaseURL });
-      cloudDb = firebase.database();
-    }
-    connMode = 'cloud';
-    lastDataTs = Date.now();
-    saveSession('cloud');
-    const devPath = cloudDevPath();
-    cloudLatestRef = cloudDb.ref(devPath + '/latest');
-    cloudLatestRef.on('value', (snap) => {
-      const val = snap.val();
-      if (!val) return;
-      lastDataTs = Date.now();
-      updateDashboard(normalizeSnapshot(val));
-    });
-
-    // Console responses land under /devices/<id>/console/<commandKey>.
-    // Print, then delete. Guests always lose the listener so no
-    // PERMISSION_DENIED noise makes it up to the console.
-    syncCloudConsoleListener();
-
-    const ipEl = document.getElementById('connectedIp');
-    if (ipEl) ipEl.textContent = 'Firebase RTDB / ' + currentDeviceId();
-    document.getElementById('connStatus').textContent = 'Connected';
-    const cs2 = document.getElementById('connStatus2');
-    if (cs2) cs2.textContent = 'Connected';
-    const wifi = document.querySelector('.wifi');
-    if (wifi) wifi.setAttribute('class', 'wifi lv0');
-    showDashboard();
-    startCloudWatchdog();
-    startHeartbeat();
-  } catch (err) {
-    setConnectStatus('Cloud connect failed: ' + err.message, 'disconnected');
-  }
-}
-
-// RTDB stores arrays as objects with numeric keys \u2014 convert back.
-function toArray(obj) {
-  if (Array.isArray(obj)) return obj;
-  if (!obj || typeof obj !== 'object') return [];
-  const out = [];
-  for (const k in obj) {
-    if (Object.prototype.hasOwnProperty.call(obj, k) && /^\d+$/.test(k)) {
-      out[parseInt(k, 10)] = obj[k];
-    }
-  }
-  return out;
-}
-
-function normalizeSnapshot(val) {
-  const norm = Object.assign({}, val);
-  if (val.ch) norm.ch = toArray(val.ch);
-  if (val.currentCalibration) norm.currentCalibration = toArray(val.currentCalibration);
-  if (val.noiseFloor) norm.noiseFloor = toArray(val.noiseFloor);
-  if (val.azActive !== undefined) norm.azActive = val.azActive;
-  if (val.azChannel !== undefined) norm.azChannel = val.azChannel;
-  if (val.azProgress !== undefined) norm.azProgress = val.azProgress;
-  if (val.azQueue) norm.azQueue = toArray(val.azQueue);
-  if (val.lpfAlpha) norm.lpfAlpha = toArray(val.lpfAlpha);
-  if (val.events) norm.events = toArray(val.events);
-  return norm;
-}
-
-function startCloudWatchdog() {
-  clearInterval(cloudWatchdog);
-  cloudWatchdog = setInterval(() => {
-    if (connMode !== 'cloud') { clearInterval(cloudWatchdog); return; }
-    const stale = (Date.now() - lastDataTs) > CLOUD_STALE_MS;
-    const cs1 = document.getElementById('connStatus');
-    const cs2 = document.getElementById('connStatus2');
-    if (stale) {
-      if (cs1) cs1.textContent = 'Offline \u2014 no data';
-      if (cs2) cs2.textContent = 'Offline \u2014 no data';
-    } else {
-      if (cs1) cs1.textContent = 'Connected';
-      if (cs2) cs2.textContent = 'Connected';
-    }
-  }, 2000);
-}
-
-// Eco-mode presence heartbeat: while a Cloud dashboard is open, keep a
-// timestamp entry under /devices/<id>/viewers/<tabId> so the board knows
-// someone is watching (live 1s push, no modem sleep). Refreshed every 15 s,
-// onDisconnect-removed. Guests included — the RTDB rule lets anyone write
-// their own viewer key (worst case: a stranger keeps the board awake).
-function startHeartbeat() {
-  stopHeartbeat();
-  try {
-    cloudClientId = sessionStorage.getItem('esp32monitor_cid');
-    if (!cloudClientId) {
-      cloudClientId = 'c' + Math.random().toString(36).slice(2) + Date.now().toString(36);
-      sessionStorage.setItem('esp32monitor_cid', cloudClientId);
-    }
-  } catch (e) {
-    cloudClientId = 'c' + Math.random().toString(36).slice(2);
-  }
-  cloudHeartbeatPath = cloudDevPath() + '/viewers/' + cloudClientId;
-  const beat = () => {
-    try {
-      cloudDb.ref(cloudHeartbeatPath).set({ ts: firebase.database.ServerValue.TIMESTAMP });
-    } catch (e) {}
-  };
-  beat();
-  try {
-    cloudDb.ref(cloudHeartbeatPath).onDisconnect().remove();
-  } catch (e) {}
-  cloudHeartbeat = setInterval(beat, 15000);
-}
-
-function stopHeartbeat() {
-  if (cloudHeartbeat) { clearInterval(cloudHeartbeat); cloudHeartbeat = null; }
-  if (cloudDb && cloudHeartbeatPath) {
-    try { cloudDb.ref(cloudHeartbeatPath).remove().catch(() => {}); } catch (e) {}
-  }
-  cloudClientId = null;
-  cloudHeartbeatPath = null;
-}
-
-// Route a command to the active transport (WS / Firebase / demo).
+// Route a command to the board. One transport, one place.
+//
+// The admin PIN is attached to EVERY mutating command rather than negotiated
+// once per session. That is deliberate: there is no session token to forge,
+// revoke, or keep in sync per WebSocket client, and the ESP32 has no
+// per-client state to hang one on. A read-only viewer simply never has one to
+// send, and the board rejects the frame.
 function sendCommand(obj) {
   if (connMode === 'demo') {
     if (obj.cmd === 'set_name' && latestChannelData[obj.ch]) latestChannelData[obj.ch].n = obj.name;
@@ -567,53 +273,91 @@ function sendCommand(obj) {
     }
     return Promise.resolve();
   }
-  // Guests may observe live data but never mutate the board.
-  if (!authAdmin) {
-    requireAdmin();
-    return Promise.reject(new Error('Auth required'));
+
+  // set_time is exempt on the device and must reach it even for a viewer -
+  // it is what gives the board a clock, and without a clock the monthly
+  // rollover never fires. verify_pin is exempt for obvious reasons.
+  const exempt = (obj.cmd === 'set_time' || obj.cmd === 'verify_pin');
+  if (!exempt && !pinOk) {
+    requirePin();
+    return Promise.reject(new Error('PIN required'));
   }
-  if (connMode === 'cloud' && cloudDb) {
-    const devPath = cloudDevPath();
-    return cloudDb.ref(devPath + '/commands').push(obj).then(() => undefined);
-  }
-  if (connMode === 'local' && ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(obj));
+
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    const frame = Object.assign({}, obj);
+    if (!exempt && adminPin) frame.pin = adminPin;
+    ws.send(JSON.stringify(frame));
     return Promise.resolve();
   }
   showToast('Not connected');
   return Promise.reject(new Error('Not connected'));
 }
 
-function connectWS(ip) {
-  if (ws) { ws.close(); ws = null; }
-  const url = 'ws://' + ip + '/ws';
+// Lend the browser's clock to the board, then keep re-lending it.
+//
+// This is not cosmetic. The board has no NTP in AP-only mode, and
+// LimitManager::rolloverIfNeeded() refuses to act on an unset clock - so
+// without this the monthly billing reset would silently stop happening.
+function sendTime() {
+  sendCommand({ cmd: 'set_time', t: Math.floor(Date.now() / 1000) })
+    .catch(() => {});
+}
 
-  ws = new WebSocket(url);
+function connectWS() {
+  if (ws) { ws.close(); ws = null; }
+
+  ws = new WebSocket(deviceWSUrl());
+
   ws.onopen = () => {
-    saveSession('local');
+    setConnectStatus('Connected', 'connected');
     const ipEl = document.getElementById('connectedIp');
-    if (ipEl) ipEl.textContent = ip;
-    document.getElementById('connStatus').textContent = 'Connected';
+    if (ipEl) ipEl.textContent = location.host;
     const cs2 = document.getElementById('connStatus2');
     if (cs2) cs2.textContent = 'Connected';
-    const wifi = document.querySelector('.wifi');
-    if (wifi) wifi.setAttribute('class', 'wifi lv0');
     showDashboard();
+
+    // Clock first: the rollover check runs on every sensor cycle, so the
+    // sooner the board has a valid time the better.
+    sendTime();
+    if (timeSyncTimer) clearInterval(timeSyncTimer);
+    timeSyncTimer = setInterval(sendTime, 10 * 60 * 1000);
+
+    // Re-validate a remembered PIN. The board is the authority here, not
+    // sessionStorage.
+    const cached = pinCached();
+    if (cached) unlockWithPin(cached);
   };
+
   ws.onclose = () => {
+    if (timeSyncTimer) { clearInterval(timeSyncTimer); timeSyncTimer = null; }
+    pinOk = false;
+    adminPin = '';
+    applyPinState();
     if (!userDisconnect && connMode === 'local') {
-      setConnectStatus('Disconnected \u2014 check IP address', 'disconnected');
+      setConnectStatus('Disconnected — is your phone on the board\'s WiFi?', 'disconnected');
       showConnectPanel();
     }
   };
+
   ws.onerror = () => {
     if (connMode === 'local') setConnectStatus('Connection error', 'disconnected');
   };
+
   ws.onmessage = (e) => {
     try {
       const data = JSON.parse(e.data);
       if (data && data.type === 'console') {
         appendConsoleOutput(data.out || '');
+        return;
+      }
+      if (data && data.type === 'auth') {
+        // The board rejected a command for a missing/wrong PIN. The UI is not
+        // the authority, so drop straight back to read-only.
+        pinOk = false;
+        adminPin = '';
+        clearPinCache();
+        applyPinState();
+        showToast('Admin PIN rejected — commands are now read-only');
         return;
       }
       updateDashboard(data);
@@ -629,8 +373,7 @@ function showDashboard() {
 function showConnectPanel() {
   document.getElementById('app').classList.add('hidden');
   document.getElementById('connectPanel').classList.remove('hidden');
-  // Drop the no-flash marker so the panel's hidden CSS no longer applies.
-  document.documentElement.classList.remove('has-session');
+  setConnectStatus('Disconnected — is your phone on the board\'s WiFi?', 'disconnected');
 }
 
 function setConnectStatus(msg, cls) {
@@ -641,32 +384,87 @@ function setConnectStatus(msg, cls) {
   }
 }
 
-// ============ WiFi signal strength (real RSSI from ESP32 STA mode) ============
-function rssiLevel(rssi) {
-  if (rssi >= -60) return 4;
-  if (rssi >= -67) return 3;
-  if (rssi >= -75) return 2;
-  if (rssi >= -85) return 1;
-  return 0;
+// ============ Clock ============
+// The board has no internet and therefore no NTP. It borrows this browser's
+// clock (sendTime, on connect and every 10 min) and reports back whether it
+// has a valid one. Until it does, the monthly rollover is dormant - so this
+// indicator is not cosmetic, it is telling you whether billing will reset.
+function renderClock(data) {
+  const el = document.getElementById('timeStatus');
+  if (!el) return;
+  const t = data && data.time;
+  if (!t || !t.ok) {
+    el.textContent = 'not set — monthly reset will not fire';
+    el.style.color = '#e74c3c';
+    return;
+  }
+  const age = (typeof t.age === 'number' && t.age < 86400 * 30) ? t.age : null;
+  el.textContent = age === null ? 'set' : 'set, ' + fmtAge(age) + ' ago';
+  el.style.color = '';
 }
 
+function fmtAge(sec) {
+  if (sec < 90) return Math.round(sec) + 's';
+  if (sec < 5400) return Math.round(sec / 60) + 'm';
+  if (sec < 172800) return Math.round(sec / 3600) + 'h';
+  return Math.round(sec / 86400) + 'd';
+}
+
+// ============ Trip notifications ============
+// Replaces the ntfy.sh push that died with the cloud. ntfy needed the internet;
+// a Web Notification does not, so a trip still alerts you as long as this
+// dashboard is open — which, in AP-only mode, means as long as you are on the
+// board's WiFi.
+let notifiedTripSignature = '';
+let notificationAsked = false;
+
+function notifyOnTrip(data, hasTrip) {
+  if (!hasTrip) { notifiedTripSignature = ''; return; }
+
+  const tripped = (data.ch || []).filter(c => c && c.s === 2);
+  // Key on WHICH channels are tripped, so a new trip fires a fresh
+  // notification but a snapshot arriving 6x a second does not.
+  const sig = tripped.map(c => c.n).join('|');
+  if (sig === notifiedTripSignature) return;
+  const first = !notifiedTripSignature;
+  notifiedTripSignature = sig;
+
+  if (!notificationAsked && 'Notification' in window && Notification.permission === 'default') {
+    notificationAsked = true;
+    Notification.requestPermission();
+  }
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
+  const body = tripped.map(c => c.n + ': ' + (+c.kwh).toFixed(1) + ' kWh of ' +
+                                     (+c.mkwh).toFixed(0) + ' kWh').join('\n');
+  const title = tripped.length === 1
+    ? tripped[0].n + ' is over budget'
+    : tripped.length + ' channels are over budget';
+  try {
+    const n = new Notification(title, {
+      body: body,
+      tag: 'esp32counter-trip',   // replaces the previous one instead of stacking
+      requireInteraction: first
+    });
+    n.onclick = function () { window.focus(); showPage('dashboard'); n.close(); };
+  } catch (e) { /* notification failed — the on-page LED still shows it */ }
+}
+
+// ============ Network indicator (AP-only) ============
+// The board is an access point and never joins a network, so there is no RSSI
+// to display. The icon shows the shape of the world we are actually in: an AP
+// with clients, or an idle AP nobody is watching.
 function updateWifiIcon(data) {
   const wifi = document.querySelector('.wifi');
   if (!wifi) return;
-  const ap = !!data.ap;
-  if (ap) {
-    wifi.setAttribute('class', 'wifi lv2');
-    wifi.setAttribute('title', 'Access Point mode');
-    return;
-  }
-  if (!data.wifi || typeof data.rssi !== 'number') {
+  if (!data.ap) {
     wifi.setAttribute('class', 'wifi lv0 disconnected');
-    wifi.setAttribute('title', 'Not connected');
+    wifi.setAttribute('title', 'Access point starting');
     return;
   }
-  const lv = rssiLevel(data.rssi);
-  wifi.setAttribute('class', 'wifi lv' + lv);
-  wifi.setAttribute('title', 'RSSI ' + data.rssi + ' dBm');
+  // Any WebSocket client is by definition on the AP, so the link is up.
+  wifi.setAttribute('class', 'wifi lv2');
+  wifi.setAttribute('title', 'Connected over the board\'s own WiFi (AP mode)');
 }
 
 // ============ Smart DOM-preserving Dashboard Update ============
@@ -746,6 +544,9 @@ function updateDashboard(data) {
     else { led.className = 'led led-ok'; }
   }
 
+  renderClock(data);
+  notifyOnTrip(data, hasTrip);
+
   updateWifiIcon(data);
 
   // Channel cards (DOM-preserving)
@@ -764,17 +565,6 @@ function updateDashboard(data) {
   // Events
   if (data.events) renderEvents(data.events);
 
-  // ntfy sync
-  if (data.ntfy) {
-    const topicInput = document.getElementById('ntfyTopic');
-    if (topicInput && document.activeElement !== topicInput && !topicInput.dataset.userSet && typeof data.ntfy.topic === 'string') {
-      topicInput.value = data.ntfy.topic;
-    }
-    const enInput = document.getElementById('ntfyEnabled');
-    if (enInput && !enInput.dataset.userSet && typeof data.ntfy.enabled === 'boolean') {
-      enInput.checked = data.ntfy.enabled;
-    }
-  }
 
   // Voltage calibration sync
   const voltCalInput = document.getElementById('voltCal');
@@ -1044,7 +834,7 @@ function setModalMode(mode) {
 }
 
 function openEditModal(idx) {
-  if (!requireAdmin()) return;
+  if (!requirePin()) return;
   populateChannelSelect();
   const sel = document.getElementById('modalChSelect');
   sel.value = idx;
@@ -1054,7 +844,7 @@ function openEditModal(idx) {
 }
 
 function openResetModal(idx) {
-  if (!requireAdmin()) return;
+  if (!requirePin()) return;
   populateChannelSelect();
   const sel = document.getElementById('modalChSelect');
   sel.value = idx;
@@ -1305,24 +1095,6 @@ function setRmsSamples() {
   });
 }
 
-function sendNtfyTopic() {
-  const inp = document.getElementById('ntfyTopic');
-  const topic = inp.value.trim();
-  delete inp.dataset.userSet;
-  sendCommand({ cmd: 'set_ntfy_topic', val: topic }).then(() => {
-    showToast(topic ? `ntfy topic set to "${topic}"` : 'ntfy topic cleared');
-  });
-}
-
-function sendNtfyEnabled(cb) {
-  const on = cb.checked;
-  sendCommand({ cmd: 'set_ntfy_enabled', val: on }).then(() => {
-    showToast(on ? 'Push notifications enabled' : 'Push notifications disabled');
-  }).catch(() => {
-    cb.checked = !on;
-  });
-}
-
 function handleResetNvs() {
   const btn = document.getElementById('resetNvsBtn');
   if (btn.dataset.confirm === 'true') {
@@ -1416,7 +1188,6 @@ function onConsoleKey(ev) {
 function startDemoMode() {
   connMode = 'demo';
   document.body.classList.add('conn-mode-demo');
-  saveSession('demo');
   if (ws) { ws.close(); ws = null; }
   showDashboard();
   const ipEl = document.getElementById('connectedIp');

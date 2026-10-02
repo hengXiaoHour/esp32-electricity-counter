@@ -1,0 +1,456 @@
+#!/usr/bin/env python3
+"""Mock ESP32-S3 counter — serves frontend/ and speaks the real /ws protocol.
+
+Why this exists: the device serves its own dashboard, so the frontend's most
+important integration point (same-origin http -> ws://<host>/ws) can only be
+verified by running the real page against something that behaves like the board.
+Without it, every frontend claim in this change would rest on "the JSON looks
+right".
+
+It mirrors the firmware deliberately:
+  * static routes match WebSocketServer::findAsset() - exact match only,
+    "/" -> /index.html, query string stripped, no directory walking;
+  * the /ws snapshot uses the same field names buildSystemJson() emits;
+  * the admin gate is a line-for-line port of src/network/auth_gate.cpp, NOT a
+    paraphrase. If the two ever disagree, this harness stops being evidence -
+    the PIN tests in scripts/test_auth_gate.c are the authority on that logic.
+
+Not a full firmware emulator: sensing, NVS, auto-zero and OTA are faked.
+
+Usage:  python3 scripts/mock_device.py --port 8099
+        python3 scripts/mock_device.py --port 8099 --pin 1234
+"""
+
+import argparse
+import base64
+import hashlib
+import json
+import os
+import socket
+import struct
+import threading
+import time
+from http.server import BaseHTTPRequestHandler
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+FRONTEND = os.path.join(ROOT, "frontend")
+
+# Same table as scripts/embed_web.py. config.js is gone: it held the Firebase
+# web config and the board no longer talks to Firebase.
+ASSETS = {
+    "/index.html": ("index.html", "text/html; charset=utf-8"),
+    "/style.css": ("style.css", "text/css; charset=utf-8"),
+    "/script.js": ("script.js", "application/javascript; charset=utf-8"),
+    "/manifest.json": ("manifest.json", "application/manifest+json"),
+    "/sw.js": ("sw.js", "application/javascript; charset=utf-8"),
+    "/icons/icon-192.png": ("icons/icon-192.png", "image/png"),
+    "/icons/icon-512.png": ("icons/icon-512.png", "image/png"),
+    "/icons/apple-touch-icon.png": ("icons/apple-touch-icon.png", "image/png"),
+    "/icons/maskable-192.png": ("icons/maskable-192.png", "image/png"),
+    "/icons/maskable-512.png": ("icons/maskable-512.png", "image/png"),
+}
+
+WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+PIN_EXEMPT_VERBS = ("set_time", "verify_pin")
+
+DEFAULTS = {
+    "voltage_cal": 260.0,
+    "current_cal": [100.0] * 6,
+    "noise_floor": [0.0] * 6,
+    "lpf_alpha": [0.2] * 6,
+    "rms_samples": 1000,
+}
+
+
+def extract_verb(frame):
+    """Port of auth_gate.cpp extractVerb()."""
+    i = frame.find('"cmd":"')
+    if i < 0:
+        return None
+    i += 7
+    j = frame.find('"', i)
+    if j < 0 or j == i:
+        return None
+    return frame[i:j]
+
+
+def extract_pin(frame):
+    """Port of auth_gate.cpp auth_extractPin(), including the truncated-frame
+    rule: an unterminated field is malformed and must NOT authenticate."""
+    needle = '"pin":"'
+    i = frame.find(needle)
+    if i < 0:
+        return None
+    i += len(needle)
+    out = []
+    while i < len(frame):
+        c = frame[i]
+        if c == "\\" and i + 1 < len(frame):
+            nxt = frame[i + 1]
+            i += 2
+            out.append({"n": "\n", "t": "\t", "r": "\r"}.get(nxt, nxt))
+            if len(out) >= 63:
+                return None
+            continue
+        if c == '"':
+            return "".join(out)
+        out.append(c)
+        i += 1
+        if len(out) >= 63:
+            return None
+    return None  # truncated -> reject
+
+
+def auth_check(frame, expected_pin):
+    """Port of auth_gate.cpp auth_check(). Returns (allowed, verb)."""
+    verb = extract_verb(frame)
+    if verb is None:
+        return True, None            # not the gate's business
+    if verb in PIN_EXEMPT_VERBS:
+        return True, verb
+    got = extract_pin(frame)
+    if not got:
+        return False, verb
+    if not expected_pin:
+        return False, verb
+    return got == expected_pin, verb
+
+
+class State:
+    """Everything the mock 'remembers' between frames."""
+
+    def __init__(self, pin):
+        self.lock = threading.Lock()
+        self.pin = pin
+        self.names = ["Living Room AC", "Kitchen", "Office", "Server Rack",
+                      "Washing Machine", "Lighting"]
+        self.limits = [48.0, 30.0, 25.0, 60.0, 20.0, 15.0]
+        self.kwh = [12.4, 8.1, 4.9, 31.2, 6.7, 2.3]
+        self.epoch = int(time.time())
+        self.time_synced = True
+        self.time_rejects = 0
+        self.applied = []             # log of accepted mutations, for assertions
+
+    def snapshot(self):
+        with self.lock:
+            ch = []
+            for i in range(6):
+                over = self.limits[i] > 0 and self.kwh[i] >= self.limits[i]
+                ch.append({
+                    "n": self.names[i],
+                    "a": round(1.2 + 0.35 * i, 2),
+                    "w": round(45.0 + 30.0 * i, 1),
+                    "va": round(60.0 + 35.0 * i, 1),
+                    "pf": 0.87,
+                    "kwh": self.kwh[i],
+                    "s": 2 if over else 0,
+                    "mkwh": self.limits[i],
+                })
+            return {
+                "v": 231.4,
+                "uptime": 4242,
+                "wifi": False,          # AP-only: never a station client
+                "rssi": 0,
+                "ap": True,
+                "voltageCalibration": DEFAULTS["voltage_cal"],
+                "currentCalibration": list(DEFAULTS["current_cal"]),
+                "rmsSamples": DEFAULTS["rms_samples"],
+                "noiseFloor": list(DEFAULTS["noise_floor"]),
+                "azActive": False,
+                "azChannel": -1,
+                "azProgress": 0,
+                "azQueue": [],
+                "lpfAlpha": list(DEFAULTS["lpf_alpha"]),
+                "firmwareVersion": "3.0.0",
+                "epoch": self.epoch,
+                "lastMonth": 202610,
+                "time": {"ok": self.time_synced, "age": 0 if self.time_synced else 4294967295},
+                "ch": ch,
+                "events": [
+                    {"t": self.epoch - 90, "c": 0, "s": 2, "v": 49.0,
+                     "m": "Monthly limit reached — over budget"},
+                ],
+            }
+
+    def apply(self, frame, respond):
+        """Returns (handled, response_text, auth_rejected)."""
+        with self.lock:
+            verb = extract_verb(frame)
+            if not verb:
+                return False, None, False
+
+            allowed, _ = auth_check(frame, self.pin)
+            if not allowed:
+                return False, "  Admin PIN required (Settings -> Admin PIN)", True
+
+            if verb == "verify_pin":
+                return True, "  PIN OK", False
+
+            if verb == "set_pin":
+                new = extract_pin(frame.replace('"pin":"', '"pinx":"'))
+                # set_pin carries the CURRENT pin in "pin" and the new one in
+                # "pin_new"; the gate already validated "pin".
+                ni = frame.find('"pin_new":"')
+                new = None
+                if ni >= 0:
+                    ni += len('"pin_new":"')
+                    nj = frame.find('"', ni)
+                    if nj > ni:
+                        new = frame[ni:nj]
+                if new and 4 <= len(new) <= 16:
+                    self.pin = new
+                    self.applied.append(("set_pin", new))
+                    return True, "  Admin PIN changed", False
+                return True, "  PIN must be 4-16 characters", False
+
+            if verb == "set_time":
+                ti = frame.find('"t":')
+                if ti < 0:
+                    return False, None, False
+                val = frame[ti + 4:]
+                num = ""
+                for chx in val:
+                    if chx.isdigit():
+                        num += chx
+                    else:
+                        break
+                epoch = int(num) if num else 0
+                if 1609459200 <= epoch <= 4102444800:
+                    self.epoch = epoch
+                    self.time_synced = True
+                    self.applied.append(("set_time", epoch))
+                    return True, "  Clock set to epoch %d" % epoch, False
+                self.time_rejects += 1
+                return False, None, False
+
+            if verb == "set_name":
+                ci = frame.find('"ch":')
+                ni = frame.find('"name":"')
+                if ci < 0 or ni < 0:
+                    return False, None, False
+                ch = int("".join(c for c in frame[ci + 5:] if c.isdigit()) or -1)
+                nj = frame.find('"', ni + 8)
+                if 0 <= ch < 6 and nj > ni + 8:
+                    self.names[ch] = frame[ni + 8:nj]
+                    self.applied.append(("set_name", ch, self.names[ch]))
+                    return True, None, False
+
+            if verb == "set_monthly_kwh":
+                ci = frame.find('"ch":')
+                vi = frame.find('"val":')
+                if ci < 0 or vi < 0:
+                    return False, None, False
+                ch = int("".join(c for c in frame[ci + 5:] if c.isdigit()) or -1)
+                num = ""
+                for chx in frame[vi + 6:]:
+                    if chx.isdigit() or chx == ".":
+                        num += chx
+                    else:
+                        break
+                if 0 <= ch < 6 and num:
+                    self.limits[ch] = float(num)
+                    self.applied.append(("set_monthly_kwh", ch, float(num)))
+                    return True, None, False
+
+            if verb == "reset_counter":
+                ci = frame.find('"ch":')
+                if ci < 0:
+                    return False, None, False
+                ch = int("".join(c for c in frame[ci + 5:] if c.isdigit()) or -1)
+                if 0 <= ch < 6:
+                    self.kwh[ch] = 0.0
+                    self.applied.append(("reset_counter", ch))
+                    return True, None, False
+
+            if verb == "console":
+                return True, "  Unknown command. Type 'help'.", False
+
+            return False, None, False
+
+
+# ---------------------------------------------------------------- HTTP / WS
+
+
+def send_ws_frame(conn, payload, opcode=0x1):
+    data = payload.encode("utf-8") if isinstance(payload, str) else payload
+    header = bytearray()
+    header.append(0x80 | opcode)
+    n = len(data)
+    if n < 126:
+        header.append(n)
+    elif n < (1 << 16):
+        header.append(126)
+        header += struct.pack(">H", n)
+    else:
+        header.append(127)
+        header += struct.pack(">Q", n)
+    conn.sendall(bytes(header) + data)
+
+
+def recv_ws_frame(conn):
+    """Returns (opcode, payload_bytes) or None on close."""
+    def readn(n):
+        buf = b""
+        while len(buf) < n:
+            chunk = conn.recv(n - len(buf))
+            if not chunk:
+                return None
+            buf += chunk
+        return buf
+
+    hdr = readn(2)
+    if not hdr:
+        return None
+    opcode = hdr[0] & 0x0F
+    masked = bool(hdr[1] & 0x80)
+    ln = hdr[1] & 0x7F
+    if ln == 126:
+        ln = struct.unpack(">H", readn(2))[0]
+    elif ln == 127:
+        ln = struct.unpack(">Q", readn(8))[0]
+    mask = readn(4) if masked else None
+    data = readn(ln) if ln else b""
+    if data is None:
+        return None
+    if mask:
+        data = bytes(b ^ mask[i % 4] for i, b in enumerate(data))
+    return opcode, data
+
+
+class Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+    state = None
+    clients = []
+
+    def log_message(self, *a):
+        pass
+
+    # ---- static -------------------------------------------------------
+    def do_GET(self):
+        if "websocket" in self.headers.get("Upgrade", "").lower():
+            self.handle_ws()
+            return
+        path = self.path.split("?")[0]
+        if path in ("", "/"):
+            path = "/index.html"
+        entry = ASSETS.get(path)
+        if not entry:
+            self.send_response(404)
+            self.send_header("Content-Type", "text/plain")
+            self.send_header("Content-Length", "9")
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.end_headers()
+            self.wfile.write(b"Not found")
+            return
+        rel, mime = entry
+        with open(os.path.join(FRONTEND, rel), "rb") as fh:
+            body = fh.read()
+        self.send_response(200)
+        self.send_header("Content-Type", mime)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+        self.end_headers()
+        self.wfile.write(body)
+
+    # ---- websocket ----------------------------------------------------
+    def handle_ws(self):
+        key = self.headers.get("Sec-WebSocket-Key")
+        if not key:
+            self.send_response(400)
+            self.end_headers()
+            return
+        accept = base64.b64encode(
+            hashlib.sha1((key + WS_GUID).encode()).digest()).decode()
+        self.send_response(101, "Switching Protocols")
+        self.send_header("Upgrade", "websocket")
+        self.send_header("Connection", "Upgrade")
+        self.send_header("Sec-WebSocket-Accept", accept)
+        self.end_headers()
+        self.wfile.flush()
+
+        conn = self.connection
+        stop = threading.Event()
+        Handler.clients.append(conn)
+
+        # Broadcast loop, like the firmware's 150 ms cadence.
+        def broadcaster():
+            while not stop.is_set():
+                try:
+                    send_ws_frame(conn, json.dumps(self.state.snapshot()))
+                except OSError:
+                    break
+                stop.wait(0.15)
+
+        th = threading.Thread(target=broadcaster, daemon=True)
+        th.start()
+
+        try:
+            while not stop.is_set():
+                frame = recv_ws_frame(conn)
+                if frame is None:
+                    break
+                opcode, payload = frame
+                if opcode == 0x8:      # close
+                    break
+                if opcode == 0x9:      # ping
+                    send_ws_frame(conn, payload, opcode=0xA)
+                    continue
+                if opcode != 0x1:
+                    continue
+                try:
+                    text = payload.decode("utf-8")
+                except UnicodeDecodeError:
+                    continue
+                handled, response, rejected = self.state.apply(text, None)
+                if rejected:
+                    send_ws_frame(conn, '{"type":"auth","ok":false}')
+                elif response:
+                    out = json.dumps({"type": "console", "out": response})
+                    send_ws_frame(conn, out)
+                if handled:
+                    send_ws_frame(conn, json.dumps(self.state.snapshot()))
+        except (OSError, ConnectionResetError):
+            pass
+        finally:
+            stop.set()
+            if conn in Handler.clients:
+                Handler.clients.remove(conn)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--port", type=int, default=8099)
+    ap.add_argument("--pin", default="1234")
+    args = ap.parse_args()
+
+    Handler.state = State(args.pin)
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    srv.bind(("127.0.0.1", args.port))
+    srv.listen(8)
+    print("mock board on http://127.0.0.1:%d/  (pin=%s)" % (args.port, args.pin),
+          flush=True)
+    while True:
+        conn, _ = srv.accept()
+        t = threading.Thread(target=_serve, args=(conn,), daemon=True)
+        t.start()
+
+
+def _serve(conn):
+    # BaseHTTPRequestHandler wants to own the socket for keep-alive parsing.
+    class S(Handler):
+        pass
+    S.state = Handler.state
+    try:
+        S(conn, ("127.0.0.1", 0), None)
+    except (OSError, ConnectionResetError):
+        pass
+    finally:
+        try:
+            conn.close()
+        except OSError:
+            pass
+
+
+if __name__ == "__main__":
+    main()

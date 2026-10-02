@@ -14,15 +14,13 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="style.css?v=20260813f">
+<link rel="stylesheet" href="style.css?v=20261002a">
 <script>
-// Prevent a flash of the connect panel while script.js is still loading.
-// If a live session exists, mark <html> so CSS hides the panel pre-paint.
+// The board is always on location.host, so there is no session to restore and
+// nothing to decide before the first paint. This only hides the connect panel
+// while script.js loads, to avoid a flash when the socket opens immediately.
 (function () {
-  try {
-    var s = localStorage.getItem('esp32monitor_session');
-    if (s) document.documentElement.classList.add('has-session');
-  } catch (e) {}
+  document.documentElement.classList.add('has-session');
 })();
 </script>
 </head>
@@ -36,29 +34,16 @@
       <h1 class="connect-title">ESP32 Counter</h1>
     </div>
 
-    <div class="connect-row">
-      <select id="connMode" title="Connection mode">
-        <option value="cloud">Cloud</option>
-        <option value="local">Local</option>
-        <option value="demo">Demo</option>
-      </select>
-    </div>
-
-    <div class="connect-row hidden" id="ipRow">
-      <input type="text" id="esp32Ip" placeholder="192.168.1.x" spellcheck="false" autocomplete="off">
-    </div>
-
-    <div class="connect-row hidden" id="cloudRow">
-      <select id="devicePicker" title="Board to watch in Cloud mode">
-        <option value="">&mdash; boards&hellip;</option>
-      </select>
+    <div class="connect-card-note">
+      This page is served by the board itself. Join its WiFi network
+      (<span class="mono">ESP32-Elec-Counter</span>) and reload if you are not connected.
     </div>
 
     <div class="connect-row">
-      <button class="btn-primary btn-launch" onclick="handleConnect()">&#9654; Launch</button>
+      <button class="btn-primary btn-launch" onclick="handleConnect()">&#9654; Reconnect</button>
     </div>
 
-    <div id="connectStatus" class="connect-status disconnected">Ready to connect</div>
+    <div id="connectStatus" class="connect-status disconnected">Connecting to the board...</div>
 
     <div class="install-row" id="installRow">
       <button class="btn-outline" id="installBtn" onclick="promptInstall()">&#8595; Install App</button>
@@ -101,11 +86,11 @@
     <div class="side-footer">
       <div id="authBox" class="auth-box">
         <div id="authUserRow" class="auth-user-row hidden">
-          <span id="authEmail" class="auth-email mono" title="Signed in Google account"></span>
+          <span id="authEmail" class="auth-email mono" title="Admin PIN unlocked">Admin</span>
         </div>
-        <button id="authBtnSide" class="nav-item auth-btn" onclick="toggleGoogleAuth()">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="7" r="4"/><path d="M5 21a7 7 0 0 1 14 0"/></svg>
-          <span class="nav-label">Sign in with Google</span>
+        <button id="authBtnSide" class="nav-item auth-btn" onclick="showPage('settings')">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+          <span class="nav-label">Admin PIN</span>
         </button>
       </div>
       <button class="nav-item" onclick="handleDisconnect()">
@@ -185,45 +170,47 @@
       <!-- Settings -->
       <section id="page-settings" class="page">
         <div class="panel-box">
-          <div class="panel-header"><h3>Account</h3></div>
+          <div class="panel-header"><h3>Admin PIN</h3></div>
           <div class="cal-row-single" style="display:block;margin-bottom:4px;">
-            <div id="roleBadge" class="role-badge role-guest">Guest &mdash; read-only</div>
+            <div id="roleBadge" class="role-badge role-guest">Viewer &mdash; read-only</div>
           </div>
           <div class="cal-row-single" style="display:block;">
-            <span id="acctEmail" class="mono conn-ip">Not signed in</span>
+            <span id="acctEmail" class="mono conn-ip">Locked</span>
           </div>
-          <div style="margin-top:12px;">
-            <button id="authBtnSettings" class="btn-outline" onclick="toggleGoogleAuth()">Sign in with Google</button>
-            <span id="guestHint" class="hint-inline dim">Guests can view the dashboard; admin controls require signing in with the owner Google account.</span>
+          <div id="pinRow" style="margin-top:12px;">
+            <div class="cal-row-single">
+              <label>PIN:</label>
+              <input type="password" id="pinInput" inputmode="numeric" autocomplete="off"
+                     placeholder="1234" onkeydown="if(event.key==='Enter') unlockWithPin(this.value).then(function(ok){ if(ok) showToast('Admin unlocked'); else showToast('Incorrect PIN'); })">
+              <button class="btn-sm" onclick="unlockWithPin(document.getElementById('pinInput').value).then(function(ok){ showToast(ok ? 'Admin unlocked' : 'Incorrect PIN'); })">Unlock</button>
+            </div>
+            <div style="margin-top:8px;">
+              <label class="hint-inline">Change PIN:</label>
+              <input type="password" id="pinNew" autocomplete="off" placeholder="4-16 characters">
+              <button class="btn-sm" onclick="changePin()">Set</button>
+            </div>
           </div>
+          <span id="guestHint" class="hint-inline dim">Live readings are always visible. Changing limits, calibration, counters or the console needs the PIN &mdash; the board checks every command itself, so hiding a button here is not what protects them.</span>
         </div>
 
         <div class="panel-box">
           <div class="panel-header"><h3>Connection</h3></div>
           <div class="cal-row-single">
-            <label>Device:</label>
+            <label>Board:</label>
             <span id="connectedIp" class="mono conn-ip">--</span>
           </div>
           <div class="cal-row-single" style="margin-top:8px;">
             <label>Status:</label>
             <span id="connStatus2" class="mono conn-txt">Connected</span>
           </div>
+          <div class="cal-row-single" style="margin-top:8px;">
+            <label>Clock:</label>
+            <span id="timeStatus" class="mono conn-txt">--</span>
+            <button class="btn-sm" onclick="sendTime()">Sync now</button>
+          </div>
           <div style="margin-top:12px;">
             <button class="btn-outline" onclick="handleDisconnect()">Disconnect</button>
           </div>
-        </div>
-
-        <div class="panel-box admin-only">
-          <div class="panel-header"><h3>Push Notifications (ntfy.sh)</h3></div>
-          <div class="cal-row-single">
-            <label>Topic:</label>
-            <input type="text" id="ntfyTopic" placeholder="e.g. my-elec-counter" spellcheck="false" autocomplete="off" oninput="this.dataset.userSet='true'">
-            <button class="btn-sm" onclick="sendNtfyTopic()">Set</button>
-          </div>
-          <div class="cal-row-single" style="margin-top:8px;">
-            <label><input type="checkbox" id="ntfyEnabled" onchange="sendNtfyEnabled(this)"> Enabled</label>
-          </div>
-          <div class="hint">Alerts are pushed to https://ntfy.sh/&lt;topic&gt; when a channel's monthly kWh limit is reached.</div>
         </div>
 
         <div class="panel-box admin-only">
@@ -260,7 +247,7 @@
                    onkeydown="onConsoleKey(event)">
             <button class="btn-sm" onclick="sendConsoleCommand()">Send</button>
           </div>
-          <div class="hint">Runs the device's diagnostic commands remotely. Type <span class="mono">help</span> for the list. Blocking/destructive commands (test led, nvs_debug, reboot, setwifi, clearwifi) remain serial-only.</div>
+          <div class="hint">Runs the device's diagnostic commands remotely. Type <span class="mono">help</span> for the list. The board holds back nothing dangerous from here that the serial port would allow.</div>
         </div>
 
         <div class="panel-box">
@@ -273,7 +260,7 @@
             <label>Month:</label>
             <span id="lastMonth" class="mono conn-ip">--</span>
           </div>
-          <div class="hint">ESP32 Counter dashboard &middot; ESP32-S3 6-channel electricity monitor &middot; WebSocket + Firebase Cloud live updates</div>
+          <div class="hint">ESP32 Counter dashboard &middot; ESP32-S3 6-channel electricity monitor &middot; served by the board itself, over its own WiFi</div>
         </div>
       </section>
 
@@ -332,11 +319,7 @@
   </div>
 </div>
 
-<script src="config.js?v=20260813f"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="script.js?v=20260813f"></script>
+<script src="script.js?v=20261002a"></script>
 <script>
 if ('serviceWorker' in navigator && window.isSecureContext) {
   window.addEventListener('load', function () {
