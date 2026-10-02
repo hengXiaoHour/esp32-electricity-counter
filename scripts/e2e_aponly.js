@@ -283,6 +283,12 @@ function check(name, cond, detail) {
 
   // --- negative control, board side: the device refuses it too -------------
   // Straight down a raw socket, so nothing about the UI can be involved.
+  //
+  // Parse failures are RECORDED, not swallowed. The first version of this stage
+  // did `catch (x) {}`, and when the harness corrupted a frame the reply simply
+  // vanished: the assertion failed with an empty log and no hint that a byte
+  // stream, rather than the feature, was at fault. (It was - see the send lock
+  // now in mock_device.py.)
   const boardAp = await page.evaluate((pin) => new Promise((resolve) => {
     const s = new WebSocket('ws://' + location.host + '/ws');
     const log = [];
@@ -291,14 +297,21 @@ function check(name, cond, detail) {
       setTimeout(() => s.send(JSON.stringify({ cmd: 'set_ap', ssid: '', pass: '12345678', pin: pin })), 350);
       setTimeout(() => s.send(JSON.stringify({ cmd: 'set_ap', ssid: 'Meter AP', pass: 'goodpass1', pin: pin })), 700);
     };
-    s.onmessage = (e) => { try { log.push(JSON.parse(e.data)); } catch (x) {} };
+    s.onmessage = (e) => {
+      try { log.push(JSON.parse(e.data)); }
+      catch (x) { log.push({ type: 'CORRUPT', out: String(e.data).slice(0, 80) }); }
+    };
     setTimeout(() => { s.close(); resolve(log); }, 1500);
   }), PIN);
+
+  check('no frame was corrupted in transit',
+        !boardAp.some(m => m.type === 'CORRUPT'),
+        JSON.stringify(boardAp.filter(m => m.type === 'CORRUPT').slice(0, 2)));
 
   const apTexts = boardAp.filter(m => m.type === 'console').map(m => m.out || '');
   check('BOARD refuses a 7-character password',
         apTexts.some(t => /Not saved: Password must be at least 8/.test(t)),
-        JSON.stringify(apTexts));
+        'console replies: ' + JSON.stringify(apTexts));
   check('BOARD refuses an empty network name',
         apTexts.some(t => /Not saved: Network name cannot be empty/.test(t)),
         JSON.stringify(apTexts));
