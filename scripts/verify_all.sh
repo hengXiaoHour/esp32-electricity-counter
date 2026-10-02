@@ -128,7 +128,16 @@ for _ in $(seq 1 25); do
   curl -sf -o /dev/null "http://127.0.0.1:$PORT/" && break
   sleep 0.2
 done
-if curl -sf -o /dev/null "http://127.0.0.1:$PORT/"; then
+# A leftover mock from an earlier run can hold the port, in which case THIS mock
+# dies on bind() while `curl` is perfectly happy answering from the old one - and
+# the suite then tests a server built from older code. It failed exactly that way
+# once (an AP test "failed" against a mock that had never heard of set_ap). The
+# liveness check is what closes the hole; the port check turns it into a
+# sentence instead of a mystery.
+if ! kill -0 "$MOCK_PID" 2>/dev/null; then
+  record 1 "the mock board is alive on port $PORT (is an old one still running?)"
+  printf '      %s\n' "$(tail -3 /tmp/opencode/verify_mock.log | tr '\n' ' ')"
+elif curl -sf -o /dev/null "http://127.0.0.1:$PORT/"; then
   node scripts/e2e_aponly.js "http://127.0.0.1:$PORT" >/tmp/opencode/verify_e2e.log 2>&1
   record $? "$(tail -1 /tmp/opencode/verify_e2e.log)"
 else

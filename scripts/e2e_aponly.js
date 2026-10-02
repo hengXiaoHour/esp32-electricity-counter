@@ -328,7 +328,7 @@ function check(name, cond, detail) {
           a[m.type || 'snapshot'] = (a[m.type || 'snapshot'] || 0) + 1; return a;
         }, {})));
 
-  const apTexts = boardAp.filter(m => m.type === 'console').map(m => m.out || '');
+  const apTexts = boardAp.log.filter(m => m.type === 'console').map(m => m.out || '');
   check('BOARD refuses a 7-character password',
         apTexts.some(t => /Not saved: Password must be at least 8/.test(t)),
         'console replies: ' + JSON.stringify(apTexts));
