@@ -175,11 +175,18 @@ Two parallel `curl`s are enough. Watch the serial console for `Guru Meditation`.
 Opening `/dev/ttyACM*` asserts DTR/RTS and resets the board — deassert it first
 and hold one fd open, never reopen per read.
 
-### Status
+### Fix — done 2026-10-02
 
-`ESP_Async_WebServer` 3.12.1 + `AsyncTCP` 1.1.4 are **archived** (Jan 2025) and
-carry an open upstream issue, *"ESP32 corrupt heap when handling multiple
-simultaneous requests."* The fix is the maintained successor:
-`ESP32Async/ESPAsyncWebServer` 3.6.0 + `ESP32Async/AsyncTCP` 3.3.2. STA mode is
-**not** a workaround — the crash is above the radio and happens identically in
-AP mode, which also contradicts trap #1 anyway.
+Swapped to the maintained successor: **`ESP32Async/AsyncTCP` 3.5.0** (21 native
+core-lock call sites) + `ESP32Async/ESPAsyncWebServer`. Compiles with zero
+warnings, needs none of the three patches, and survives the 6-concurrent stress
+that used to kill it in under a second. Old libraries kept at
+`/tmp/opencode/libbackup/` for diffing.
+
+`scripts/patch_async_tcp.py` now reads `library.properties` and stands down on
+3.x instead of failing every build for anchors that no longer exist. Verified in
+all three directions: 3.5.0 passes, a reverted 1.1.4 fails, a patched 1.1.4
+passes.
+
+STA mode is **not** a workaround — the crash is above the radio and reproduces
+identically in AP mode, which also contradicts trap #1 anyway.
