@@ -236,6 +236,9 @@ def route_to_rel_for(route: str) -> str:
 def main() -> int:
     text = build()
 
+    if "--verify" in sys.argv:
+        return verify(OUT.read_text() if OUT.exists() else text)
+
     if "--check" in sys.argv:
         if not OUT.exists():
             print("FAIL: %s does not exist - run scripts/embed_web.py" % OUT)
@@ -248,12 +251,12 @@ def main() -> int:
             return 1
         print("PASS: %s matches frontend/ (%d bytes)"
               % (OUT.relative_to(ROOT), len(current)))
-        return 0
+        return verify(current)
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(text)
     print("Wrote %s (%d bytes)" % (OUT.relative_to(ROOT), len(text)))
-    return 0
+    return verify(text)
 
 
 if __name__ == "__main__":
