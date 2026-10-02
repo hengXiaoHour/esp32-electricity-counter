@@ -313,7 +313,8 @@ function check(name, cond, detail) {
       try {
         s.send(JSON.stringify({ cmd: 'set_ap', ssid: 'Meter AP', pass: 'short7c', pin: pin }));
         setTimeout(() => s.send(JSON.stringify({ cmd: 'set_ap', ssid: '', pass: '12345678', pin: pin })), 350);
-        setTimeout(() => s.send(JSON.stringify({ cmd: 'set_ap', ssid: 'Meter AP', pass: 'goodpass1', pin: pin })), 700);
+        setTimeout(() => s.send(JSON.stringify({ cmd: 'set_ap', ssid: 'Meter AP ', pass: 'goodpass1', pin: pin })), 550);
+        setTimeout(() => s.send(JSON.stringify({ cmd: 'set_ap', ssid: 'Meter AP', pass: 'goodpass1', pin: pin })), 800);
       } catch (e) { sendThrew = e.message; }
     };
     s.onmessage = (e) => {
