@@ -13,12 +13,13 @@ class StatusLED;
 
 // Executes textual diagnostic commands (the serial console vocabulary) and
 // captures their output into a String instead of writing to Serial. This lets
-// the same command set be driven from the web UI over WebSocket or Firebase.
+// the same command set be driven from the web UI over WebSocket.
 //
 // Commands that would block the network task (test led) or are destructive
-// (reboot, nvs_debug, setwifi connect/save, clearwifi) are flagged as
-// deferred — the web console sets pendingDefer and the sketch's loop()
-// runs them on Core 1 where blocking is safe.
+// (reboot, nvs_debug) are flagged as deferred — the web console sets
+// pendingDefer and the sketch's loop() runs them on Core 1 where blocking is
+// safe. Note that setwifi/clearwifi are NOT deferred: clearwifi runs inline,
+// and `setwifi` now only prints a "gone" message.
 class ConsoleHandler {
 public:
   ConsoleHandler();

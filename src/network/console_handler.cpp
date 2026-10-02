@@ -557,11 +557,7 @@ void ConsoleHandler::cmdHelp(String &out) {
   consoleAppendf(out, "%s", "    curr_cal <ch> <val> Set current calibration for channel");
   consoleAppendf(out, "%s", "    auto_zero <ch>      Auto-zero noise floor for channel");
   consoleAppendf(out, "%s", "    volt_cal <val>      Set voltage calibration");
-  consoleAppendf(out, "%s", "    setwifi sta|ap|auto Set WiFi mode");
-  consoleAppendf(out, "%s", "    setwifi ssid <name> Set WiFi network name");
-  consoleAppendf(out, "%s", "    setwifi pass <pwd>  Set WiFi password");
-  consoleAppendf(out, "%s", "    setwifi connect     Save + reboot to connect");
-  consoleAppendf(out, "%s", "    clearwifi           Erase WiFi credentials");
+  consoleAppendf(out, "%s", "    clearwifi           Erase stored WiFi creds (unused)");
   consoleAppendf(out, "%s", "    nvs_debug           Test NVS write/read cycle");
   consoleAppendf(out, "%s", "    reboot              Restart the device");
 }
