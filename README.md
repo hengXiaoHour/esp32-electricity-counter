@@ -58,9 +58,22 @@ dashboard raises a browser notification if it is open.
 | `AsyncTCP` | ≥1.1 |
 | `ArduinoOTA` | (bundled with the ESP32 core) |
 
-`AsyncTCP` 1.1.4 needs two patches on Arduino-ESP32 3.3.x, both lost on every
-library upgrade — run `python3 scripts/patch_async_tcp.py` after installing it,
-or the build fails at `ESPAsyncWebServer.h:1699`.
+`AsyncTCP` 1.1.4 needs three patches on Arduino-ESP32 3.3.x, all lost on every
+library upgrade — run `python3 scripts/patch_async_tcp.py` after installing it.
+
+| Patch | Symptom if missing |
+|---|---|
+| 1 — `const status()` | Build fails at `ESPAsyncWebServer.h:1699` |
+| 2 — `_tcp_new()` wrapper | Reboots on `assert failed: tcp_alloc` |
+| 3 — callback registration | Reboots on `assert failed: tcp_arg` |
+
+Patches 2 and 3 share one cause: Arduino-ESP32 3.x builds lwIP with
+`CONFIG_LWIP_TCPIP_CORE_LOCKING=y` and `CONFIG_LWIP_CHECK_THREAD_SAFETY`, so any
+lwIP call made from an ordinary FreeRTOS task aborts the board. Every call
+AsyncTCP makes from an application task has to be marshalled onto the TCPIP
+thread with `tcpip_api_call`. The script does this and then verifies the result:
+`--check` fails loudly if any patch is missing or stale, and prints the count it
+found. Run it after **every** library install or upgrade.
 
 > The **Firebase Arduino Client Library is no longer used.** Removing it freed
 > ~376 KB of flash, which is where the embedded dashboard lives.
