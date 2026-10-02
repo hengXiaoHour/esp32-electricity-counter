@@ -408,13 +408,17 @@ def apply_patches(src: Path, check_only: bool) -> int:
             for _old, _new, _anchor in subs:
                 if "REV" not in (_anchor or ""):
                     continue
-                _i = text.find(_new)
+                # Locate by the block's own leading comment, NOT by the exact
+                # `new` text: a stale revision differs precisely in the text we
+                # are matching on, so searching for it can never find it.
+                _head = "// PATCH (project): callback registration is core-locked too."
+                _i = text.find(_head)
                 while _i != -1:
                     _end = text.find("static err_t _tcp_bind_api(", _i)
                     if _end == -1:
                         break
                     text = text[:_i] + text[_end:]
-                    _i = text.find(_new)
+                    _i = text.find(_head)
             for old, new, _anchor in subs:
                 if new in text:
                     continue  # this substitution already done
