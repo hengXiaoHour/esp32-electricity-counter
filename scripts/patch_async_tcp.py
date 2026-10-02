@@ -56,6 +56,7 @@ Exit codes: 0 ok / already patched · 1 error · 2 not found
 """
 import argparse
 import os
+import re
 import shutil
 import sys
 from pathlib import Path
