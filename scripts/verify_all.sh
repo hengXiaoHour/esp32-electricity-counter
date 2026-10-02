@@ -60,6 +60,24 @@ else
   record $? "$(tail -1 /tmp/opencode/verify_gate.log)"
 fi
 
+# --- 2b. AP credential rules (host build, no hardware) -------------------
+# The SSID/password the board broadcasts are now writable at runtime, which
+# turns a bad value into a lockout: esp_wifi_set_config() rejects a PSK under 8
+# octets, softAP() then fails, and the board comes back with no radio - reachable
+# only over serial. This suite is mutation-checked (7 deliberately broken
+# validators, all caught); see scripts/test_ap_creds.c.
+stage "AP credential rules (unit)"
+gcc -std=c11 -Wall -Wextra -Isrc/network -x c \
+    scripts/test_ap_creds.c src/network/ap_creds.cpp \
+    -o /tmp/opencode/ap_creds_test 2>/tmp/opencode/verify_apcreds_build.log
+if [ $? -ne 0 ]; then
+  record 1 "ap_creds compiles"
+else
+  record 0 "ap_creds compiles"
+  /tmp/opencode/ap_creds_test >/tmp/opencode/verify_apcreds.log 2>&1
+  record $? "$(tail -1 /tmp/opencode/verify_apcreds.log)"
+fi
+
 # --- 3. Frontend syntax + no cloud code survives ------------------------
 stage "Frontend"
 node --check frontend/script.js 2>/tmp/opencode/verify_js.log
