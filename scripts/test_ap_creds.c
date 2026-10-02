@@ -1,0 +1,185 @@
+/* Host-side unit tests for the soft-AP credential rules.
+ *
+ * Build + run:
+ *   gcc -std=c11 -Wall -Wextra -Isrc/network \
+ *       scripts/test_ap_creds.c src/network/ap_creds.cpp -o /tmp/ap_creds_test
+ *   /tmp/ap_creds_test
+ *
+ * Exits non-zero if any check failed.
+ *
+ * Two things this file deliberately does that a naive version would not:
+ *
+ *  1. It asserts the BOUNDARIES (7/8/63/64 and 1/32/33 characters), not just a
+ *     short and a long value. The off-by-one that matters here is the one that
+ *     would let a 7-character password through and take the radio down with it.
+ *
+ *  2. It runs a NEGATIVE CONTROL on its own assertion helper before trusting any
+ *     PASS: expect("self-check", false, true) must actually increment the failure
+ *     count. A test harness that cannot fail has not tested anything, and this
+ *     repo has been bitten by exactly that before (scripts/check_deadcode.py rule
+ *     4, which could never fire).
+ */
+#include "ap_creds.h"
+
+#include <stdio.h>
+#include <string.h>
+
+static int failures = 0;
+static int checks = 0;
+
+static void expect(const char *name, bool got, bool want) {
+  checks++;
+  if (got != want) {
+    failures++;
+    printf("  FAIL %-56s got %s want %s\n", name, got ? "ACCEPT" : "REJECT",
+           want ? "ACCEPT" : "REJECT");
+  } else {
+    printf("  ok   %-56s %s\n", name, got ? "ACCEPT" : "REJECT");
+  }
+}
+
+static void expectReason(const char *name, const char *got, const char *want) {
+  checks++;
+  if (want == NULL) {
+    if (got != NULL) {
+      failures++;
+      printf("  FAIL %-56s reason should be NULL, got \"%s\"\n", name, got);
+    } else {
+      printf("  ok   %-56s reason NULL\n", name);
+    }
+    return;
+  }
+  if (got == NULL || strcmp(got, want) != 0) {
+    failures++;
+    printf("  FAIL %-56s reason \"%s\" want \"%s\"\n", name,
+           got ? got : "(null)", want);
+  } else {
+    printf("  ok   %-56s reason ok\n", name);
+  }
+}
+
+/* Convenience: validate a pair and hand back the reason (NULL on success). */
+static const char *why(const char *ssid, const char *pass) {
+  const char *r = NULL;
+  ap_creds_validate(ssid, pass, &r);
+  return r;
+}
+
+int main(void) {
+  printf("== the harness can actually fail (negative control) ==\n");
+  {
+    int before = failures;
+    expect("self-check: a wrong expectation must be reported", false, true);
+    if (failures != before + 1) {
+      printf("  FAIL the assertion helper did not record a failure\n");
+      return 1;
+    }
+    printf("  ok   helper recorded the failure; resetting for the real run\n");
+    failures = 0;
+  }
+  {
+    int before = failures;
+    expectReason("self-check: wrong expected reason must be reported", "actual",
+                 "different");
+    if (failures != before + 1) {
+      printf("  FAIL the reason helper did not record a failure\n");
+      return 1;
+    }
+    failures = 0;
+  }
+
+  printf("\n== SSID ==\n");
+  expect("plain name is accepted", ap_creds_validateSsid("Meter", NULL), true);
+  expect("name with spaces inside is accepted",
+         ap_creds_validateSsid("Living Room Meter", NULL), true);
+  expect("name with punctuation is accepted",
+         ap_creds_validateSsid("Chen's meter #2 (main)", NULL), true);
+  expect("non-ASCII name is accepted",
+         ap_creds_validateSsid("Kraftmesser-Ü", NULL), true);
+
+  {
+    /* 32 bytes: the 802.11 field size exactly. */
+    char max[AP_MAX_SSID_LEN + 1];
+    memset(max, 'A', AP_MAX_SSID_LEN);
+    max[AP_MAX_SSID_LEN] = '\0';
+    expect("32 bytes is accepted", ap_creds_validateSsid(max, NULL), true);
+
+    /* 33 bytes: one over. */
+    char over[AP_MAX_SSID_LEN + 2];
+    memset(over, 'A', AP_MAX_SSID_LEN + 1);
+    over[AP_MAX_SSID_LEN + 1] = '\0';
+    expect("33 bytes is rejected", ap_creds_validateSsid(over, NULL), false);
+  }
+
+  expect("empty name is rejected", ap_creds_validateSsid("", NULL), false);
+  expect("NULL name is rejected", ap_creds_validateSsid(NULL, NULL), false);
+  expect("name of only spaces is rejected", ap_creds_validateSsid("   ", NULL), false);
+  expect("leading space is rejected", ap_creds_validateSsid(" Meter", NULL), false);
+  expect("trailing space is rejected", ap_creds_validateSsid("Meter ", NULL), false);
+  expect("embedded newline is rejected", ap_creds_validateSsid("Me\nter", NULL), false);
+  expect("embedded tab is rejected", ap_creds_validateSsid("Me\tter", NULL), false);
+  /* Length is counted in OCTETS, not characters: 16 three-byte UTF-8 characters
+   * is 48 bytes and must be rejected even though "16 characters" is short. */
+  expect("16 three-byte characters (48 bytes) is rejected",
+         ap_creds_validateSsid("\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80"
+                              "\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80"
+                              "\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80"
+                              "\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80",
+                              NULL),
+         false);
+  /* ...and 10 of them (30 bytes) must be ACCEPTED, which is what proves the
+   * check is counting bytes and not characters, and not rejecting all non-ASCII. */
+  expect("10 three-byte characters (30 bytes) is accepted",
+         ap_creds_validateSsid("\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80"
+                              "\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80"
+                              "\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80",
+                              NULL),
+         true);
+
+  printf("\n== password ==\n");
+  expect("8 characters (the WPA2 minimum) is accepted",
+         ap_creds_validatePass("12345678", NULL), true);
+  expect("63 characters (the WPA2 maximum) is accepted",
+         ap_creds_validatePass("123456789012345678901234567890123456789012345678901234567890123", NULL),
+         true);
+  expect("7 characters is rejected", ap_creds_validatePass("1234567", NULL), false);
+  expect("64 characters is rejected",
+         ap_creds_validatePass("1234567890123456789012345678901234567890123456789012345678901234", NULL),
+         false);
+  expect("empty password (open AP) is rejected", ap_creds_validatePass("", NULL), false);
+  expect("NULL password is rejected", ap_creds_validatePass(NULL, NULL), false);
+  expect("password with punctuation is accepted",
+         ap_creds_validatePass("p@ss w0rd!#%&*", NULL), true);
+  expect("password with a quote is accepted",
+         ap_creds_validatePass("he said \"hi\"", NULL), true);
+  expect("password with a backslash is accepted",
+         ap_creds_validatePass("back\\slash", NULL), true);
+  expect("password with a newline is rejected",
+         ap_creds_validatePass("abc\ndefgh", NULL), false);
+
+  printf("\n== the pair validator reports the FIRST problem ==\n");
+  expect("valid pair passes", ap_creds_validate("Meter", "12345678", NULL), true);
+  expect("bad name + bad password still fails", ap_creds_validate("", "", NULL), false);
+  /* An empty password is the mistake that actually bricks the radio, so when
+   * BOTH fields are wrong the user must be told about the password rule only
+   * after the name rule passes - i.e. the name is reported first. */
+  expectReason("bad name is reported before a bad password",
+               why("Meter ", "short"), "Network name cannot start or end with a space");
+  expectReason("a bad password is reported once the name is fine",
+               why("Meter", "short"), "Password must be at least 8 characters");
+  expectReason("empty password explains the open-network rule",
+               why("Meter", ""),
+               "Password cannot be empty (an open network is not allowed)");
+  expectReason("a valid pair leaves the reason NULL", why("Meter", "12345678"), NULL);
+
+  printf("\n== *reason may be NULL on failure ==\n");
+  /* The API promises a NULL-tolerant caller; if the implementation wrote through
+   * a NULL pointer this would segfault rather than report. */
+  expect("validate with a NULL reason out-param survives failure",
+         ap_creds_validate("Meter", "short", NULL), false);
+  expect("validateSsid with a NULL reason out-param survives failure",
+         ap_creds_validateSsid("", NULL), false);
+
+  printf("\n%d checks, %d failures\n", checks, failures);
+  return failures == 0 ? 0 : 1;
+}
