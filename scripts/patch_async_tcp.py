@@ -463,33 +463,37 @@ def verify(src: Path) -> int:
            "patch 2: exactly one tcp_new_ip_type() call remains (inside _tcp_new_api)")
 
     # The whole point of patch 3: no core-locked callback call may remain on any
-    # path that runs on an application task. Count the raw calls across the whole
-    # file and require every survivor to be one of the three sites that already
-    # run on the TCPIP thread. Checked on comment-stripped code so the prose
-    # that NAMES these functions cannot satisfy or break the count.
-    survivors = [
-        ("tcp_arg(", "        tcp_arg(_pcb, this);\n"),                 # AsyncClient(pcb) ctor
-        ("tcp_recv(", "        tcp_recv(_pcb, &_tcp_recv);\n"),         # ditto
-        ("tcp_sent(", "        tcp_sent(_pcb, &_tcp_sent);\n"),         # ditto
-        ("tcp_err(", "        tcp_err(_pcb, &_tcp_error);\n"),           # ditto
-        ("tcp_poll(", "        tcp_poll(_pcb, &_tcp_poll, 1);\n"),       # ditto
-        ("tcp_arg(", "        tcp_arg(_pcb, NULL);\n        if(_pcb->state == LISTEN) {"),  # _error / _lwip_fin
+    # path that runs on an application task. Every survivor must be either inside
+    # the marshalling helper, or one of the three sites that already execute on
+    # the TCPIP thread. Enumerated per line so a survivor can be NAMED, which
+    # makes a wrong count diagnosable instead of just red.
+    #
+    # Counts below are derived from the file's own structure, not guessed:
+    #   1 helper site            (inside _tcp_set_callbacks_api, on the TCPIP thread)
+    # + 1 AsyncClient(pcb) ctor  (only caller is AsyncServer::_accept)
+    # + 2 lwIP callbacks         (_error, _lwip_fin)
+    EXPECTED = {"tcp_arg": 4, "tcp_recv": 4, "tcp_sent": 4,
+                "tcp_err": 4, "tcp_poll": 4, "tcp_accept": 1}
+    # The sites that MUST still be raw, quoted so the assertion below fails if a
+    # future edit removes them (which would mean marshalling a TCPIP-thread path
+    # and deadlocking the board instead of fixing it).
+    MUST_STAY_RAW = [
+        "tcp_arg(_pcb, this);",          # AsyncClient(pcb) ctor
+        "tcp_recv(_pcb, &_tcp_recv);",
+        "tcp_sent(_pcb, &_tcp_sent);",
+        "tcp_err(_pcb, &_tcp_error);",
+        "tcp_poll(_pcb, &_tcp_poll, 1);",
     ]
-    # Expected number of each raw call left in the file: only the TCPIP-thread
-    # sites. Counted from the pristine layout, not guessed.
-    expect(code.count("tcp_arg(") == 3,
-           f"patch 3: only 3 tcp_arg() calls remain (3 TCPIP-thread sites), got {code.count('tcp_arg(')}")
-    expect(code.count("tcp_recv(") == 4,
-           f"patch 3: only 4 tcp_recv() calls remain, got {code.count('tcp_recv(')}")
-    expect(code.count("tcp_sent(") == 4,
-           f"patch 3: only 4 tcp_sent() calls remain, got {code.count('tcp_sent(')}")
-    expect(code.count("tcp_err(") == 4,
-           f"patch 3: only 4 tcp_err() calls remain, got {code.count('tcp_err(')}")
-    expect(code.count("tcp_poll(") == 4,
-           f"patch 3: only 4 tcp_poll() calls remain, got {code.count('tcp_poll(')}")
-    expect(code.count("tcp_accept(") == 1,
-           f"patch 3: only 1 tcp_accept() call remains (the helper), got {code.count('tcp_accept(')}")
-    # The helpers must actually marshal: no tcpip_api_call, no bug.
+    for frag in MUST_STAY_RAW:
+        expect(code.count(frag) >= 1,
+               f"patch 3: TCPIP-thread site left raw as intended ({frag})")
+
+    for fn, want in EXPECTED.items():
+        # A real call is not preceded by '_' (which is how the log_e() strings and
+        # the _tcp_* wrappers spell the same name).
+        n = len(re.findall(r"(?<![_A-Za-z])" + fn + r"\s*\(", code))
+        expect(n == want, f"patch 3: {want} {fn}() call sites expected, got {n}")
+    # The helpers must actually marshal, both of them.
     expect(code.count("tcpip_api_call(_tcp_set_callbacks_api,") == 2,
            "patch 3: both helpers marshal via tcpip_api_call()")
     return bad
