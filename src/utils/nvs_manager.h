@@ -25,6 +25,22 @@ public:
   void savePin(const String &pin);
   static const char *defaultPin();
 
+  // --- Access Point credentials ------------------------------------
+  // The SSID and password the board publishes. These are NOT the old
+  // station-credential keys below: wifi_ssid/wifi_pass are leftovers from a
+  // firmware that joined somebody else's router, are read by nothing, and
+  // `clearwifi` scrubs them. Folding the AP into those two keys would let a
+  // stale router SSID silently become the network this board broadcasts.
+  //
+  // Loaders fall back to AP_SSID_DEFAULT / AP_PASS_DEFAULT when the key is
+  // missing or empty, so a first boot needs no seeding write, and a value
+  // cleared by reset_ap() reads as the factory identity rather than as "no
+  // network configured".
+  String loadApSsid();
+  String loadApPass();
+  void saveApCredentials(const String &ssid, const String &pass);
+  void clearApCredentials();
+
   // WiFi credentials. READ-ONLY in practice: nothing writes them any more
   // (the board is AP-only). loadWiFi() exists so `wifi` can report a stale SSID
   // left by older firmware; clearWiFi() erases it.
