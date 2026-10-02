@@ -461,6 +461,37 @@ def verify(src: Path) -> int:
     code = strip_comments(c)
     expect(code.count("tcp_new_ip_type(") == 1,
            "patch 2: exactly one tcp_new_ip_type() call remains (inside _tcp_new_api)")
+
+    # The whole point of patch 3: no core-locked callback call may remain on any
+    # path that runs on an application task. Count the raw calls across the whole
+    # file and require every survivor to be one of the three sites that already
+    # run on the TCPIP thread. Checked on comment-stripped code so the prose
+    # that NAMES these functions cannot satisfy or break the count.
+    survivors = [
+        ("tcp_arg(", "        tcp_arg(_pcb, this);\n"),                 # AsyncClient(pcb) ctor
+        ("tcp_recv(", "        tcp_recv(_pcb, &_tcp_recv);\n"),         # ditto
+        ("tcp_sent(", "        tcp_sent(_pcb, &_tcp_sent);\n"),         # ditto
+        ("tcp_err(", "        tcp_err(_pcb, &_tcp_error);\n"),           # ditto
+        ("tcp_poll(", "        tcp_poll(_pcb, &_tcp_poll, 1);\n"),       # ditto
+        ("tcp_arg(", "        tcp_arg(_pcb, NULL);\n        if(_pcb->state == LISTEN) {"),  # _error / _lwip_fin
+    ]
+    # Expected number of each raw call left in the file: only the TCPIP-thread
+    # sites. Counted from the pristine layout, not guessed.
+    expect(code.count("tcp_arg(") == 3,
+           f"patch 3: only 3 tcp_arg() calls remain (3 TCPIP-thread sites), got {code.count('tcp_arg(')}")
+    expect(code.count("tcp_recv(") == 4,
+           f"patch 3: only 4 tcp_recv() calls remain, got {code.count('tcp_recv(')}")
+    expect(code.count("tcp_sent(") == 4,
+           f"patch 3: only 4 tcp_sent() calls remain, got {code.count('tcp_sent(')}")
+    expect(code.count("tcp_err(") == 4,
+           f"patch 3: only 4 tcp_err() calls remain, got {code.count('tcp_err(')}")
+    expect(code.count("tcp_poll(") == 4,
+           f"patch 3: only 4 tcp_poll() calls remain, got {code.count('tcp_poll(')}")
+    expect(code.count("tcp_accept(") == 1,
+           f"patch 3: only 1 tcp_accept() call remains (the helper), got {code.count('tcp_accept(')}")
+    # The helpers must actually marshal: no tcpip_api_call, no bug.
+    expect(code.count("tcpip_api_call(_tcp_set_callbacks_api,") == 2,
+           "patch 3: both helpers marshal via tcpip_api_call()")
     return bad
 
 
