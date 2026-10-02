@@ -87,3 +87,28 @@ binary, the PIN gate by mutation, the E2E suite against four broken copies of
 `script.js`. If you add an assertion, break the thing it claims to protect and
 confirm it goes red. Three real bugs in this codebase were only found because
 an existing test had a negative control.
+## AsyncTCP Patches (2026-10-02)
+
+All three are lost on every library install/upgrade — run
+`python3 scripts/patch_async_tcp.py` afterwards. It is idempotent and
+self-verifying; `--check` exits non-zero if anything is missing or stale.
+
+| Patch | Symptom if missing |
+|---|---|
+| 1 — `const status()` | Build fails at `ESPAsyncWebServer.h:1699` |
+| 2 — `_tcp_new()` wrapper | Reboots on `assert failed: tcp_alloc` |
+| 3 — callback registration | Reboots on `assert failed: tcp_arg` |
+
+Patches 2 and 3 share one cause: Arduino-ESP32 3.x builds lwIP with
+`CONFIG_LWIP_TCPIP_CORE_LOCKING=y` + `CONFIG_LWIP_CHECK_THREAD_SAFETY`, so any
+lwIP call made from an ordinary FreeRTOS task aborts the board. Patch 3
+marshals callback registration (`tcp_arg`/`tcp_recv`/`tcp_sent`/`tcp_err`/
+`tcp_poll`/`tcp_accept`) for the five sites that run on an application task. It
+deliberately leaves `AsyncClient::AsyncClient(tcp_pcb*)`, `_error()` and
+`_lwip_fin()` raw: those already run on the TCPIP thread, and marshalling them
+would deadlock instead of fixing anything.
+
+Fixing one core-locked call proved nothing on its own — the board simply aborted
+on the next one. Enumerate every core-locked call in the file and decide per
+site which thread it runs on, rather than patching the one that happened to
+crash first.
