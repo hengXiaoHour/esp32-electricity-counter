@@ -32,9 +32,6 @@ esp32-electricity-counter/
 ├── .gitignore
 ├── README.md                        # Setup instructions
 ├── design.md                        # Dashboard visual style + design decisions
-├── firebase.json                    # Hosting (public=frontend/, SPA rewrite) + RTDB rules ref
-├── .firebaserc                      # Firebase project alias
-├── database.rules.json              # RTDB security rules (deployed)
 │
 ├── doc/                             # Documentation
 │   ├── ARCHITECTURE.md              # THIS FILE
@@ -51,45 +48,45 @@ esp32-electricity-counter/
 │   │   ├── power_calculator.h/.cpp  # ALL ADC sampling + RMS + P/PF/kWh math
 │   │   └── limit_manager.h/.cpp     # Budget state machine, buzzer, events, rollover
 │   ├── network/
-│   │   ├── wifi_manager.h/.cpp      # STA connect + AP fallback + reboot failsafe
-│   │   ├── ap_portal.h              # PROGMEM captive-portal page (HTML/CSS/JS inline)
-│   │   ├── websocket_server.h/.cpp  # AsyncWebSocket + shared :80 server
-│   │   ├── firebase_bridge.h/.cpp   # RTDB /latest push + /commands poll + buildSystemJson
-│   │   ├── firebase_config.h        # REAL credentials (gitignored, placeholders now)
-│   │   ├── firebase_config.example.h
-│   │   ├── command_processor.h/.cpp # JSON command parser shared by WS + Firebase
+│   │   ├── wifi_manager.h/.cpp      # Soft AP + captive DNS. No station interface.
+│   │   ├── websocket_server.h/.cpp  # AsyncWebSocket + serves the PWA from flash
+│   │   ├── web_assets.h             # GENERATED — frontend/ baked into PROGMEM
+│   │   ├── system_json.h/.cpp       # buildSystemJson() — the single serialiser
+│   │   ├── time_sync.h/.cpp         # Clock borrowed from the connected browser
+│   │   ├── auth_gate.h/.cpp         # Admin-PIN decision logic (no Arduino deps)
+│   │   ├── command_processor.h/.cpp # JSON command parser + PIN enforcement
 │   │   ├── console_handler.h/.cpp   # Text console engine shared by serial + web
-│   │   ├── ntfy_notifier.h/.cpp     # ntfy.sh push (queued on Core 1, sent on Core 0)
 │   │   └── ota_handler.h/.cpp       # ArduinoOTA wrapper
 │   ├── ui/
 │   │   ├── status_led.h/.cpp        # WS2812 (with R/G swap workaround)
 │   │   └── buzzer.h/.cpp            # Non-blocking beep pattern driver
-│   ├── utils/
-│   │   ├── nvs_manager.h/.cpp       # Preferences wrapper (all persistence)
-│   │   ├── device_id.h/.cpp         # "esp-<hex>" id from efuse MAC
-│   │   └── log_gate.h               # STATUS_LOG / DEBUG_LOG serial stream gates
-│   └── sensor/
-│       └── current_sensor.h/.cpp,   # ⚠ DEAD CODE — not included by anything;
-│           voltage_sensor.h/.cpp    #   superseded by PowerCalculator (see Part C.1)
+│   └── utils/
+│       ├── nvs_manager.h/.cpp       # Preferences wrapper (all persistence)
+│       └── log_gate.h               # STATUS_LOG / DEBUG_LOG serial stream gates
 │
-├── frontend/                        # Dashboard PWA — hosted on Firebase Hosting
-│   ├── index.html
+├── frontend/                        # Dashboard PWA — source of truth, baked into
+│   ├── index.html                     # flash by scripts/embed_web.py
 │   ├── style.css
-│   ├── script.js                    # WS + RTDB client, 3 modes, all UI logic
-│   ├── config.js                    # Firebase web config (gitignored)
-│   ├── config.example.js
+│   ├── script.js                    # WS client, PIN, notifications, all UI logic
 │   ├── manifest.json
-│   ├── sw.js                        # Service worker (network-first + shell fallback)
+│   ├── sw.js                        # Service worker (inert over plain http)
 │   └── icons/
 │
 ├── scripts/
-│   ├── setup.py
-│   └── deploy.py
+│   ├── embed_web.py                 # frontend/ -> src/network/web_assets.h
+│   ├── test_auth_gate.c             # Host unit tests for the PIN gate
+│   ├── mock_device.py               # Mock board: serves frontend/, speaks /ws
+│   ├── e2e_aponly.js                # Playwright run of the real page
+│   ├── verify_all.sh                # Every gate, one command
+│   ├── patch_async_tcp.py           # AsyncTCP 1.1.4 patches (see README)
+│   └── setup.py
 │
-├── tools/
-│   ├── firebase_rest.py             # RTDB admin REST helper
-│   └── hosting_deploy.py
-│
+│ x firebase.json / database.rules.json / .firebaserc  -- deleted, no cloud
+│ x tools/                            -- deleted, held the RTDB + hosting helpers
+│ x frontend/config.js                -- deleted, held the Firebase web config
+│ x src/utils/device_id.*             -- deleted, only ever keyed RTDB paths
+│ x src/sensor/*                      -- deleted, dead since PowerCalculator
+
 └── .workflow/                       # Agent workflow state
     ├── active.json
     ├── RESEARCH.md
@@ -125,36 +122,59 @@ esp32-electricity-counter/
 
 ## B.1 System Shape
 
-Three cooperating pieces:
+One piece. The board *is* the network, the web server and the application.
 
 ```
-   ┌──────────────────────┐        ┌────────────────────────────┐
-   │  ESP32-S3 firmware   │        │  Firebase                  │
-   │                      │        │                            │
-   │  Core 1: sensing     │  push  │  RTDB                      │
-   │  Core 0: transport   │───────▶│   /devices/<id>/latest    │
-   │                      │  poll  │   /devices/<id>/commands   │
-   │  AsyncWebSocket :80  │◀──────▶│   /devices/<id>/console    │
-   │   /ws  + AP portal   │        │   /devices/<id>/viewers    │
-   └──────────┬───────────┘        │  Hosting (static)          │
-              │                    │   frontend/  ── PWA        │
-              │ LAN                └──────────┬─────────────────┘
-              │                               │ HTTPS
-   ┌──────────▼───────────┐        ┌──────────▼─────────────────┐
-   │  Browser: Local mode │        │  Browser: Cloud mode       │
-   │  ws://<ip>/ws        │        │  firebase SDK (Google auth)│
-   └──────────────────────┘        └────────────────────────────┘
+   ┌───────────────────────────────────────────────────────────────┐
+   │  Phone / laptop                                            │
+   │    joins WiFi  "ESP32-Elec-Counter"                          │
+   └───────────────────────────┬───────────────────────────────────┘
+                               │  soft AP.  DNSServer:53 answers EVERY
+                               │  hostname with 192.168.4.1, so any URL —
+                               │  including the OS's captive-portal probe —
+                               │  lands on the dashboard.
+                               ▼
+   ┌───────────────────────────────────────────────────────────────┐
+   │  ESP32-S3  ·  AP-only, always                                │
+   │                                                               │
+   │  AsyncWebServer :80                                          │
+   │    /                 -> the whole PWA, served from flash     │
+   │    /style.css /script.js /manifest.json /sw.js /icons/*      │
+   │    /ws               -> live JSON snapshot + commands        │
+   │  DNSServer  :53       -> captive-portal wildcard             │
+   │  ArduinoOTA :3232                                           │
+   │                                                               │
+   │  Core 1: sensing          Core 0: transport                   │
+   └───────────────────────────────────────────────────────────────┘
 ```
 
-The device never serves the dashboard. It only serves a WebSocket endpoint (plus
-a tiny provisioning page while in AP mode). The dashboard is a static PWA on
-Firebase Hosting.
+**There is no station interface and no cloud.** Nothing the board does requires
+an upstream network, and the dashboard it serves is compiled into its own flash.
 
-**Data direction is one-way for telemetry** (device → cloud, fire-and-forget
-overwrite of a single node) and **command direction is one-way too** (dashboard
-pushes a node, device polls and deletes it). There is no bidirectional socket to
-the cloud — this keeps the firmware simple and survives the Firebase client
-library's blocking TLS model.
+### Why the board serves the dashboard
+
+This replaced a Firebase Hosting deployment, and the reason is mechanical, not
+aesthetic:
+
+- **Same origin.** The page is `http://192.168.4.1`, so `ws://192.168.4.1/ws` is
+  same-origin. The hosted dashboard was `https://…`, and a browser refuses to
+  open a `ws://` socket from a secure page as **mixed content**. The old
+  `ap_portal.h` said so in its own header comment, which is why a read-only
+  table page had to exist as a fallback.
+- **No captive-DNS conflict.** While joined to the AP, every hostname resolves
+  to `192.168.4.1`, so a hosted UI cannot even load reliably without falling
+  back to mobile data.
+- **It works offline**, at LAN latency, with the router unplugged.
+- Flash allows it: 10 assets, ~101 KB, into a partition that freed ~376 KB
+  when the Firebase client library was removed.
+
+**Trade-off:** the counter can no longer be read from outside the local WiFi.
+That is the point of the change, and it is a real loss.
+
+**Data is one-way per frame.** The board broadcasts the same JSON snapshot to
+every connected client at 150 ms, and commands travel back over the same socket.
+`AsyncWebSocketClient` has no usable per-client state field, so the admin PIN is
+sent with every mutating frame rather than negotiated once (see B.9).
 
 ## B.2 Hardware & Signal Chain
 
@@ -172,34 +192,30 @@ Both CT and ZMPT outputs are **AC-coupled and biased to mid-supply**
 Bluetooth is shut down at boot (`btStop()` + `esp_bt_controller_mem_release`)
 to reclaim RAM and idle current — the board never uses BT.
 
-## B.3 Runtime: Three Tasks, Two Cores
+## B.3 Runtime: Two Tasks, Two Cores
 
 `setup()` creates the tasks; `loop()` stays nearly empty on purpose.
 
 | Task | Core | Prio | Stack | Period | Responsibility |
 |---|---|---|---|---|---|
-| `networkTask` | 0 | 2 | 8192 | 20 ms | WiFi, WebSocket broadcast, serial RX, OTA, ntfy TX, eco decision |
+| `networkTask` | 0 | 2 | 8192 | 20 ms | AP + captive DNS, dashboard server, WebSocket broadcast, serial RX, OTA |
 | `sensorTask` | 1 | 2 | 8192 | 80 ms | ADC sampling, power math, limit check, buzzer, LED, NVS energy save |
-| `firebaseTask` | 0 | **1** | 32768 | 50 ms | `Firebase.begin()`, `/latest` push, `/commands` poll, `/viewers` poll |
 
 Plus Arduino's default `loopTask` on Core 1, which only drives
 `consoleHandler.runDeferred()` / `consoleHandler.loop()`.
 
-**Why the priority split matters.** `networkTask` is priority 2 and
-`firebaseTask` is priority 1 *on the same core*. Firebase's HTTPS/TLS calls are
-blocking; if they ran at equal priority they would delay the 150 ms WebSocket
-broadcast. Lowering `firebaseTask` guarantees LAN responsiveness no matter how
-slow a cloud push is.
+**`firebaseTask` is gone.** It existed (priority 1 on Core 0) purely to keep the
+Firebase client's blocking TLS handshake and 1 s `/latest` push away from the
+150 ms WebSocket broadcast. With no cloud there is nothing to isolate, so Core 0
+has exactly one task.
 
-**Why `Firebase.begin()` is not in `networkTask`.** The initial TLS handshake
-plus service-account token exchange takes 10–20 s. Doing that inside
-`networkTask` starves IDLE0 and trips the watchdog. It is deferred to
-`firebaseTask`, which only starts it once WiFi is up.
+**`networkTask` is now both cores' only writer of network state**, and the AP is
+started once in `setup()` before the task exists. `softAP()` returning *is* the
+readiness signal: `startServer()` and `otaHandler.begin()` are gated on
+`wifiMgr.isReady()` rather than on a wait-for-IP handshake.
 
-**Why `ArduinoOTA.begin()` is deferred too.** Started before the interface has
-an IP, it silently never listens (most visible in AP mode). So `startServer()`
-and `otaHandler.begin()` are both triggered from `networkTask` after WiFi is up
-or the AP is running.
+**`ArduinoOTA.begin()` must still wait for the AP to hold an IP** — started
+earlier it silently never listens.
 
 ## B.4 Shared State & Mutex Discipline
 
@@ -219,7 +235,11 @@ Rules the code actually follows:
 - **Writers hold the mutex.** `updateSharedData()`, `limitMgr.loop()`,
   `buildSystemJson()`, and every mutating command take it.
 - **Readers take it too** before serialising — `networkTask` takes it around
-  `broadcastData()`, `firebaseTask` around `buildSystemJson()`.
+  `broadcastData()` (which is the only caller of `buildSystemJson()` now).
+  `ConsoleHandler::flushEnergy()` also takes it: `commit()` is
+  `prefs.end(); prefs.begin()`, which is *not* thread-safe against
+  `sensorTask`'s 5 s save. With STA gone, `reboot` is the only restart path, so
+  that flush is the last chance to get counters into flash.
 - Timeouts are bounded (20–100 ms) and the result is **checked**; on timeout the
   cycle is skipped rather than blocking.
 - `PowerCalculator`'s internal sample/derived arrays are **not** mutex-protected.
@@ -343,8 +363,10 @@ boot event.
 
 Per channel, when `limit > 0 && energy >= limit`:
 
-- **First crossing only** (`tripNotified[ch]` latch): append a forensic event,
-  fire one ntfy push. This is the anti-flood latch.
+- **First crossing only** (`tripNotified[ch]` latch): append a forensic event.
+  This is the anti-flood latch. The event is what the dashboard turns into a
+  Web Notification — there is no server-side push left, so the buzzer, the
+  channel `status` field and this event are the whole alarm path.
 - If power factor drops below `AUTO_RECOVER_PF` (0.1) — i.e. the load was removed
   — status returns to `STATUS_OK` and one `autoRecoverLogged` event is written.
   **The trip latch stays set on purpose**: energy is still over budget, so
@@ -402,12 +424,12 @@ reboot can never restore stale kWh alongside an already-advanced month.
 
 ### Forensic event persistence
 
-The RAM ring holds 50 events and is wiped by a reboot — and Firebase is
-unreachable while WiFi is down, which is exactly when a trip happens. So the
-last `FORENSIC_KEEP = 10` events are also written to NVS on every *critical*
-event (trip, manual reset, rollover, energy inject, boot). That is a few writes
-per day, negligible for flash wear. `setup()` restores them into `SystemData`
-before the first Firebase push, so the trail rides the normal reconnect.
+The RAM ring holds 50 events and is wiped by any restart — which is exactly when
+you most want to know whether the trip was recent. So the last
+`FORENSIC_KEEP = 10` events are also written to NVS on every *critical* event
+(trip, manual reset, rollover, energy inject, boot). That is a few writes per
+day, negligible for flash wear. `setup()` restores them into `SystemData` before
+the first broadcast, so the trail is visible the moment a dashboard connects.
 
 ## B.7 Persistence (NVS)
 
@@ -418,9 +440,13 @@ commits immediately, and `flushEnergyToNvs()` runs as a pre-restart hook.
 
 | Group | Keys |
 |---|---|
-| WiFi | ssid, pass, mode (0=AUTO, 1=STA only, 2=AP only) |
+| Legacy (written by older firmware, now unread) | `wifi_ssid`, `wifi_pass`, `wifi_mode` — erase with `clearwifi` |
+| Auth | `admin_pin` (default `1234`, plaintext) |
 | Per channel | name, monthly kWh limit, current cal, noise floor, LPF alpha, energy kWh |
-| Global | voltage cal, rms samples, ntfy topic/enabled, last billing month, forensic events |
+| Global | voltage cal, rms samples, last billing month, forensic events |
+
+`ntfy_topic` / `ntfy_enable` may still be present from older firmware and are now
+ignored.
 
 **Energy durability** is a two-tier scheme, because losing months of kWh to a
 power cut is unacceptable:
@@ -435,353 +461,342 @@ power cut is unacceptable:
    Core 0 with no lock held, because `commit()` is `prefs.end(); prefs.begin()`
    and is not thread-safe against the Core 1 save.
 
-## B.8 Connectivity & Failover
+## B.8 Connectivity: an Access Point, Nothing Else
 
-`WiFiManager` is a small state machine: `WIFI_INIT → WIFI_CONNECTING →
-WIFI_CONNECTED | WIFI_AP_MODE`.
+`WiFiManager` is a single-state machine now. `begin()` takes no arguments, does
+not read NVS, and calls `startAPMode()`.
 
-- **STA**: `configTime(0, 0, pool.ntp.org, time.google.com)` on every connect
-  attempt (needed for billing-month math). Tx power 21 dBm, modem sleep off.
-- **Retry ladder**: reconnect every 10 s, up to `WIFI_MAX_RETRIES = 5`, then fall
-  back to AP mode.
-- **Reboot failsafe**: if no link within `WIFI_CONNECT_TIMEOUT_MS = 10 s`, flush
-  energy and `ESP.restart()`. The failure counter is `RTC_DATA_ATTR`, so it
-  survives a software restart but resets on a real power cycle — and it is capped
-  at `WIFI_MAX_BOOT_FAILURES = 10` before dropping to AP mode. That cap is what
-  stops a device with stale credentials from reboot-looping forever.
-- **AP mode**: soft AP `ESP32-Elec-Counter` / `configure123` at 192.168.4.1. A
-  `DNSServer` on :53 does the captive-portal wildcard redirect. The portal pages
-  themselves are served by the **same** `AsyncWebServer` on :80 as the WebSocket
-  (an earlier split between `WebServer` and `AsyncWebServer` double-bound the
-  port). The `/` and `/save` handlers re-check `isApMode()` at request time, so
-  a later STA transition 404s cleanly instead of serving a stale form.
-- **RSSI** refreshes every 5 s; three consecutive `WL_CONNECTED` failures drop
-  back to `WIFI_CONNECTING`.
-
-### Eco mode
-
-Every 2 s, `networkTask` computes "is anyone watching":
-
-```
-watched = wsServer.clientCount() > 0 || fbBridge.cloudWatched() || otaInProgress
+```cpp
+WiFi.mode(WIFI_AP);
+WiFi.softAP("ESP32-Elec-Counter", "configure123");
+WiFi.setTxPower(WIFI_POWER_21dBm);
+WiFi.setSleep(false);              // an AP must keep beaconing
+WiFi.softAPConfig(192.168.4.1, 192.168.4.1, 192.168.4.1);
+dnsServer.start(53, "*", apIP);    // every hostname -> the dashboard
 ```
 
-If not watched, `WiFi.setSleep(true)` and the cloud push interval drops from 1 s
-to 10 s (`FIREBASE_ECO_PUSH_INTERVAL_MS`). Sensing on Core 1 always runs
-full-rate — eco only affects radios and the cloud, never measurement. The AP
-never sleeps (it must keep beaconing).
+`loop()` does exactly one thing: `dnsServer.processNextRequest()`.
 
-## B.9 Three Command Paths, One Engine
+**Removed with the STA path**, and each was load-bearing in a way worth
+recording:
 
-There are three ways in, and they converge:
+| Gone | Why it no longer applies |
+|---|---|
+| STA connect, retry ladder, `WIFI_MAX_RETRIES` | there is no network to join |
+| Connect-timeout reboot failsafe + `RTC_DATA_ATTR` failure counter | nothing to time out |
+| Link-flap detection, `WL_CONNECTED` polling | there is no link |
+| RSSI sampling | an AP does not report one |
+| Modem-sleep eco mode | an AP must keep beaconing; see below |
+| `setwifi` console verb, `/save` portal handler | no credentials to store |
+| `isConnected() \|\| isApMode()` | two-way test for a one-way state; now `isReady()` |
+
+**Stored credentials are left alone.** Old firmware wrote `wifi_ssid` /
+`wifi_pass` into NVS. Nothing reads them now, and they are deliberately *not*
+wiped automatically — a downgrade to an older build still finds them. `clearwifi`
+exists purely to erase them.
+
+### Eco mode is gone
+
+The old design slept the modem and slowed cloud pushes to 10 s when nobody was
+watching (`wsServer.clientCount() || fbBridge.cloudWatched() || otaInProgress`).
+Both inputs are gone and the mechanism is meaningless: a station link can sleep,
+an access point cannot. Sensing on Core 1 was never affected by eco and still
+runs full-rate.
+
+## B.9 One Command Path, One Gate
 
 ```
-  serial 115200 ──► handleSerialCommand() ─┐
-  WebSocket /ws ──► handleCommand() ───────┼──► processCommand()  ──► ConsoleHandler
-  RTDB /commands ──► pollCommands() ───────┘      (JSON verbs)         (text verbs)
+  serial 115200 ──► handleSerialCommand() ──┐
+  WebSocket /ws ──► handleCommand() ────────┼──► auth_check() ──► processCommand()
+                                             │      (PIN)            │
+                                             │                       ├──► ConsoleHandler (text)
+                                             │                       └──► NVS / live state (JSON)
 ```
 
-- **`processCommand()`** (`command_processor.cpp`) parses the dashboard's JSON
-  verbs: `set_name`, `reset_counter`, `test_inject`, `set_voltage_cal`,
-  `set_current_cal`, `set_monthly_kwh`, `set_noise_floor`, `set_lpf`,
-  `set_rms_samples`, `set_ntfy_topic`, `set_ntfy_enabled`, `reset_ch_cal`,
-  `reset_ch_to_default` / `reset_channel_names`, `reset_nvs_defaults`,
-  `test_force_rollover`, and `console`.
-  It is a hand-rolled `indexOf` scanner, not a JSON library — which is why the
-  code carries hand-written escape handling (`jsonUnescape`,
-  `extractJsonString`).
-  **Every handled verb ends with `nvs->commit()`.**
-- **`ConsoleHandler`** is a *text* command engine (the serial vocabulary) that
-  captures output into a `String` instead of printing to `Serial` — that is
-  precisely what lets the web console reuse it. `{"cmd":"console","line":"..."}`
-  routes into it. Output is capped at `MAX_OUTPUT = 3072` bytes so a runaway
-  command cannot blow up a WebSocket frame or an RTDB write.
-- The serial path special-cases `test led` to run the *blocking* version
-  (serial has no latency constraint), while the web path always defers.
+`processCommand()` parses the dashboard's JSON verbs: `set_name`,
+`reset_counter`, `test_inject`, `set_voltage_cal`, `set_current_cal`,
+`set_monthly_kwh`, `set_noise_floor`, `set_lpf`, `set_rms_samples`,
+`reset_ch_cal`, `reset_ch_to_default` / `reset_channel_names`,
+`reset_nvs_defaults`, `test_force_rollover`, `set_pin`, `set_time`,
+`verify_pin`, and `console`.
+
+It is a hand-rolled `indexOf` scanner, not a JSON library — which is why the
+code carries hand-written escape handling. Every mutating verb ends with
+`nvs->commit()`.
+
+### The admin gate
+
+The gate runs **before any verb touches state**, so a newly added mutating verb
+is protected by default rather than by remembering to add a check.
+
+```cpp
+char verb[AUTH_MAX_VERB];
+if (!auth_check(msg, nvs->loadPin().c_str(), verb, sizeof(verb))) {
+  *authRejected = true;          // -> {"type":"auth","ok":false} to that client
+  return false;
+}
+```
+
+The decision itself lives in `src/network/auth_gate.cpp`, which has **no Arduino
+dependency** — so it is unit-tested on the host by `scripts/test_auth_gate.c`
+(47 assertions, mutation-checked). A security check that can only be exercised by
+flashing hardware is a check nobody runs.
+
+| Verb | PIN? | Why |
+|---|---|---|
+| `set_time` | no | every viewer sends it on connect; it is what gives the board a clock at all |
+| `verify_pin` | no | its whole job is to answer the question |
+| everything else | **yes** | any state change, including `console` and `set_pin` |
+
+**Stateless by design.** `AsyncWebSocketClient` has no usable per-client state
+field, so the PIN is attached to every mutating frame rather than negotiated into
+a session token. There is no token to forge, revoke, or desynchronise.
+
+Rejected frames get a **distinct** `{"type":"auth","ok":false}` reply, separate
+from `handled == false`. The dashboard cannot otherwise tell "you are not
+allowed" from "I did not understand that", and since the board is the authority,
+the UI must not have to guess. On receiving it the page drops back to read-only
+and forgets the cached PIN — so changing the PIN on the device revokes open tabs.
+
+### The browser lends the clock
+
+`set_time` is the reason this section is not just about authorisation.
+
+```cpp
+int ti = s.indexOf("\"t\":");
+int64_t epoch = s.substring(ti + 4).toInt();
+timeSync.setTimeFromBrowser(epoch);
+```
+
+`TimeSync` keeps the last accepted sync in `RTC_DATA_ATTR`, which survives
+`ESP.restart()` but not a power cut. `begin()` restores it and advances it by
+the elapsed `millis()`, so the board has a plausible clock at boot with no phone
+attached. `setTimeFromBrowser()` rejects epochs outside
+[2021-01-01, 2100-01-01] and anything more than 180 days from what the board
+already believes — a bad frame must never be able to roll the billing month.
 
 ### Deferred (blocking) commands
 
-`test led`, `nvs_debug`, and `reboot` set `pendingDefer` and return an
-acknowledgement immediately; Arduino's `loop()` on Core 1 calls
-`runDeferred()` where blocking is safe (no network task to stall, no WDT risk).
-`test led` then runs as a non-blocking state machine driven by
-`ConsoleHandler::loop()`.
+`test led`, `nvs_debug` and `reboot` set `pendingDefer` and return an
+acknowledgement immediately; Arduino's `loop()` on Core 1 calls `runDeferred()`,
+where blocking is safe. `test led` then runs as a non-blocking state machine.
 
-> `setwifi connect/save` and `clearwifi` are **not** deferred, despite what
-> `console_handler.h` and `index.html` say. `exec()` dispatches them inline, and
-> `cmdSetWifi()` with `connect`/`save` synchronously does
-> `flushEnergy() → commit() → delay(100) → ESP.restart()`. See Part C.3.
+> `setwifi` is gone. `clearwifi` runs inline and does nothing but erase stale
+> credentials — it never rebooted, contrary to what the old notes said.
 
-## B.10 One Schema, Two Transports
+## B.10 One Schema, One Transport
 
-`buildSystemJson()` (in `firebase_bridge.cpp`) is the **single** serialiser for
-system state. `WebSocketServer::buildJson()` just calls it. So the LAN WebSocket
-payload and the cloud `/latest` snapshot are byte-identical by construction —
-the dashboard has one `updateDashboard()` path for both.
+`buildSystemJson()` (`src/network/system_json.cpp`) is the **single** serialiser.
+It used to live inside `firebase_bridge.cpp` because the cloud push was its
+first caller; with the cloud gone it was promoted to its own translation unit
+rather than deleted, and `WebSocketServer::buildJson()` is now its only caller.
+Burying the wire format inside a deleted bridge is how it would have ended up
+duplicated.
 
 Snapshot highlights: `v` voltage, `uptime`, `wifi`/`rssi`/`ap`, calibration
 (`voltageCalibration`, `currentCalibration[]`, `rmsSamples`, `noiseFloor[]`,
 `lpfAlpha[]`), auto-zero state (`azActive`, `azChannel`, `azProgress`,
-`azQueue[]`), `firmwareVersion`, `epoch`, `lastMonth`, `ntfy{topic,enabled}`,
-`ch[]` (6 × name/current/watts/VA/PF/kWh/status/limit), and the last 10
-`events[]`. Field names are deliberately short.
+`azQueue[]`), `firmwareVersion`, `epoch`, `lastMonth`, `time{ok,age}`, `ch[]`
+(6 × name/current/watts/VA/PF/kWh/status/limit), and the last 10 `events[]`.
+Field names are deliberately short: the string is rebuilt and pushed to every
+connected browser ~6–7 times a second.
 
-A stale Firebase error is appended as `fbErr` so a failing push is visible in
-the UI rather than silent.
+`time{ok,age}` is read straight from `TimeSync`, not through `SystemData`: it is
+owned by the network layer, needs no mutex, and must be visible when it has
+*never* been set.
 
-## B.11 Cloud Bridge Details
+The old `fbErr` field is gone with the bridge that appended it.
 
-| Constant | Value | Meaning |
-|---|---|---|
-| `FIREBASE_PUSH_INTERVAL_MS` | 1000 | `/latest` push when watched |
-| `FIREBASE_ECO_PUSH_INTERVAL_MS` | 10000 | `/latest` push when unwatched |
-| `FIREBASE_COMMAND_POLL_MS` | 1000 | `/commands` poll |
-| `FIREBASE_VIEWER_POLL_MS` | 5000 | `/viewers` poll |
+## B.11 Serving the Dashboard
 
-**Two dedicated `FirebaseData` connections — `fbdo` and `fbCmd`.** This is the
-single most important implementation detail in the bridge. The Firebase ESP
-client multiplexes one TLS session per `FirebaseData`; a failing or empty GET on
-the *publish* connection tears that session down and forces a fresh ~1.3–1.9 s
-handshake on the next push. Since `/commands` is empty most of the time, sharing
-one connection would mean a handshake on nearly every publish. Splitting them
-keeps the push path warm.
+`WebSocketServer::serveAsset()` answers the catch-all from the generated
+`WEB_ASSETS[]` table.
 
-Consequently **a missing node is normal, not an error**: `pollCommands()` and
-`pollViewers()` both check `dataType() == "null"` and return quietly, so they
-never trigger the teardown. A genuine error is logged at most every 10 s.
-
-**Auth**: user email/password (service-account style) from
-`firebase_config.h`. `configured()` validates the shape of every credential
-(`AIza` prefix, contains `@`, no `PASTE_` placeholders) and, if incomplete,
-prints one warning and disables Cloud mode instead of failing opaquely later.
-
-**Command execution**: `pollCommands()` iterates the `/commands` object and
-calls `processCommand()` per entry, then writes any text response to
-`/console/<key>` and **deletes the command node**. Deletion is what makes it
-fire-and-forget and prevents re-execution.
-
-> `FirebaseJson::iteratorGet` yields nested members as well as top-level keys.
-> The loop only acts on `depth == 0` entries. Without that guard, a pushed
-> object's bare `cmd` field would be reconstructed as `{"cmd":"..."}` with no
-> `ch`, and per-channel commands would silently act on *every* channel. The same
-> class of bug is why `reset_ch_to_default` now refuses to run without a valid
-> `ch` instead of wiping all six channels.
-
-**Viewer presence** (`/viewers`): the dashboard writes
-`{ts: ServerValue.TIMESTAMP}` under `/viewers/<clientId>` every 15 s and removes
-it on `onDisconnect` + `pagehide`/`beforeunload` + tab hide. The device polls
-every 5 s; a non-empty node sets `viewerPresent`, which relaxes the push interval
-to 1 s and disables eco sleep. Transient read errors keep the last known state so
-eco does not flap.
-
-## B.12 RTDB Data Model & Security
-
-```
-/devices                                  .read: true          (board picker)
-/devices/<deviceId>                       .read: true, .write: false
-/devices/<deviceId>/latest                .read: true,  .write: admin
-/devices/<deviceId>/commands              .read: admin, $cmd .write: admin
-/devices/<deviceId>/console               .read: admin, $out .write: admin
-/devices/<deviceId>/ota                   admin read+write
-/devices/<deviceId>/firmware              admin read+write
-/devices/<deviceId>/viewers/$v            .write: true, .validate: hasChildren(['ts'])
+```cpp
+server->onNotFound([](AsyncWebServerRequest *request) {
+  if (WebSocketServer::serveAsset(request)) return;
+  request->send(404, "text/plain", "Not found");
+});
 ```
 
-`deviceId` is `"esp-" + hex(low 24 bits of the efuse MAC)`
-(`src/utils/device_id.cpp`) — stable across reflashes and unique per chip, so
-multiple boards share one database without clobbering each other.
+`findAsset()` strips any `?v=` cache-buster, maps `/` to `/index.html`, and then
+matches **exactly**. No prefix matching, no directory walking: this is a fixed
+set of ten files, and "serve whatever the path walks to" is how a device turns
+into an open file server.
 
-Design notes:
+The response uses the explicit-length `beginResponse(code, mime, uint8_t*, len)`
+overload. The `char*` overload measures with `strlen()`, which would truncate
+every PNG at its first `0x00` byte. `Cache-Control: no-cache, no-store,
+must-revalidate` is set on all of them — the assets live in flash, so there is
+nothing to revalidate against.
 
-- The **parent** `$device` node has `.write: false`, which is what makes the
-  per-child grants meaningful — a child grant cannot be escalated to the parent.
-- `/commands` and `/console` grant `.write` **per child key**, which is exactly
-  what `.push()` needs and no more.
-- `/viewers` is the only unauthenticated write, deliberately: presence must work
-  for signed-out guests. The `hasChildren(['ts'])` validation pins the payload
-  shape. Worst case a stranger keeps the board awake.
-- `/latest` is world-readable, so a guest dashboard works without signing in.
-- The admin test is the email expression `auth.token.email == 'heng.xiao.hour@gmail.com'
-  || auth.token.email == 'esp32-counter@chenla.com'`, **inlined at all seven
-  privileged rules**. There is no `isAdmin()` function (Part C.5).
+### Generating the assets
 
-**Auth scope, stated honestly:** in Cloud mode the rules are the real enforcement.
-In **Local (WebSocket) mode there is no server-side auth on the ESP32 at all** —
-the admin check is UI-level only, so Local is trusted-LAN-only. Demo mode is
-intentionally fully open.
+`scripts/embed_web.py` bakes `frontend/` into `src/network/web_assets.h`: text
+assets as PROGMEM raw string literals opened directly on the first content byte,
+binary assets as byte arrays, sizes from `sizeof()` so the table cannot drift
+from the bytes. Ten files, ~101 KB.
 
-## B.13 Dashboard (PWA)
+```
+python3 scripts/embed_web.py                       # regenerate
+python3 scripts/embed_web.py --check                # stale? parses the header back
+python3 scripts/embed_web.py --verify               # bytes match frontend/
+python3 scripts/embed_web.py --verify-binary <bin>  # ...and reach the flash image
+```
 
-`frontend/script.js` (~1.5k lines) holds all UI logic; `index.html` is the
-skeleton. Firebase compat SDK 10.12.2 is loaded from gstatic.
+`--verify` deliberately does not trust the generator: it parses the emitted C++
+back into bytes and compares against `frontend/`. An early draft opened every
+raw literal with `R"rawliteral(` + newline, which silently prepended one byte to
+all five text assets — which is exactly what `--verify` exists to catch.
 
-**Connect panel** — one `#connMode` dropdown (Cloud / Local / Demo) plus one
-`Launch` button that routes to `connectCloud()` / `connectLocal()` /
-`startDemoMode()`. Cloud is the default. Only the relevant extra field is shown
-(IP row for Local, device picker for Cloud). The session is persisted in
-`localStorage` and auto-reconnect runs on load.
+## B.12 The Dashboard
 
-| Mode | Transport | RTDB paths |
+`frontend/script.js` holds all UI logic; `index.html` is the skeleton. There
+are **no external scripts** — the Firebase SDK tags are gone, and a gate
+asserts it.
+
+| Concern | Old | New |
 |---|---|---|
-| **Cloud** | firebase SDK | subscribes `/latest` + `/console`; pushes `/commands`; heartbeats `/viewers` |
-| **Local** | `ws://<ip>/ws` | none |
-| **Demo** | `setInterval` mock, no I/O | none |
+| Transport | Cloud (RTDB) or Local (typed IP) | one WebSocket to `location.host` |
+| Connect UI | mode dropdown + IP field + board picker | none; `init()` connects at once |
+| Identity | Google sign-in + RTDB rules | admin PIN, enforced on the ESP32 |
+| Offline | no | works with the router unplugged |
+| Trip alert | ntfy.sh push | Web Notification while the page is open |
 
-**One board, many clients.** `normalizeSnapshot()` runs `toArray()` over
-`ch`, `currentCalibration`, `noiseFloor`, `azQueue`, `lpfAlpha` and `events`,
-because RTDB stores arrays as objects with numeric string keys. Forgetting this
-is the classic RTDB-array bug.
+Because the page is served by the board, `location.host` *is* the board — there
+is no IP to type. `showDashboard()`/`showConnectPanel()` survive only as the
+disconnected notice.
 
-**Auth** — `initAuth()` applies the auth state *synchronously* before Firebase
-initialises so admin controls never flash for non-admins on reload. Admin is a
-client-side email allowlist (`FB_CONFIG.adminEmails`). Gating is applied by
-`sendCommand()` rejecting non-admins, `requireAdmin()` guards on the modals, and
-a `role-downgrade` check force-closes an open channel modal. The `/console`
-listener is attached **only** when admin — guests lack read permission there, so
-attaching anyway would spam `PERMISSION_DENIED`.
+**Clock lending.** `sendTime()` fires on socket open and every 10 minutes.
+`renderClock()` shows the board's reported state, including the case that
+matters: *not set — monthly reset will not fire*.
 
-Connection/viewing is never gated; only command-sending is. A 10 s staleness
-watchdog flips the status banner to "Offline — no data" if `/latest` stops.
+**Trip notifications.** `notifyOnTrip()` keys on *which* channels are tripped,
+not on arrival, so a snapshot arriving 6× a second does not re-notify, but a new
+channel tripping does. `tag` replaces the previous notification instead of
+stacking them.
 
-**Structure** — connect panel, then a sidebar (Dashboard / Analytics / History /
-Settings) + mobile nav, a status bar (voltage, total power/current, date, device
-time), an OTA progress panel, and a channel edit modal. Settings holds Account,
-Connection, ntfy, System Calibration, Device Console, and About — the last four
-of which are `admin-only`.
+**PIN handling.** The PIN is cached in `sessionStorage` (per tab, not
+persistent) and re-validated against the board on every connect — the board is
+the authority, not the cache. `verifyPin()` resolves **false** on timeout: an
+unverified PIN is not a verified one.
 
-**Service worker** (`sw.js`) — network-first with cache fallback. It precaches
-the app shell, passes through non-GET and cross-origin requests (so the gstatic
-Firebase scripts and all RTDB traffic bypass it), returns the network response
-when `res.ok`, and on failure falls back to the cache, then to `./index.html` so
-offline navigations still resolve. `firebase.json` additionally forces
-`Cache-Control: no-cache` for everything, `/sw.js` and `/manifest.json`. Cache
-invalidation is by bumping `CACHE_NAME` (`esp32-counter-v12`) and the
-`?v=` query strings on `style.css` / `script.js` / `config.js`.
+`applyPinState()` also force-closes an open channel modal when admin is lost.
 
-**Demo mode caveat:** `sendCommand()` mutates local state for `set_name`,
-`set_monthly_kwh` and `reset_counter` *before* the admin check, so demo
-mutations work for guests by design.
+**Demo mode** survives as `?demo=1` — mock data, no socket. Its only remaining
+purpose is previewing the dashboard on a machine that cannot join the board's
+WiFi.
 
-## B.14 OTA
+### Service worker
 
-`ArduinoOTA` under hostname `esp32-elec-counter`, begun only after WiFi is up.
+`sw.js` is retained and correct, but **inert in practice**: service workers
+require a secure context, and `http://192.168.4.1` is not one. So there is no
+true PWA install — the browser offers "Add to Home Screen", which is a
+shortcut. Serving HTTPS from the board would require generating a self-signed
+certificate, which is a separate piece of work.
+
+## B.13 OTA
+
+`ArduinoOTA` under hostname `esp32-elec-counter`, begun from `networkTask` once
+`wifiMgr.isReady()`. Over the board's own AP the IDE may not discover it
+automatically; entering `192.168.4.1` as the network port works.
+
 The LED goes solid blue while `isInProgress()` and the dashboard shows
-`otaProgress`/`otaPercent`/`otaVersion`. Partition scheme must be
-`No FS 4MB (2MB APP with OTA)` — the firmware with the Firebase client does not
-fit the default 1.25 MB app partition. The RFQString OTA panel is hidden unless
-the payload carries `ota: true`.
+`otaProgress`/`otaPercent`/`otaVersion`. Partition scheme must remain
+`No FS 4MB (2MB APP with OTA)`.
 
-## B.15 Timing Budget
+## B.14 Timing Budget
 
 | Cadence | Value | Where |
 |---|---|---|
 | Sensor cycle | 80 ms | `SENSOR_CYCLE_INTERVAL_MS` |
 | WebSocket broadcast | 150 ms | `WS_UPDATE_INTERVAL_MS` |
 | Network task tick | 20 ms | `vTaskDelayUntil` in `networkTask` |
-| Firebase task tick | 50 ms | `vTaskDelayUntil` in `firebaseTask` |
-| Cloud push (watched / eco) | 1 s / 10 s | `FIREBASE_*_PUSH_INTERVAL_MS` |
-| `/commands` poll | 1 s | `FIREBASE_COMMAND_POLL_MS` |
-| `/viewers` poll | 5 s | `FIREBASE_VIEWER_POLL_MS` |
-| ntfy retry | 10 s | `NtfyNotifier::RETRY_INTERVAL_MS` |
+| Clock re-lend | 10 min | `timeSyncTimer` in the dashboard |
+| ntfy retry | — | gone with ntfy |
 | NVS energy save | ~5 s | `sensorTask` |
-| Eco decision | 2 s | `networkTask` |
+| Eco decision | — | gone with eco mode |
 | Auto-zero | 2 of 32 batches per 80 ms cycle | `AZ_BATCHES_PER_CYCLE` |
-| WiFi connect timeout / retry | 10 s / 10 s | `WIFI_*` |
-| AP fallback after retries | 5 retries | `WIFI_MAX_RETRIES` |
-| Boot-failure reboot cap | 10 | `WIFI_MAX_BOOT_FAILURES` |
+| WiFi connect timeout / retry | — | gone with STA |
+| AP fallback after retries | — | gone with STA |
 
-## B.16 Console Vocabulary
+The status/debug serial streams print every 2 s / 5 s when enabled.
 
-Available identically from the serial port and the web console:
+## B.15 Console Vocabulary
+
+Available identically from the serial port and the web console (the web console
+is `{"cmd":"console","line":"..."}` into `ConsoleHandler`):
 
 ```
 help / ?              status              debug
 ch <N>                cal                 info               wifi
 buzz <N>              inject <ch> <kwh>   reset <N>          reset_name [N]
+---
 test led              rms_samples <N>     curr_cal <ch> <val>
-auto_zero <ch>        volt_cal <val>      setwifi sta|ap|auto
-setwifi ssid <name>   setwifi pass <pwd>  setwifi connect    clearwifi
+auto_zero <ch>        volt_cal <val>      clearwifi
 nvs_debug             reboot
 ```
 
 `status` and `debug` **toggle** live serial streams via the `g_statusStream` /
 `g_debugStream` gates in `log_gate.h` (both default OFF, so a fresh boot prints
-only the WiFi/server block). `STATUS_LOG` is for operational transitions (eco
-sleep, viewer presence, rollover, auto-zero, ntfy); `DEBUG_LOG` is for developer
-diagnostics (NVS writes, `[CMD]` traces, Firebase/ntfy errors).
+only the boot block). `STATUS_LOG` is for operational transitions (clock sync,
+rollover, auto-zero, NVS restores); `DEBUG_LOG` is for developer diagnostics.
 
-`test led`, `nvs_debug`, `reboot` are deferred; the rest run inline.
+`test led`, `nvs_debug` and `reboot` are deferred; the rest run inline.
+Output is capped so a runaway command cannot blow up a WebSocket frame.
 
 ---
 
 # Part C — Documentation Drift
 
-Found while writing Part B. Part B reflects the code; these older statements are
-wrong or stale.
+Recorded while writing Part B. Part B reflects the code; these older statements
+were wrong or stale. Items C.1–C.4 were **fixed** during the AP-only migration;
+the rest describe files that no longer exist.
 
-### C.1 `src/sensor/` is dead code
+### C.1 `src/sensor/` was dead code — **DELETED**
 
-`current_sensor.{h,cpp}` and `voltage_sensor.{h,cpp}` are **not included by any
-file in the project** (verified by grep — the only other hits are in the old
-tree listing). All ADC sampling and RMS math lives in
-`PowerCalculator::collectSamples()` / `computeAll()`. The old tree comment
-"6-ch ADC sampling + RMS calculation" describes a module that no longer runs.
-Either delete the directory or re-document it as legacy. Flagged, not changed —
-deletion needs your call.
+`current_sensor.{h,cpp}` and `voltage_sensor.{h,cpp}` were included by nothing
+(all sampling lived in `PowerCalculator`). Verified by grep, then removed.
 
-### C.2 README: trip LED behaviour
+### C.2 README: trip LED behaviour — **still true, still wrong**
 
-`README.md` says a tripped channel shows a "RED LED blink". It does not.
-`updateLED()` only ever selects blue (OTA), red (WiFi down), or green. Blink
+`updateLED()` only ever selects blue (OTA), red (AP not ready) or green. Blink
 modes are reachable solely from `test led`, as `status_led.h` itself notes.
-Trips are signalled by the **buzzer**, the channel `status` field, the event log,
-and the ntfy push — not the LED.
+Trips are signalled by the **buzzer**, the channel `status` field, the event
+log, and the dashboard notification — not the LED.
 
-### C.3 Deferral claims for `setwifi` / `clearwifi`
+### C.3 Deferral claims for `setwifi` / `clearwifi` — **RESOLVED BY DELETION**
 
-`console_handler.h:18-21` and `index.html:263` both state that `setwifi
-connect/save` and `clearwifi` are deferred / "serial-only". Neither is true:
-`exec()` dispatches them inline, and `cmdSetWifi()` with `connect`/`save` calls
-`ESP.restart()` synchronously. All five commands are reachable from the web
-console today.
+`console_handler.h` and `index.html` once stated that `setwifi connect/save` and
+`clearwifi` were deferred / "serial-only". Neither was true. Both verbs are now
+gone (`setwifi` prints a "board is AP-only" message; `clearwifi` runs inline and
+only erases stale credentials).
 
-### C.4 Dead constants in `config.h`
+### C.4 Dead constants in `config.h` — **REMOVED**
 
-`ENERGY_UPDATE_INTERVAL_MS` (1000) and `SAMPLES_PER_CYCLE` (500) are defined but
-referenced nowhere in code. Energy integrates on every 80 ms sensor cycle using
-measured elapsed time, so the former is misleading. The latter is documentation
-of intent (≈500 samples per 50 Hz cycle at 25 kHz).
+`ENERGY_UPDATE_INTERVAL_MS`, `SAMPLES_PER_CYCLE`, `NTFY_HOST`, `NTFY_PORT`,
+`WIFI_RETRY_INTERVAL_MS`, `WIFI_MAX_RETRIES`, `AP_FALLBACK_TIMEOUT_MS`,
+`WIFI_CONNECT_TIMEOUT_MS` and `WIFI_MAX_BOOT_FAILURES` were all unreferenced
+after the migration. Verified with a per-symbol grep before deleting.
 
-### C.5 `isAdmin()` does not exist in `database.rules.json`
+### C.5–C.9 — obsolete by deletion
 
-`README.md:44` and `config.example.js:15` both direct the reader to enforce admin
-in `database.rules.json` → `isAdmin()`. There is no such function — the email
-expression is inlined verbatim at all seven privileged rules. Worth extracting to
-a real `isAdmin` function so the list lives in exactly one place.
+| Old note | Status |
+|---|---|
+| `isAdmin()` never existed in `database.rules.json` | `database.rules.json` deleted |
+| `esp32-counter@chenla.com` was an unexplained admin identity | `firebase_config.h` deleted |
+| `deviceId()` does not zero-pad to 6 hex chars | `src/utils/device_id.*` deleted |
+| `.firebaserc` / `scripts/` vs `tools/` mismatch | `tools/`, `firebase.json`, `.firebaserc`, `scripts/deploy.py` deleted |
+| `AGENTS.md` said the UI is hosted externally and the ESP32 only runs a WebSocket server | superseded by B.1/B.11: the ESP32 serves the UI |
 
-### C.6 `esp32-counter@chenla.com` is unexplained
+### C.10 Two dead-code lessons worth keeping
 
-That identity is granted full admin in the rules but appears nowhere in `src/`
-or `frontend/config.example.js`. The firmware authenticates with
-user email/password from `firebase_config.h`, so it is presumably that account —
-but the repo does not say so, and the shipped `adminEmails` list does not include
-it, so a signed-in dashboard can never present it.
+Both were found by grep and would have shipped unnoticed:
 
-### C.7 Device-ID zero padding
+- `src/utils/device_id.*` became orphaned when the RTDB paths went, and was only
+  referenced by its own `.cpp`.
+- `src/sensor/*` had been orphaned long before this change, and was still listed
+  in the Part A tree as if it were live.
 
-`deviceId()` formats the low 24 bits with `String(chip, HEX)`, which does **not**
-zero-pad, despite `device_id.h` saying "6 hex chars". A board whose low 24 bits
-start with a zero byte yields a 1–5 character id. Harmless (it is just a key) but
-it makes hand-copying the id into `frontend/config.js` `deviceId` error-prone.
-
-### C.8 `.firebaserc` / `scripts/` vs `tools/`
-
-The old tree listed only `tools/hosting_deploy.py`; the repo also has
-`tools/firebase_rest.py`, and `scripts/setup.py` + `scripts/deploy.py` were
-absent from the tree. Tree in Part A now matches the filesystem.
-
-### C.9 `doc/opencode_agent/AGENTS.md` hosting model is stale
-
-It states the UI is hosted externally and the ESP32 "only runs the WebSocket
-server — no HTTP file serving". The first half is still true, but the device now
-also serves the AP captive portal from the same :80 server when in AP mode.
+The Part A tree is the thing that made both look intentional. A tree that lists
+dead files is worse than no tree.
