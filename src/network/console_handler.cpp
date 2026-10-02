@@ -519,24 +519,22 @@ void ConsoleHandler::cmdInfo(String &out) {
 }
 
 void ConsoleHandler::cmdWifi(String &out) {
+  // Was: mode / SSID / RSSI / local IP. All of those described a station link,
+  // which no longer exists. What is left is the network the board publishes.
+  consoleAppendf(out, "  %-16s%s", "Mode:", "AP ONLY (no station interface)");
+  consoleAppendf(out, "  %-16s\"%s\"", "Network:", AP_SSID_DEFAULT);
+  consoleAppendf(out, "  %-16s%s", "Password:", AP_PASS_DEFAULT);
+  consoleAppendf(out, "  %-16s%s", "AP IP:", WiFi.softAPIP().toString().c_str());
+  consoleAppendf(out, "  %-16s%s", "Dashboard:", "http://192.168.4.1/");
+  consoleAppendf(out, "  %-16s%d", "Clients:", wifiMgr ? (int)wifiMgr->clientCount() : 0);
+
   String ssid, pass;
   nvs->loadWiFi(ssid, pass);
-  uint8_t mode = nvs->loadWiFiMode();
-  const char *modeStr[] = {"AUTO", "STA", "AP"};
-  consoleAppendf(out, "  %-16s%s", "Mode:", mode <= 2 ? modeStr[mode] : "?");
-  consoleAppendf(out, "  %-16s\"%s\"", "SSID:", ssid.c_str());
-  const char *state = "DISCONNECTED";
-  int rssi = 0;
-  if (wifiMgr) {
-    state = wifiMgr->isConnected() ? "CONNECTED"
-          : wifiMgr->isApMode()    ? "AP MODE" : "DISCONNECTED";
-    rssi = wifiMgr->getRSSI();
-  }
-  consoleAppendf(out, "  %-16s%s", "Status:", state);
-  consoleAppendf(out, "  %-16s%d dBm", "RSSI:", rssi);
-  consoleAppendf(out, "  %-16s%s", "IP:", WiFi.localIP().toString().c_str());
-  if (wifiMgr && wifiMgr->isApMode()) {
-    consoleAppendf(out, "  %-16s%s", "AP IP:", WiFi.softAPIP().toString().c_str());
+  if (ssid.length() > 0) {
+    consoleAppendf(out, "%s", "");
+    consoleAppendf(out, "%s",
+                   "  Note: a stale SSID is still stored in NVS but is never used.");
+    consoleAppendf(out, "%s", "  Run 'clearwifi' to erase it.");
   }
 }
 
