@@ -44,7 +44,7 @@ record $? "assets match frontend/ and round-trip byte-for-byte"
 # not fail the build - it ships firmware that reboot-loops at runtime on
 # server->begin(). Check it explicitly rather than discovering it on the board.
 python3 scripts/patch_async_tcp.py --check >/tmp/opencode/verify_patch.log 2>&1
-record $? "AsyncTCP 1.1.4 patches are applied"
+record $? "AsyncTCP is in a usable state for Arduino-ESP32 3.x"
 
 # --- 2. Admin-PIN gate unit tests (host build, no hardware) ------------
 stage "Admin PIN gate (unit)"
