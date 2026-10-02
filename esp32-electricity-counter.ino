@@ -174,30 +174,19 @@ void networkTask(void *pvParameters) {
       Serial.print("> ");
     }
 
-    // Eco mode: sleep the modem + slow Cloud pushes when nobody is
-    // watching. Watched = LAN WS clients, Cloud heartbeat viewers, or an
-    // OTA in progress. Sensing (Core 1) always runs full-rate.
-    // The `status` / `debug` streams print live lines here so each mode
-    // shows continuous output while enabled (events alone would sit silent
-    // in steady state).
+    // Live `status` / `debug` streams. There is no eco decision left to make
+    // here: the old "sleep the modem when nobody is watching" logic only ever
+    // applied to a STA link, and an access point has to keep beaconing whether
+    // or not anyone is connected. Sensing on Core 1 is unaffected either way.
     {
-      static uint32_t lastEco = 0;
       static uint32_t lastStatusPrint = 0;
       static uint32_t lastDebugPrint = 0;
-      bool watched = wsServer.clientCount() > 0 ||
-                     fbBridge.cloudWatched() ||
-                     otaHandler.isInProgress();
-      if (millis() - lastEco >= 2000) {
-        lastEco = millis();
-        wifiMgr.setEcoSleep(!watched);
-      }
       if (g_statusStream && millis() - lastStatusPrint >= 2000) {
         lastStatusPrint = millis();
         if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-          Serial.printf("[status] up %lus | WiFi %d dBm | eco %s | viewers %s | W [%.0f %.0f %.0f %.0f %.0f %.0f]\n",
-            (unsigned long)(millis() / 1000), wifiMgr.getRSSI(),
-            watched ? "OFF" : "ON",
-            fbBridge.cloudWatched() ? "yes" : "no",
+          Serial.printf("[status] up %lus | AP clients %d | ws %d | W [%.0f %.0f %.0f %.0f %.0f %.0f]\n",
+            (unsigned long)(millis() / 1000), wifiMgr.clientCount(),
+            (int)wsServer.clientCount(),
             systemData.channels[0].activePower, systemData.channels[1].activePower,
             systemData.channels[2].activePower, systemData.channels[3].activePower,
             systemData.channels[4].activePower, systemData.channels[5].activePower);
@@ -206,14 +195,11 @@ void networkTask(void *pvParameters) {
       }
       if (g_debugStream && millis() - lastDebugPrint >= 5000) {
         lastDebugPrint = millis();
-        Serial.printf("[debug] heap %u | rssi %d | eco %s | viewers %s | ws %d | ota %s | fb %s | net %s\n",
-          (unsigned)ESP.getFreeHeap(), wifiMgr.getRSSI(),
-          watched ? "OFF" : "ON",
-          fbBridge.cloudWatched() ? "yes" : "no",
-          wsServer.clientCount(),
+        Serial.printf("[debug] heap %u | ap %d | ws %d | ota %s | net AP | up %lus\n",
+          (unsigned)ESP.getFreeHeap(), wifiMgr.clientCount(),
+          (int)wsServer.clientCount(),
           otaHandler.isInProgress() ? "ACTIVE" : "idle",
-          fbBridge.ready() ? "ready" : "down",
-          wifiMgr.isConnected() ? "STA" : (wifiMgr.isApMode() ? "AP" : "down"));
+          (unsigned long)(millis() / 1000));
       }
     }
 
