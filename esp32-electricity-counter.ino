@@ -104,7 +104,11 @@ static void updateSharedData() {
 
 void networkTask(void *pvParameters) {
   TickType_t lastWake = xTaskGetTickCount();
-  char serBuf[64];
+  // 160, not the 64 this used to be: the longest command the firmware accepts is
+  // `set_ap "<32-char name>" "<63-char password>"`, which is 107 characters plus
+  // slack. At 64 the line was silently TRUNCATED mid-password and the user got
+  // a baffling "must be 8-63 characters" for a password they had typed in full.
+  char serBuf[160];
   uint8_t serPos = 0;
 
   while (true) {
