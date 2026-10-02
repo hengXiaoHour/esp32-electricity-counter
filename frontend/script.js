@@ -175,13 +175,15 @@ const AP_SSID_MAX = 32;
 const AP_PASS_MIN = 8;
 const AP_PASS_MAX = 63;
 
-function apValidationMessage(ssid, pass) {
+function apValidationMessage(ssidRaw, pass) {
+  const ssid = ssidRaw.trim();
   if (!ssid) return 'Enter a network name';
-  // Length is counted the same way the board counts it: octets.
-  if (new TextEncoder().encode(ssid).length > AP_SSID_MAX) {
-    return `Network name must be ${AP_SSID_MAX} characters or fewer`;
-  }
-  if (ssid !== ssid.trim()) return 'Network name cannot start or end with a space';
+  // Compared against the RAW value, not the trimmed one. Trimming first made
+  // this check unreachable - the trailing space was gone before it was tested -
+  // and the device would then be the only thing telling the user, which is the
+  // opposite of what a pre-flight check is for. Rejecting also beats silently
+  // saving something other than what they typed.
+  if (ssid !== ssidRaw) return 'Network name cannot start or end with a space';
   if (/^[ ]+$/.test(ssid)) return 'Network name cannot be only spaces';
   // eslint-disable-next-line no-control-regex
   if (/[\u0000-\u001f]/.test(ssid) || /[\u0000-\u001f]/.test(pass)) {
@@ -207,7 +209,7 @@ function saveApSettings() {
   // Say the reboot is coming BEFORE the frame goes out. sendCommand resolves
   // as soon as the frame is written, not when the board acknowledges it, and
   // the connection is about to disappear.
-  return sendCommand({ cmd: 'set_apX', ssid: ssid, pass: pass }).then(() => {
+  return sendCommand({ cmd: 'set_ap', ssid: ssid, pass: pass }).then(() => {
     passInput.value = '';
     showToast(`Saved — the board is restarting as "${ssid}"`, 6000);
     showToast('Rejoin that WiFi, then reopen http://192.168.4.1/', 6000);
