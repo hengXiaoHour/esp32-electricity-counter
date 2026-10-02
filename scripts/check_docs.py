@@ -189,9 +189,13 @@ def main():
           'id="apSsid"' in html and 'id="apPass"' in html and
           "set_ap" in js and "reset_ap" in js)
     c.add("the README documents how to rename the network and how to recover it",
-          "set_ap" in rdme and "reset_ap" in rdme)
+          # Anchored on the backticked command references, not the bare verb: the
+          # verb also appears in the command list and in the recovery prose, so a
+          # substring match kept passing after the walkthrough was gutted.
+          "`set_ap`" in rdme and "`reset_ap`" in rdme and
+          "Changing the network name and password" in rdme)
     c.add("ARCHITECTURE records that the AP identity is persisted",
-          "ap_ssid" in arch and "ap_pass" in arch)
+          "`ap_ssid`, `ap_pass`" in arch and "set_ap" in arch and "reset_ap" in arch)
 
     # --- firmware version / size ---------------------------------------
     m = re.search(r'#define FIRMWARE_VERSION "([^"]+)"', cfg)
