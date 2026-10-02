@@ -142,9 +142,21 @@ on the board's WiFi.
 
 - Baud: 115200
 - The boot banner prints the network name, password and dashboard URL.
-- `help` lists the diagnostic commands (`status`, `ch <N>`, `cal`, `info`,
-  `buzz <N>`, `inject`, `reset <N>`, `auto_zero <ch>`, `rms_samples`, `reboot`,
-  …). `status` and `debug` toggle live streams.
+- `help` lists the commands:
+
+  ```
+  help / ?          status              debug
+  ch <N>            cal                 info               wifi
+  buzz <N>          inject <ch> <kwh>   reset <N>          reset_name [N]
+  ---
+  test led          rms_samples <N>     curr_cal <ch> <val>
+  auto_zero <ch>    volt_cal <val>      clearwifi
+  nvs_debug         reboot
+  ```
+
+  `status` and `debug` toggle live serial streams. `test led`, `nvs_debug` and
+  `reboot` are deferred: they are acknowledged immediately and run on Core 1,
+  where blocking is safe.
 
 `setwifi` no longer exists — the board has no network to join. `clearwifi` is
 retained only to erase credentials stored by older firmware.
