@@ -754,3 +754,94 @@ BUILD: PASS — arduino-cli no_fs 1,465,385 B (72%, no new warnings)
 FIX 1 (firebase_bridge.cpp): skip iterator depth!=0 entries — flattened child fields are no longer treated as commands
 FIX 2 (command_processor.cpp): reset_ch_to_default/reset_channel_names REQUIRE valid ch; missing ch is ignored, not "reset all"
 ROOT CAUSE: FirebaseJson::iteratorGet recursively emits nested members; a pushed {ch,cmd} object yields the full object AND separate "ch", "cmd" leaves. Reconstructed {"cmd":"reset_ch_to_default"} (no ch) hit the legacy ch=-1 -> all-channels fallback.
+
+========================================================
+2026-10-02 — AP-only architecture migration (firmware 2.0.0 -> 3.0.0)
+
+  Decision: the board is an access point that hosts its own dashboard. No
+  station interface, no cloud, no ntfy. The UI is served from the board's own
+  flash at http://192.168.4.1/, so the page and ws://<host>/ws are SAME-ORIGIN.
+
+  Why, mechanically (not aesthetically):
+    - The old ap_portal.h documented it in its own header: a ws:// socket from
+      an https page is MIXED CONTENT and the browser blocks it. That is why a
+      read-only 72-line portal table existed as a fallback at all.
+    - The AP's captive DNS answers EVERY hostname with 192.168.4.1, so a hosted
+      UI cannot even load reliably while joined to the board's network.
+    - Removing the Firebase client freed ~376 KB, which is where the ~101 KB
+      embedded dashboard now lives.
+
+  Flash: 1,464,181 B (72%) -> 1,177,661 B (57%). RAM 116,592 -> 112,876.
+  Zero compiler warnings (the two long-standing -Wformat banner warnings were
+  FIXED, not tolerated).
+
+  Deleted: firebase_bridge.*, firebase_config.*, ntfy_notifier.*, firebaseTask,
+  ap_portal.h, device_id.*, src/sensor/* (dead since PowerCalculator),
+  firebase.json, database.rules.json, .firebaserc, scripts/deploy.py, tools/,
+  frontend/config.js + config.example.js, and 9 now-unreferenced config.h
+  constants. Verified each was unreferenced BEFORE deleting.
+
+  Promoted, not deleted: buildSystemJson() lived inside firebase_bridge.cpp as
+  the cloud's first caller. It is now src/network/system_json.cpp with the
+  WebSocket broadcast as its only caller.
+
+  --- Bugs found and fixed during the migration ------------------------
+  1. ConsoleHandler::flushEnergy() committed the Preferences handle WITHOUT
+     dataMutex while sensorTask does the same every 5 s. commit() is
+     prefs.end()+prefs.begin() and is not thread-safe. Harmless-ish before,
+     because a 10 s STA-timeout reboot was rare; with STA gone it is the ONLY
+     restart path, so it became load-bearing. Now takes the mutex.
+  2. auth_check(NULL) reached strstr(NULL) and SEGFAULTED. Found by the host
+     unit test, which asserted the NULL-frame case.
+  3. A TRUNCATED frame ('"pin":"1234' with no closing quote) AUTHENTICATED as
+     1234 — auth_extractPin returned whatever it had read. Malformed input
+     could pass the security gate. Now an unterminated field returns false.
+  4. frontend: init() touched adminPin/pinOk, declared with `let` far below it,
+     so the whole script died with "Cannot access 'adminPin' before
+     initialization" and rendered a BLANK page. Caught by the E2E run.
+  5. frontend: verifyPin's 3 s fallback resolved with the CURRENT pinOk, so a
+     session that was already unlocked reported a WRONG PIN as a successful
+     unlock. Now resolves false — unverified is not verified.
+
+  --- Test harness bugs (not product bugs) — recorded because both made
+      correct code look broken:
+  - mock_device.py's verify_pin was a stub returning "PIN OK" unconditionally,
+    so a correct board appeared to accept any PIN.
+  - mock_device.py parsed {"ch":0,...,"pin":"1234"} by collecting every digit
+    in the rest of the frame, yielding ch=1234 and silently dropping commands.
+
+  --- Every gate was proven able to FAIL -------------------------------
+  assets:  flipped icon byte (first diff at 0); stray newline after the
+           raw-literal opener (17907 vs 17906 B); row removed from the table;
+           and a REAL pre-migration binary (11/11 missing).
+  PIN:     mutation-tested — always-allow (31 failures), all-exempt (31),
+           accept-truncated (1) all caught. A fourth mutant (empty-PIN guard
+           removed) SURVIVES: verified EQUIVALENT, not a test gap, by diffing
+           the two builds' verdicts (the length term in the constant-time
+           compare already rejects len 0 vs len 4).
+  E2E:     four mutants — PIN stripped, clock not sent, auth-rejection ignored,
+           client gate removed. The auth-rejection mutant SURVIVED the first
+           run because the suite only exercised verify_pin, never the
+           {type:auth} path; a revocation test was added until it died.
+  docs:    three mutations — prefix-match asset lookup, Firebase <script>
+           re-added, firmware version bumped in code only.
+
+  Gates added: scripts/verify_all.sh (--build adds the firmware build),
+  scripts/check_docs.py (37 claims), scripts/embed_web.py (--check/--verify/
+  --verify-binary), scripts/test_auth_gate.c (47 assertions),
+  scripts/mock_device.py + scripts/e2e_aponly.js (29 checks).
+
+  --- NOT verified: hardware -------------------------------------------
+  NOTHING has been flashed. Compile-verified and mock-verified only. These
+  still need a real board and are the reason to re-flash:
+    1. The dashboard actually loads and renders from 192.168.4.1 (HTTP path,
+       PROGMEM reads, Content-Length correctness for the PNGs).
+    2. The clock is really lent and the monthly rollover fires across a
+       restart with no phone attached (RTC restore + millis advance).
+    3. A wrong PIN is refused by the ESP32, and a correct one accepted.
+
+  Known limitations, stated in the README: no access from outside the local
+  WiFi; no true PWA install (service workers need a secure context, so
+  http://192.168.4.1 offers only "Add to Home Screen"); the AP radio never
+  sleeps, so eco mode is gone; ~10 client limit; default PIN is 1234.
+========================================================

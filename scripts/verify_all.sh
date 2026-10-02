@@ -79,6 +79,11 @@ done
 record $? "no Firebase/RTDB/cloud code left in frontend/ (comments ignored)"
 [ -n "$CLOUD_HITS" ] && printf '%s' "$CLOUD_HITS"
 
+# --- 3b. Documentation claims match the code ---------------------------
+stage "Documentation"
+python3 scripts/check_docs.py >/tmp/opencode/verify_docs.log 2>&1
+record $? "$(tail -1 /tmp/opencode/verify_docs.log)"
+
 # --- 4. E2E: real page against a mock board ----------------------------
 stage "End-to-end (real frontend + mock board)"
 PORT=${MOCK_PORT:-8099}

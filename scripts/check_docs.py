@@ -98,8 +98,10 @@ def main():
           re.search(r'PIN_EXEMPT_VERBS\[\] = \{"set_time", "verify_pin"', gate) is not None)
     c.add("README and the gate agree the default PIN is 1234",
           'defaultPin() { return "1234"; }' in nvs and "`1234`" in rdme)
+    # The NVS KEY lives in the .cpp; the header only declares the accessors.
+    # Asserting the literal appears in the header was wrong - it never did.
     c.add("the PIN lives in NVS under admin_pin",
-          'getString("admin_pin"' in nvs and 'admin_pin' in nvs_h)
+          'getString("admin_pin"' in nvs and 'savePin' in nvs_h and 'loadPin' in nvs_h)
     c.add("auth_gate has no Arduino dependency (it is host-testable)",
           "#include <Arduino.h>" not in gate and "#include <WiFi.h>" not in gate)
 
@@ -108,8 +110,16 @@ def main():
           "onNotFound" in ws_code)
     c.add("the firmware calls the NON-deprecated beginResponse",
           "beginResponse(" in ws_code and "beginResponse_P" not in ws_code)
-    c.add("asset lookup is exact-match with no directory walk",
-          "No prefix or directory walking" in ws_code)
+    # Assert on the CODE SHAPE, not on a comment explaining it. The exact-match
+    # loop plus a nullptr fallthrough is the property that stops the device
+    # becoming an open file server; the prose about it is just prose.
+    c.add("asset lookup is an exact-equality loop that falls through to nullptr",
+          re.search(r"for\s*\(uint32_t i = 0; i < WEB_ASSET_COUNT; i\+\+\)\s*\{\s*"
+                    r"if \(want == WEB_ASSETS\[i\]\.path\) return &WEB_ASSETS\[i\];",
+                    ws_code) is not None
+          and "return nullptr;" in ws_code)
+    c.add("asset lookup does no prefix/directory walking",
+          "startsWith" not in ws_code and "indexOf(\"..\")" not in ws_code)
     c.add("no-cache is set on served assets",
           "no-cache" in ws_code)
 
