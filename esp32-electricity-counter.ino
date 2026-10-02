@@ -143,45 +143,35 @@ void networkTask(void *pvParameters) {
       }
     }
 
-    // Print WiFi info once, then start server
+    // Print the join instructions once the AP is up.
     {
       static bool wifiPrinted = false;
-      if (!wifiPrinted && wifiIpPrinted) {
+      if (!wifiPrinted && wifiMgr.isReady()) {
         wifiPrinted = true;
-        if (!wifiMgr.isApMode()) {
-          Serial.printf("\n  %-19s%s\n", "WiFi", "CONNECTED");
-          Serial.printf("  %-19s%s\n", "SSID:", wifiMgr.getSSID());
-          Serial.printf("  %-19s%s\n", "IP:", WiFi.localIP().toString().c_str());
-          Serial.printf("  %-19shttp://%s/\n", "Dashboard:", WiFi.localIP().toString().c_str());
-        } else {
-          Serial.printf("\n  %-19s%s\n", "WiFi", "AP MODE");
-          Serial.printf("  %-19s\"%s\" / \"%s\"\n", "SSID:", WiFi.softAPSSID().c_str(), WiFiManager::AP_PASS);
-          Serial.printf("  %-19shttp://%s/\n", "Config:", WiFi.softAPIP().toString().c_str());
-        }
+        Serial.printf("\n  %-19s%s\n", "WiFi", "AP MODE (always)");
+        Serial.printf("  %-19s\"%s\"\n", "Network:", WiFiManager::AP_SSID);
+        Serial.printf("  %-19s%s\n", "Password:", WiFiManager::AP_PASS);
+        Serial.printf("  %-19shttp://%s/\n", "Dashboard:", WiFi.softAPIP().toString().c_str());
       }
     }
 
-    // Start webserver after WiFi connects or AP starts.
-    // Firebase is started from firebaseTask (avoids blocking TLS handshake
-    // in networkTask which starves the idle task and triggers WDT).
-    {
-      static bool serverStarted = false;
-      if (!serverStarted && !wsServer.isRunning()) {
-        if (wifiMgr.isConnected() || wifiMgr.isApMode()) {
-          serverStarted = true;
-          wsServer.startServer();
-          Serial.printf("  %-19s%s\n", "WebSocket", "STARTED");
-          // ArduinoOTA must start AFTER WiFi is up — begin() before the
-          // interface has an IP leaves it deaf (notably in AP mode).
-          otaHandler.begin("esp32-elec-counter");
-          Serial.printf("  %-19s%s\n", "OTA", "STARTED");
-          Serial.println();
-          Serial.println("  Core 0: Network (WiFi, WebSocket, Firebase, OTA)");
-          Serial.println("  Core 1: Sensor (ADC, Power, Limits)");
-          Serial.println("  Type 'help' for commands");
-          Serial.print("> ");
-        }
-      }
+    // The dashboard server starts as soon as the AP has an IP. In AP-only mode
+    // there is no upstream to wait for, so this is no longer a "wait for
+    // WiFi then hope" handshake - softAP() returning IS the readiness signal.
+    if (!wsServer.isRunning() && wifiMgr.isReady()) {
+      wsServer.startServer();
+      Serial.printf("  %-19s%s\n", "Dashboard", "SERVED FROM FLASH");
+      Serial.printf("  %-19s%s\n", "WebSocket", "STARTED");
+      // ArduinoOTA must start AFTER the interface has an IP — begin() before
+      // that leaves it deaf.
+      otaHandler.begin("esp32-elec-counter");
+      Serial.printf("  %-19s%s\n", "OTA", "STARTED");
+      Serial.println();
+      Serial.println("  Join the network, then open http://192.168.4.1/");
+      Serial.println("  Core 0: Network (AP, WebSocket, Dashboard, OTA)");
+      Serial.println("  Core 1: Sensor (ADC, Power, Limits)");
+      Serial.println("  Type 'help' for commands");
+      Serial.print("> ");
     }
 
     // Eco mode: sleep the modem + slow Cloud pushes when nobody is
