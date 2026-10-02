@@ -207,7 +207,7 @@ function saveApSettings() {
   // Say the reboot is coming BEFORE the frame goes out. sendCommand resolves
   // as soon as the frame is written, not when the board acknowledges it, and
   // the connection is about to disappear.
-  return sendCommand({ cmd: 'set_ap', ssid: ssid, pass: pass }).then(() => {
+  return sendCommand({ cmd: 'set_apX', ssid: ssid, pass: pass }).then(() => {
     passInput.value = '';
     showToast(`Saved — the board is restarting as "${ssid}"`, 6000);
     showToast('Rejoin that WiFi, then reopen http://192.168.4.1/', 6000);
