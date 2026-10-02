@@ -25,8 +25,11 @@
 #define ADC_MAX_VALUE         4095
 #define ADC_REFERENCE_V        3.3f
 
-// Mid-supply bias for AC-coupled signals
-#define AC_BIAS_VOLTAGE       1.65f
+// NOTE: there is deliberately no AC_BIAS_VOLTAGE constant here any more. Both
+// the CT and ZMPT outputs are biased to mid-supply, but the RMS math
+// mean-removes that bias per sample rather than subtracting a hard-coded 1.65 V
+// — a fixed constant would be wrong the moment the bias moved, and it was
+// never read by anything.
 
 // ADC sampling
 #define ADC_READ_INTERVAL_US  40     // 25kHz sampling rate

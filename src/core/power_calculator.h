@@ -28,7 +28,6 @@ public:
   void setNoiseFloor(int ch, float val);
   void setLpfAlpha(int ch, float val);
   bool requestAutoZero(int ch);
-  void cancelAutoZero();
   bool isAutoZeroBusy() const;
   bool isAutoZeroActive() const { return azActive; }
   int getAutoZeroChannel() const { return azActive ? azChannel : -1; }

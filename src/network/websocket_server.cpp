@@ -89,13 +89,6 @@ bool WebSocketServer::serveAsset(AsyncWebServerRequest *request) {
   return true;
 }
 
-void WebSocketServer::stopServer() {
-  if (!started) return;
-  if (ws) { ws->closeAll(); delete ws; ws = nullptr; }
-  if (server) { delete server; server = nullptr; }
-  started = false;
-}
-
 void WebSocketServer::loop() {
   if (ws) ws->cleanupClients();
 }

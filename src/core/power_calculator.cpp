@@ -141,14 +141,6 @@ bool PowerCalculator::requestAutoZero(int ch) {
   return true;
 }
 
-void PowerCalculator::cancelAutoZero() {
-  azActive = false;
-  azLpfForced = false;
-  azQueueLen = 0;
-  azChannel = -1;
-  azBatchCount = 0;
-}
-
 bool PowerCalculator::isAutoZeroBusy() const {
   return azActive || azQueueLen > 0;
 }

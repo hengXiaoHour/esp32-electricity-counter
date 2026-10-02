@@ -71,9 +71,15 @@ class R:
 
 def main():
     r = R()
+    # web_assets.h is GENERATED and contains the dashboard's HTML/CSS/JS inside
+    # a raw string literal. Scanning it as C++ finds JS functions and CSS
+    # functions ("rgba", "showInstallRow", "var") and reports them as dead C++
+    # methods. It is excluded here and covered by the frontend rules instead.
+    GENERATED = {"src/network/web_assets.h"}
     cpp = [p for p in ROOT.rglob("*")
            if p.suffix in (".cpp", ".h", ".ino")
-           and ".git" not in p.parts and "build" not in p.parts]
+           and ".git" not in p.parts and "build" not in p.parts
+           and str(p.relative_to(ROOT)) not in GENERATED]
     cpp_txt = {str(p.relative_to(ROOT)): strip_cpp(p.read_text(errors="replace")) for p in cpp}
     bodies = "\n".join(t for f, t in cpp_txt.items() if not f.endswith(".h"))
 
@@ -91,7 +97,13 @@ def main():
         if name in ("begin", "loop", "setup"):
             continue
         total = len(re.findall(r"(?<![\w])" + re.escape(name) + r"\s*\(", bodies))
-        defs = len(re.findall(r"::" + re.escape(name) + r"\s*\(", bodies))
+        # A DEFINITION is `Class::method(...)` followed by `{`. A qualified CALL
+        # is `Class::method(...)` with no body. Counting both as definitions made
+        # serveAsset (called once, inside the onNotFound lambda) and
+        # defaultChannelName (called once, in the .ino) look dead when they are
+        # not - which is how a checker learns to be ignored.
+        defs = len(re.findall(r"::" + re.escape(name) + r"\s*\([^;{]*\)\s*(?:const\s*)?\{",
+                              bodies, re.S))
         if total - defs <= 0:
             dead.append("%s (%s)" % (name, where))
     r.add("every header-declared method is called from a .cpp/.ino",
@@ -100,11 +112,15 @@ def main():
     # --- 2. config.h constants nobody reads ------------------------------
     cfg = read("src/config.h")
     consts = re.findall(r"^#define\s+([A-Z_][A-Z0-9_]*)\b", cfg, re.M)
+    # Search config.h too, but ignore the constant's own `#define` line. The six
+    # PIN_CURRENT_CH* are only referenced by the CURRENT_PINS array that lives in
+    # config.h itself, so excluding the whole file wrongly reported them dead.
+    defs_lines = {c: "#define %s" % c for c in consts}
     unused = []
     for c in consts:
+        pat = re.compile(r"(?<![A-Za-z0-9_])" + c + r"(?![A-Za-z0-9_])")
         hits = [f for f, t in cpp_txt.items()
-                if f != "src/config.h"
-                and re.search(r"(?<![A-Za-z0-9_])" + c + r"(?![A-Za-z0-9_])", t)]
+                if any(pat.search(ln) and defs_lines[c] not in ln for ln in t.split("\n"))]
         if not hits:
             unused.append(c)
     r.add("every config.h constant is referenced somewhere", not unused,
@@ -116,7 +132,9 @@ def main():
     css_body = strip_css(css)
     # Drop data-URI payloads before harvesting class names: `www.w3.org` in an
     # inline SVG otherwise yields phantom classes `.org` and `.w3`.
-    css_body = re.sub(r"url\(\s*[\"']?data:[^\"')]*[\"']?\s*\)", " ", css_body)
+    # `[^"')]*` cannot work here: the inline SVG data-URIs contain their own
+    # quotes. The payload has no ')' in it, so match up to the first ')'.
+    css_body = re.sub(r"url\([^)]*\)", " ", css_body)
     referenced = html + js + sw
     classes = set(re.findall(r"\.([a-zA-Z][\w-]*)", css_body))
     dead_css = sorted(
@@ -157,7 +175,11 @@ def main():
             "src/sensor", "src/utils/device_id.h", "src/utils/device_id.cpp",
             "src/network/firebase_bridge.cpp", "src/network/firebase_config.h",
             "src/network/ntfy_notifier.cpp", "src/network/ap_portal.h",
-            "scripts/__pycache__", "build"]
+            "scripts/__pycache__"]
+    # NOTE: build/ is deliberately NOT in this list. arduino-cli's default build
+    # directory IS ./build, so it is recreated by any plain `arduino-cli compile`
+    # with no --output-dir. It is gitignored and transient; treating it as junk
+    # to be kept deleted would just make the gate noisy. Pass --output-dir.
     back = [g for g in gone if (ROOT / g).exists()]
     r.add("the cleanup deletions stay deleted", not back, "reappeared: " + ", ".join(back))
 

@@ -20,7 +20,6 @@ public:
              PowerCalculator *powerCalc, LimitManager *limitMgr,
              WiFiManager *wifiMgr);
   void startServer();
-  void stopServer();
   bool isRunning() const { return started; }
   void loop();
 
