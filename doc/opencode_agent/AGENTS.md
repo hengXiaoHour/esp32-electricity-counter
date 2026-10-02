@@ -30,13 +30,16 @@ no internet required.
 5. **`commit()` on `Preferences` is `prefs.end()` + `prefs.begin()` and is NOT
    thread-safe.** Every NVS write from both cores must hold `dataMutex`, and
    every one must actually `commit()` or it never reaches flash.
-6. **AsyncTCP 1.1.4 needs patching on Arduino-ESP32 3.3.x.** Run
-   `python3 scripts/patch_async_tcp.py` after any library install or upgrade.
-   It is idempotent. Skipping it fails the build at `ESPAsyncWebServer.h:1699`
-   for patch #1 — but patch #2 **does not fail the build at all**. Without it
-   the firmware compiles cleanly and then reboot-loops on the board with
-   `LWIP_ASSERT_CORE_LOCKED` from `server->begin()`. `build.sh` checks both
-   before compiling, for that reason.
+6. **Use AsyncTCP 3.x (ESP32Async) — never pin 1.1.4.** Arduino-ESP32 3.x builds
+   lwIP with `CONFIG_LWIP_TCPIP_CORE_LOCKING=y` + `CONFIG_LWIP_CHECK_THREAD_SAFETY`,
+   so any lwIP call from an ordinary FreeRTOS task aborts the board. 1.1.4 calls
+   several of them and needed three patches (`scripts/patch_async_tcp.py`); 3.x
+   marshals them upstream, so the patches are obsolete and cannot apply. The
+   patcher detects the 3.x line and stands down. Install from
+   `github.com/ESP32Async/*`, **not** the archived `me-no-dev` repo — the old
+   web server also corrupted its `AsyncClient` under concurrent requests, which
+   is why the dashboard could not load at all (see the root-cause section
+   below). `build.sh` gates on this either way.
 7. **Admin PIN is enforced on the ESP32, not in the UI.** See
    `src/network/auth_gate.cpp`. Hiding a button is convenience, not protection.
    New mutating verbs are gated automatically because the check runs *before*
