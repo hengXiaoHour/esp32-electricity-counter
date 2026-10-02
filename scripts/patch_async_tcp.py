@@ -400,6 +400,16 @@ def revert(src: Path) -> int:
             ok(f"reverted in {fname}")
         elif old in text:
             ok(f"{fname}: already pristine")
+        else:
+            # Neither the patched nor the pristine form is here: the file moved
+            # under us. Staying quiet about that is how a half-reverted library
+            # gets shipped.
+            fail(f"{fname}: neither patched nor pristine text found — "
+                 f"library layout changed, patch needs re-evaluating")
+            dim(f"expected one of:")
+            dim(f"  new: {new.strip().splitlines()[0][:70]}")
+            dim(f"  old: {old.strip().splitlines()[0][:70]}")
+            problems += 1
     return problems
 
 
