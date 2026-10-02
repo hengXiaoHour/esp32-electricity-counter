@@ -17,7 +17,20 @@
 // expectation that must fail, run before the real one. Without that, a test
 // that can only ever pass tells you nothing.
 
-const { chromium } = require('playwright');
+// Playwright is installed in the GLOBAL npm root on this machine, not as a
+// local dependency, so a bare require('playwright') fails from this script.
+const path = require('path');
+const { execSync } = require('child_process');
+
+function loadPlaywright() {
+  try {
+    return require('playwright');
+  } catch (e) {
+    const globalRoot = execSync('npm root -g', { encoding: 'utf8' }).trim();
+    return require(path.join(globalRoot, 'playwright'));
+  }
+}
+const { chromium } = loadPlaywright();
 
 const BASE = process.argv[2] || 'http://127.0.0.1:8099';
 const PIN = '1234';
