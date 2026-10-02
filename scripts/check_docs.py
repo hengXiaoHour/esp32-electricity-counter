@@ -126,14 +126,62 @@ def main():
     # --- AP-only -------------------------------------------------------
     c.add("WiFiManager has no station interface at all",
           "connectToWiFi" not in wm and "WIFI_STA" not in wm and "WIFI_STA" not in wm_h)
-    c.add("WiFiManager::begin takes no NVS argument",
-          "void WiFiManager::begin()" in wm)
+    # AP-only removed the NVS dependency from WiFiManager::begin() and this
+    # feature put it back: the network name and password are no longer compile-
+    # time constants. The old claim ("takes no NVS argument") is now false, and
+    # a stale assertion is worse than none.
+    c.add("WiFiManager::begin loads the AP identity from NVS",
+          "void WiFiManager::begin(NVSManager *nvsRef)" in wm and
+          "void begin(NVSManager *nvsRef);" in wm_h and
+          "loadCredentials(nvsRef)" in wm)
+    c.add("the AP defaults live in config.h (both NVSManager and WiFiManager need them)",
+          'AP_SSID_DEFAULT = "ESP32-Elec-Counter"' in cfg and
+          'AP_PASS_DEFAULT = "configure123"' in cfg and
+          "AP_SSID_DEFAULT" not in wm_h)
     c.add("captive DNS still answers every hostname with the board IP",
           re.search(r'dnsServer\.start\(53, "\*", apIP\)', wm) is not None)
-    c.add("AP credentials are the ones the README documents",
-          'AP_SSID_DEFAULT = "ESP32-Elec-Counter"' in wm_h and
-          'AP_PASS_DEFAULT = "configure123"' in wm_h and
+    c.add("the README still documents the factory AP credentials",
           "ESP32-Elec-Counter" in rdme and "configure123" in rdme)
+
+    # --- AP credentials are writable, and that path is real --------------
+    # A half-finished feature here is worse than no feature: the user renames
+    # the network, the board reboots onto the new name, and if the change was
+    # never committed they are locked out of a network they can no longer see.
+    c.add("the AP credentials live in NVS under ap_ssid / ap_pass",
+          'getString("ap_ssid"' in nvs and 'putString("ap_ssid"' in nvs and
+          'getString("ap_pass"' in nvs and 'putString("ap_pass"' in nvs)
+    c.add("the .ino hands the NVS handle to WiFiManager::begin",
+          "wifiMgr.begin(&nvs);" in ino)
+    c.add("a stored-but-invalid identity falls back to the defaults instead of booting headless",
+          re.search(r"if \(!ap_creds_validate\(ssid\.c_str\(\), pass\.c_str\(\), &reason\)\)", wm)
+          is not None and 'return;' in wm and 'AP_SSID_DEFAULT' in wm)
+    c.add("set_ap is PIN-gated (it is a mutating verb, so the gate covers it by default)",
+          '"cmd\\":\\"set_ap"' not in ino and
+          "ap_creds_validate" in cmd and "requestReboot" in cmd)
+    # Persistence has to happen BEFORE the restart, or the reboot resurrects the
+    # old identity and the change silently evaporates.
+    save_at = cmd.find("nvs->saveApCredentials")
+    commit_at = cmd.find("nvs->commit()", save_at)
+    reboot_at = cmd.find("requestReboot", save_at)
+    c.add("set_ap commits to flash before it asks for the restart",
+          save_at > 0 and commit_at > save_at and reboot_at > commit_at,
+          "save@%d commit@%d reboot@%d" % (save_at, commit_at, reboot_at))
+    # The frontend rules must match the device's, or the UI rejects something the
+    # board accepts (annoying) or accepts something the board rejects (the
+    # user's phone drops off a network the board never joined).
+    for label, pattern in [("password minimum", r"AP_PASS_MIN\s*=\s*8"),
+                           ("password maximum", r"AP_PASS_MAX\s*=\s*63"),
+                           ("name maximum", r"AP_SSID_MAX\s*=\s*32")]:
+        c.add("the frontend's AP %s matches ap_creds.h" % label,
+              re.search(pattern, js) is not None and
+              re.search(pattern.replace("\\s*=\\s*", "\\s+"), apc) is not None)
+    c.add("the dashboard has an Access Point panel that sends set_ap",
+          'id="apSsid"' in html and 'id="apPass"' in html and
+          "set_ap" in js and "reset_ap" in js)
+    c.add("the README documents how to rename the network and how to recover it",
+          "set_ap" in rdme and "reset_ap" in rdme)
+    c.add("ARCHITECTURE records that the AP identity is persisted",
+          "ap_ssid" in arch and "ap_pass" in arch)
 
     # --- firmware version / size ---------------------------------------
     m = re.search(r'#define FIRMWARE_VERSION "([^"]+)"', cfg)
