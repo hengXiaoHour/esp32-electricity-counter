@@ -75,21 +75,29 @@ bool ap_creds_validate(const char *ssid, const char *pass, const char **reason) 
 }
 
 // Copies a possibly-quoted field out of `*p`, advancing `*p` past it.
-// Returns false when a quote is opened and never closed.
+// Returns false when a quote is opened and never closed, OR when the field does
+// not fit the destination.
+//
+// It refuses rather than truncating. Silently shortening an over-long name would
+// produce a *valid* 32-character SSID out of a 39-character one, and the board
+// would then broadcast something other than what was typed - a rename that
+// appears to work and is wrong. Refusing costs one message and keeps the promise
+// that what is stored is what was asked for.
 static bool takeField(const char **p, char *out, size_t outLen) {
   const char *s = *p;
+  size_t n;
   if (*s == '"') {
     const char *close = strchr(s + 1, '"');
     if (close == NULL) return false;      // opened, never closed
-    size_t n = (size_t)(close - (s + 1));
-    if (n >= outLen) n = outLen - 1;
+    n = (size_t)(close - (s + 1));
+    if (n >= outLen) return false;        // would overflow
     memcpy(out, s + 1, n);
     out[n] = '\0';
     *p = close + 1;
   } else {
     const char *end = strchr(s, ' ');
-    size_t n = (end != NULL) ? (size_t)(end - s) : strlen(s);
-    if (n >= outLen) n = outLen - 1;
+    n = (end != NULL) ? (size_t)(end - s) : strlen(s);
+    if (n >= outLen) return false;        // would overflow
     memcpy(out, s, n);
     out[n] = '\0';
     *p = (end != NULL) ? end : s + strlen(s);
@@ -114,7 +122,7 @@ bool ap_creds_splitArgs(const char *args, char *ssid, size_t ssidLen,
     const char *close = strchr(p + 1, '"');
     if (close == NULL) return false;
     size_t n = (size_t)(close - (p + 1));
-    if (n >= ssidLen) n = ssidLen - 1;
+    if (n >= ssidLen) return false;        // would overflow
     memcpy(ssid, p + 1, n);
     ssid[n] = '\0';
     p = close + 1;
@@ -122,7 +130,7 @@ bool ap_creds_splitArgs(const char *args, char *ssid, size_t ssidLen,
     const char *end = strchr(p, ' ');
     if (end == NULL || end == p) return false;   // no separator / empty name
     size_t n = (size_t)(end - p);
-    if (n >= ssidLen) n = ssidLen - 1;
+    if (n >= ssidLen) return false;        // would overflow
     memcpy(ssid, p, n);
     ssid[n] = '\0';
     p = end;
@@ -131,20 +139,13 @@ bool ap_creds_splitArgs(const char *args, char *ssid, size_t ssidLen,
   while (*p == ' ' || *p == '\t') p++;
   if (*p == '\0') return false;                 // a name with no password
   if (!takeField(&p, pass, passLen)) return false;
-
-  // Trailing whitespace after an UNQUOTED password is not meaningful (the
-  // console already trimmed the line) but after a quoted one it is not part of
-  // the field either, so nothing is stripped here: what was inside the quotes
-  // is what gets stored.
   if (*p == '\0') return true;
 
   // Anything left over is refused rather than silently ignored. `set_ap Meter
   // hunter2 oops` is almost certainly a typo, and storing "hunter2 oops" would
-  // look like it worked right up until the phone could not join.
-  if (*p == ' ' || *p == '\t') {
-    const char *rest = p;
-    while (*rest == ' ' || *rest == '\t') rest++;
-    if (*rest == '\0') return true;            // trailing spaces only
-  }
-  return false;
+  // look like it worked right up until the phone could not join. Trailing
+  // whitespace is the one exception: the console trims the line, so those
+  // spaces are not part of anything.
+  while (*p == ' ' || *p == '\t') p++;
+  return *p == '\0';
 }
