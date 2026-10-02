@@ -357,7 +357,16 @@ def apply_patches(src: Path, check_only: bool) -> int:
         text = original = path.read_text()
 
         for name, subs in entries:
-            applied_already = all(new in text for _, new, _ in subs)
+            # "Already applied" must be decided by the ANCHOR (a short marker that
+            # survives later patches), never by the full replacement text. The two
+            # helper blocks both end at the same _tcp_bind_api line, so once the
+            # callback block is inserted in front of it the tcp_new block's own
+            # text is no longer contiguous — testing for that made a patched
+            # library look unpatched and the script cheerfully inserted a SECOND
+            # copy of both helpers on the next run.
+            anchors = [_anchor for _, _, _anchor in subs if _anchor]
+            applied_already = all(a in text for a in anchors) if anchors else all(
+                new in text for _, new, _ in subs)
             if applied_already:
                 ok(f"{name}: already applied")
                 continue
