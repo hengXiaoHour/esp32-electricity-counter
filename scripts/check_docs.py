@@ -170,15 +170,21 @@ def main():
     c.add("set_ap commits to flash before it asks for the restart",
           save_at > 0 and commit_at > save_at and reboot_at > commit_at,
           "save@%d commit@%d reboot@%d" % (save_at, commit_at, reboot_at))
-    # The frontend rules must match the device's, or the UI rejects something the
-    # board accepts (annoying) or accepts something the board rejects (the
-    # user's phone drops off a network the board never joined).
-    for label, pattern in [("password minimum", r"AP_PASS_MIN\s*=\s*8"),
-                           ("password maximum", r"AP_PASS_MAX\s*=\s*63"),
-                           ("name maximum", r"AP_SSID_MAX\s*=\s*32")]:
-        c.add("the frontend's AP %s matches ap_creds.h" % label,
-              re.search(pattern, js) is not None and
-              re.search(pattern.replace("\\s*=\\s*", "\\s+"), apc) is not None)
+    # The frontend's copy of these limits must match the device's, or the UI
+    # rejects something the board accepts (annoying) or accepts something the
+    # board rejects - which, for the minimum, means the phone drops off a network
+    # the board never joined. The NAMES differ between the two (a C macro vs a JS
+    # const), so each pair is asserted explicitly rather than by a clever regex
+    # rewrite, which is how the first version of this check silently passed on
+    # one side only.
+    for label, js_pat, cpp_pat in [
+            ("password minimum", r"AP_PASS_MIN\s*=\s*8\b", r"#define\s+AP_MIN_PASS_LEN\s+8\b"),
+            ("password maximum", r"AP_PASS_MAX\s*=\s*63\b", r"#define\s+AP_MAX_PASS_LEN\s+63\b"),
+            ("name maximum", r"AP_SSID_MAX\s*=\s*32\b", r"#define\s+AP_MAX_SSID_LEN\s+32\b")]:
+        c.add("the frontend's AP %s matches the device rule" % label,
+              re.search(js_pat, js) is not None and re.search(cpp_pat, apc) is not None,
+              "js %s / ap_creds.h %s" % (bool(re.search(js_pat, js)),
+                                         bool(re.search(cpp_pat, apc))))
     c.add("the dashboard has an Access Point panel that sends set_ap",
           'id="apSsid"' in html and 'id="apPass"' in html and
           "set_ap" in js and "reset_ap" in js)
