@@ -28,7 +28,6 @@ Allowed directories (from the lock file): `doc`, `src`, `src/sensor`, `src/core`
 ```
 esp32-electricity-counter/
 ├── esp32-electricity-counter.ino    # Entry point: setup() + loop() + task creation
-├── opencode.json                    # Agent config
 ├── .gitignore
 ├── README.md                        # Setup instructions
 ├── design.md                        # Dashboard visual style + design decisions
@@ -87,11 +86,15 @@ esp32-electricity-counter/
 │ x src/sensor/*                      -- deleted, dead since PowerCalculator
 │ x scripts/setup.py                  -- deleted, a Firebase config wizard
 │ x .workflow/{active,PLAN,RESEARCH}  -- deleted, completed 2026-08 tasks
-
-└── .workflow/                       # VERIFICATION.log is the durable changelog.
-    └── VERIFICATION.log               # Per-task scratch files are gitignored and
-                                       # deleted when the task completes.
+│ x .workflow/VERIFICATION.log        -- deleted, logged the ripped-out relay pair
+│ x opencode.json                     -- deleted, an unrelated Stitch MCP config
 ```
+
+The project root has no agent scratch directory. Per-task working files
+(`PLAN.md`, `RESEARCH.md`, `active.json`) are gitignored and are expected to be
+deleted when the task completes; the durable record is git itself — every
+change lands as a commit message, which is why nothing here needs a changelog
+file that has to be maintained by hand.
 
 ## Conventions
 

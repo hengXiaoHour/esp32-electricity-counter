@@ -179,7 +179,11 @@ def main():
             "src/sensor", "src/utils/device_id.h", "src/utils/device_id.cpp",
             "src/network/firebase_bridge.cpp", "src/network/firebase_config.h",
             "src/network/ntfy_notifier.cpp", "src/network/ap_portal.h",
-            "scripts/__pycache__"]
+            "scripts/__pycache__", "opencode.json", ".workflow/VERIFICATION.log"]
+    # NOTE: the .workflow DIRECTORY itself is deliberately not in this list. It is
+    # legitimate per-task scratch (PLAN.md / RESEARCH.md / active.json, all
+    # gitignored) and is expected to reappear while a task is in flight. Only the
+    # hand-maintained changelog it used to hold is pinned as gone.
     # NOTE: build/ is deliberately NOT in this list. arduino-cli's default build
     # directory IS ./build, so it is recreated by any plain `arduino-cli compile`
     # with no --output-dir. It is gitignored and transient; treating it as junk
