@@ -54,10 +54,30 @@ stage "Frontend"
 node --check frontend/script.js 2>/tmp/opencode/verify_js.log
 record $? "script.js parses"
 
-CLOUD_TOKENS=$(grep -rniE 'firebase|gstatic|cloudDb|normalizeSnapshot|loadDevicePicker|FB_CONFIG|set_ntfy_topic|connMode|devicePicker' \
-  frontend/ 2>/dev/null | grep -v '^frontend/icons/' | wc -l)
-[ "$CLOUD_TOKENS" -eq 0 ]
-record $? "no Firebase/RTDB/cloud tokens left in frontend/ (found $CLOUD_TOKENS)"
+# Strip comments before grepping. Without this the check fails on prose that
+# legitimately NAMES a removed thing (e.g. "it used to be connMode ..."), which
+# trains you to ignore the gate instead of fixing the code.
+strip_comments() {
+  python3 - "$1" <<'PY'
+import re, sys
+src = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+src = re.sub(r"/\*.*?\*/", " ", src, flags=re.S)      # block comments
+src = re.sub(r"^\s*//.*$", "", src, flags=re.M)        # whole-line //
+src = re.sub(r"//.*$", "", src, flags=re.M)            # trailing //
+src = re.sub(r"<!--.*?-->", " ", src, flags=re.S)      # html comments
+sys.stdout.write(src)
+PY
+}
+
+CLOUD_HITS=""
+for f in frontend/*.js frontend/*.html frontend/*.css; do
+  [ -e "$f" ] || continue
+  hits=$(strip_comments "$f" | grep -niE 'firebase|gstatic|cloudDb|normalizeSnapshot|loadDevicePicker|FB_CONFIG|set_ntfy_topic|connMode|devicePicker' || true)
+  [ -n "$hits" ] && CLOUD_HITS="$CLOUD_HITS$f: $hits"$'\n'
+done
+[ -z "$CLOUD_HITS" ]
+record $? "no Firebase/RTDB/cloud code left in frontend/ (comments ignored)"
+[ -n "$CLOUD_HITS" ] && printf '%s' "$CLOUD_HITS"
 
 # --- 4. E2E: real page against a mock board ----------------------------
 stage "End-to-end (real frontend + mock board)"

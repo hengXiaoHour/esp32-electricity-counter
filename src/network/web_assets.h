@@ -1,7 +1,7 @@
 // GENERATED FILE - DO NOT EDIT BY HAND.
 // Source:    frontend/ (run: python3 scripts/embed_web.py)
-// Content:   sha256:1ca6f05c03983e01
-// Assets:    10 files, 101861 bytes
+// Content:   sha256:46636823812546bc
+// Assets:    10 files, 101932 bytes
 //
 // Text assets are PROGMEM raw string literals; binary assets are byte
 // arrays. Both sizes come from sizeof() at the point of use, so the
@@ -747,7 +747,7 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
 )rawliteral";
 
 
-// ---- /script.js  (script.js, 47398 bytes) ----
+// ---- /script.js  (script.js, 47469 bytes) ----
 static const char WEB_ASSET_2_SCRIPT_JS[] PROGMEM = R"rawliteral(let ws = null;
 let userDisconnect = false;
 let activeEditChIdx = null;
@@ -759,7 +759,10 @@ let demoInterval = null;
 let lastEventKey = '';
 let lastToastEventKey = '';
 let chartBuf = {};
-let connMode = 'local';            // 'local' | 'demo'
+// Demo is the only alternative to a live connection, so this is a boolean.
+// It was `connMode` with a 'local' | 'cloud' | 'demo' string union back when
+// there were three transports to choose between.
+let isDemo = false;
 let timeSyncTimer = null;         // re-lend the clock to the board periodically
 let lastDataTs = 0;
 // Admin-PIN state. Declared HERE, at the top of the state block, even though
@@ -835,14 +838,14 @@ function promptInstall() {
   // remaining reason the demo path exists: previewing the dashboard on a
   // machine that cannot join the board's WiFi.
   const demo = /[?&]demo=1\b/.test(location.search);
-  connMode = demo ? 'demo' : 'local';
+  isDemo = demo;
 
   // Restore a remembered PIN so a returning admin is not re-prompted. The
   // board still re-validates it, so a changed PIN simply leaves us read-only.
   adminPin = pinCached();
   applyPinState();
 
-  if (connMode === 'demo') {
+  if (isDemo) {
     startDemoMode();
   } else {
     handleConnect();
@@ -896,7 +899,7 @@ function deviceWSUrl() {
 
 function handleConnect() {
   document.body.classList.remove('conn-mode-demo');
-  connMode = 'local';
+  isDemo = false;
   connectWS();
 }
 
@@ -905,7 +908,7 @@ function handleDisconnect() {
   if (demoInterval) clearInterval(demoInterval);
   if (timeSyncTimer) { clearInterval(timeSyncTimer); timeSyncTimer = null; }
   if (ws) { ws.close(); ws = null; }
-  connMode = 'local';
+  isDemo = false;
   document.body.classList.remove('conn-mode-demo');
   showConnectPanel();
 }
@@ -1020,7 +1023,7 @@ async function unlockWithPin(pin) {
 // per-client state to hang one on. A read-only viewer simply never has one to
 // send, and the board rejects the frame.
 function sendCommand(obj) {
-  if (connMode === 'demo') {
+  if (isDemo) {
     if (obj.cmd === 'set_name' && latestChannelData[obj.ch]) latestChannelData[obj.ch].n = obj.name;
     if (obj.cmd === 'set_monthly_kwh' && latestChannelData[obj.ch]) latestChannelData[obj.ch].mkwh = obj.val;
     if (obj.cmd === 'reset_counter' && latestChannelData[obj.ch]) {
@@ -1089,14 +1092,14 @@ function connectWS() {
     pinOk = false;
     adminPin = '';
     applyPinState();
-    if (!userDisconnect && connMode === 'local') {
+    if (!userDisconnect && !isDemo) {
       setConnectStatus('Disconnected — is your phone on the board\'s WiFi?', 'disconnected');
       showConnectPanel();
     }
   };
 
   ws.onerror = () => {
-    if (connMode === 'local') setConnectStatus('Connection error', 'disconnected');
+    if (!isDemo) setConnectStatus('Connection error', 'disconnected');
   };
 
   ws.onmessage = (e) => {
@@ -1914,7 +1917,7 @@ function sendConsoleCommand() {
 
   appendConsoleLine('> ' + line, 'echo');
 
-  if (connMode === 'demo') {
+  if (isDemo) {
     appendConsoleLine('  Console unavailable in demo mode.', 'err');
     return;
   }
@@ -1942,7 +1945,7 @@ function onConsoleKey(ev) {
 
 // ============ Mock Demo Mode ============
 function startDemoMode() {
-  connMode = 'demo';
+  isDemo = true;
   document.body.classList.add('conn-mode-demo');
   if (ws) { ws.close(); ws = null; }
   showDashboard();
