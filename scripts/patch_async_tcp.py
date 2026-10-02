@@ -140,6 +140,118 @@ static tcp_pcb * _tcp_new(void) {
 static err_t _tcp_bind_api(struct tcpip_api_call_data *api_call_msg){"""
 
 TCP_NEW_MARKER = "static err_t _tcp_new_api("
+CB_MARKER = "static err_t _tcp_set_callbacks_api("
+
+# PATCH 3 -------------------------------------------------------------------
+# Registering callbacks is core-locked exactly like allocating the PCB, and
+# patch 2 proved it the hard way: after fixing tcp_new_ip_type(), the board got
+# one line further and then aborted on tcp_arg() instead.
+#
+# Both helpers run on the TCPIP thread and are NOT safe to call from a lwIP
+# callback (that would deadlock on tcpip_api_call). Each site patched below is
+# reached from an application task; the ones left alone already run there.
+SET_CALLBACKS_BLOCK = """// PATCH (project): callback registration is core-locked too.
+// tcp_arg/tcp_recv/tcp_sent/tcp_err/tcp_poll (and tcp_accept on a listening PCB)
+// all run LWIP_ASSERT_CORE_LOCKED(), so calling them straight from an
+// application task aborts the board:
+//   assert failed: tcp_arg /IDF/components/lwip/lwip/src/core/tcp.c:2035
+//          (Required to lock TCPIP core functionality!)
+// They all mutate the same PCB, so the whole group goes through ONE api call to
+// keep it atomic with respect to the TCPIP thread.
+// DO NOT call these from a lwIP callback (AsyncServer::_accept,
+// AsyncClient::_error, AsyncClient::_lwip_fin): those already run on the TCPIP
+// thread and tcpip_api_call() would deadlock there.
+typedef struct {
+    struct tcpip_api_call_data call;
+    tcp_pcb * pcb;
+    void * arg;
+    tcp_recv_fn recv_cb;
+    tcp_sent_fn sent_cb;
+    tcp_err_fn err_cb;
+    tcp_poll_fn poll_cb;
+    tcp_accept_fn accept_cb;
+} tcp_callbacks_api_t;
+
+static err_t _tcp_set_callbacks_api(struct tcpip_api_call_data *api_call_msg){
+    tcp_callbacks_api_t * msg = (tcp_callbacks_api_t *)api_call_msg;
+    msg->err = ERR_OK;
+    tcp_arg(msg->pcb, msg->arg);
+    if (msg->recv_cb)   { tcp_recv(msg->pcb, msg->recv_cb); }
+    if (msg->sent_cb)   { tcp_sent(msg->pcb, msg->sent_cb); }
+    if (msg->err_cb)    { tcp_err(msg->pcb, msg->err_cb); }
+    if (msg->poll_cb)   { tcp_poll(msg->pcb, msg->poll_cb, 1); }
+    if (msg->accept_cb) { tcp_accept(msg->pcb, msg->accept_cb); }
+    return msg->err;
+}
+
+static void _tcp_set_data_callbacks(tcp_pcb * pcb, void * arg,
+        tcp_recv_fn recv_cb, tcp_sent_fn sent_cb,
+        tcp_err_fn err_cb, tcp_poll_fn poll_cb){
+    if (pcb == NULL) { return; }
+    tcp_callbacks_api_t msg;
+    msg.pcb = pcb;
+    msg.arg = arg;
+    msg.recv_cb = recv_cb;
+    msg.sent_cb = sent_cb;
+    msg.err_cb = err_cb;
+    msg.poll_cb = poll_cb;
+    msg.accept_cb = NULL;          // never touch tcp_accept on a data PCB
+    tcpip_api_call(_tcp_set_callbacks_api, (struct tcpip_api_call_data*)&msg);
+}
+
+static void _tcp_set_listen_callbacks(tcp_pcb * pcb, void * arg,
+        tcp_accept_fn accept_cb){
+    if (pcb == NULL) { return; }
+    tcp_callbacks_api_t msg;
+    msg.pcb = pcb;
+    msg.arg = arg;
+    msg.recv_cb = NULL;            // a listening PCB has no data callbacks
+    msg.sent_cb = NULL;
+    msg.err_cb = NULL;
+    msg.poll_cb = NULL;
+    msg.accept_cb = accept_cb;
+    tcpip_api_call(_tcp_set_callbacks_api, (struct tcpip_api_call_data*)&msg);
+}
+
+static err_t _tcp_bind_api(struct tcpip_api_call_data *api_call_msg){"""
+
+# The four data-PCB sites, replaced one at a time. `old` must be unique in the
+# file -- each is anchored on a neighbouring line that makes it so.
+CB_SUBS = [
+    # AsyncClient::operator=
+    ("        _rx_last_packet = millis();\n"
+     "        tcp_arg(_pcb, this);\n"
+     "        tcp_recv(_pcb, &_tcp_recv);\n"
+     "        tcp_sent(_pcb, &_tcp_sent);\n"
+     "        tcp_err(_pcb, &_tcp_error);\n"
+     "        tcp_poll(_pcb, &_tcp_poll, 1);\n",
+     "        _rx_last_packet = millis();\n"
+     "        _tcp_set_data_callbacks(_pcb, this, &_tcp_recv, &_tcp_sent, &_tcp_error, &_tcp_poll);   // PATCH: was 5 raw core-locked calls\n"),
+    # AsyncClient::connect()
+    ("    tcp_arg(pcb, this);\n"
+     "    tcp_err(pcb, &_tcp_error);\n"
+     "    tcp_recv(pcb, &_tcp_recv);\n"
+     "    tcp_sent(pcb, &_tcp_sent);\n"
+     "    tcp_poll(pcb, &_tcp_poll, 1);\n",
+     "    _tcp_set_data_callbacks(pcb, this, &_tcp_recv, &_tcp_sent, &_tcp_error, &_tcp_poll);   // PATCH: was 5 raw core-locked calls\n"),
+    # AsyncClient::_close()  (clearing them is equally core-locked)
+    ("        tcp_arg(_pcb, NULL);\n"
+     "        tcp_sent(_pcb, NULL);\n"
+     "        tcp_recv(_pcb, NULL);\n"
+     "        tcp_err(_pcb, NULL);\n"
+     "        tcp_poll(_pcb, NULL, 0);\n"
+     "        _tcp_clear_events(this);\n",
+     "        _tcp_set_data_callbacks(_pcb, NULL, NULL, NULL, NULL, NULL);   // PATCH: was 5 raw core-locked calls\n"
+     "        _tcp_clear_events(this);\n"),
+    # AsyncServer::begin() -- the line that was aborting the board
+    ("    tcp_arg(_pcb, (void*) this);\n"
+     "    tcp_accept(_pcb, &_s_accept);\n",
+     "    _tcp_set_listen_callbacks(_pcb, (void*) this, &_s_accept);   // PATCH: was 2 raw core-locked calls\n"),
+    # AsyncServer::end()
+    ("        tcp_arg(_pcb, NULL);\n"
+     "        tcp_accept(_pcb, NULL);\n",
+     "        _tcp_set_listen_callbacks(_pcb, NULL, NULL);   // PATCH: was 2 raw core-locked calls\n"),
+]
 
 PATCHES = [
     ("1-const-status-header", "AsyncTCP.h", [
