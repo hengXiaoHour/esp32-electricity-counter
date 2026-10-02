@@ -956,7 +956,7 @@ function saveModalSettings() {
   closeEditModal();
 }
 
-function showToast(msg) {
+function showToast(msg, ms) {
   let toast = document.getElementById('toast');
   if (!toast) {
     toast = document.createElement('div');
@@ -966,7 +966,9 @@ function showToast(msg) {
   toast.textContent = msg;
   toast.className = 'toast show';
   clearTimeout(toast._hide);
-  toast._hide = setTimeout(() => { toast.className = 'toast'; }, 2500);
+  // Callers that are about to lose the connection need longer than the default:
+  // 2.5 s is gone before a phone has finished switching WiFi networks.
+  toast._hide = setTimeout(() => { toast.className = 'toast'; }, ms || 2500);
 }
 
 function zeroSubCardDisplay(idx) {
