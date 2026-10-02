@@ -507,11 +507,23 @@ class Handler(BaseHTTPRequestHandler):
         stop = threading.Event()
         Handler.clients.append(conn)
 
+        # Two threads write to this socket: the 150 ms snapshot broadcaster and
+        # the read loop that answers commands. Without a lock, two concurrent
+        # sendall() calls interleave and corrupt a frame header, and the client
+        # silently loses whatever it was being told - which showed up as an E2E
+        # assertion with an empty message log and no obvious cause. Real single-
+        # threaded firmware does not have this problem; the harness did.
+        send_lock = threading.Lock()
+
+        def send(payload, opcode=0x1):
+            with send_lock:
+                send_ws_frame(conn, payload, opcode)
+
         # Broadcast loop, like the firmware's 150 ms cadence.
         def broadcaster():
             while not stop.is_set():
                 try:
-                    send_ws_frame(conn, json.dumps(self.state.snapshot()))
+                    send(json.dumps(self.state.snapshot()))
                 except OSError:
                     break
                 stop.wait(0.15)
@@ -528,7 +540,7 @@ class Handler(BaseHTTPRequestHandler):
                 if opcode == 0x8:      # close
                     break
                 if opcode == 0x9:      # ping
-                    send_ws_frame(conn, payload, opcode=0xA)
+                    send(payload, opcode=0xA)
                     continue
                 if opcode != 0x1:
                     continue
@@ -538,12 +550,11 @@ class Handler(BaseHTTPRequestHandler):
                     continue
                 handled, response, rejected = self.state.apply(text, None)
                 if rejected:
-                    send_ws_frame(conn, '{"type":"auth","ok":false}')
+                    send('{"type":"auth","ok":false}')
                 elif response:
-                    out = json.dumps({"type": "console", "out": response})
-                    send_ws_frame(conn, out)
+                    send(json.dumps({"type": "console", "out": response}))
                 if handled:
-                    send_ws_frame(conn, json.dumps(self.state.snapshot()))
+                    send(json.dumps(self.state.snapshot()))
         except (OSError, ConnectionResetError):
             pass
         finally:
