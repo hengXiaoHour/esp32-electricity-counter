@@ -118,23 +118,31 @@ int main(void) {
   expect("trailing space is rejected", ap_creds_validateSsid("Meter ", NULL), false);
   expect("embedded newline is rejected", ap_creds_validateSsid("Me\nter", NULL), false);
   expect("embedded tab is rejected", ap_creds_validateSsid("Me\tter", NULL), false);
-  /* Length is counted in OCTETS, not characters: 16 three-byte UTF-8 characters
-   * is 48 bytes and must be rejected even though "16 characters" is short. */
+  /* Length is counted in OCTETS, not characters. 16 three-byte characters is
+   * 48 bytes and must be rejected even though "16 characters" is short. */
+  const char *wide16 =
+      "\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80"
+      "\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80"
+      "\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80"
+      "\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80";
+  const char *wide10 =
+      "\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80"
+      "\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80"
+      "\xe9\xb8\x80\xe9\xb8\x80";
+  /* Assert the fixtures are what the labels claim. The first version of this
+   * test wrote 12 characters into the "10 characters" case, so the validator was
+   * right and the test was wrong - and the only symptom was a red line that
+   * invited "fix the code to make the test pass". */
+  expectReason("the 16-character fixture really is 48 bytes",
+               strlen(wide16) == 48 ? NULL : "fixture is not 48 bytes", NULL);
+  expectReason("the 10-character fixture really is 30 bytes",
+               strlen(wide10) == 30 ? NULL : "fixture is not 30 bytes", NULL);
   expect("16 three-byte characters (48 bytes) is rejected",
-         ap_creds_validateSsid("\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80"
-                              "\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80"
-                              "\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80"
-                              "\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80",
-                              NULL),
-         false);
+         ap_creds_validateSsid(wide16, NULL), false);
   /* ...and 10 of them (30 bytes) must be ACCEPTED, which is what proves the
    * check is counting bytes and not characters, and not rejecting all non-ASCII. */
   expect("10 three-byte characters (30 bytes) is accepted",
-         ap_creds_validateSsid("\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80"
-                              "\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80"
-                              "\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80\xe9\xb8\x80",
-                              NULL),
-         true);
+         ap_creds_validateSsid(wide10, NULL), true);
 
   printf("\n== password ==\n");
   expect("8 characters (the WPA2 minimum) is accepted",
