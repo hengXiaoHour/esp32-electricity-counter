@@ -56,12 +56,22 @@ dashboard raises a browser notification if it is open.
 | Library | Version |
 |---|---|
 | `Adafruit NeoPixel` | ≥1.15 |
-| `ESP Async WebServer` | ≥3.11 |
-| `AsyncTCP` | ≥1.1 |
+| `ESPAsyncWebServer` (ESP32Async) | ≥3.12 |
+| `AsyncTCP` (ESP32Async) | **3.x** |
 | `ArduinoOTA` | (bundled with the ESP32 core) |
 
-`AsyncTCP` 1.1.4 needs three patches on Arduino-ESP32 3.3.x, all lost on every
-library upgrade — run `python3 scripts/patch_async_tcp.py` after installing it.
+Install them from the ESP32Async organisation, not the archived `me-no-dev` repo:
+
+```bash
+arduino-cli lib install --git-url https://github.com/ESP32Async/AsyncTCP.git
+arduino-cli lib install --git-url https://github.com/ESP32Async/ESPAsyncWebServer.git
+```
+
+**Use AsyncTCP 3.x. Do not pin 1.1.4.** Arduino-ESP32 3.x builds lwIP with
+`CONFIG_LWIP_TCPIP_CORE_LOCKING=y` and `CONFIG_LWIP_CHECK_THREAD_SAFETY`, so any
+lwIP call made from an ordinary FreeRTOS task aborts the board. AsyncTCP 1.1.4
+calls several of them from application tasks and needed three patches to survive
+that:
 
 | Patch | Symptom if missing |
 |---|---|
@@ -69,13 +79,17 @@ library upgrade — run `python3 scripts/patch_async_tcp.py` after installing it
 | 2 — `_tcp_new()` wrapper | Reboots on `assert failed: tcp_alloc` |
 | 3 — callback registration | Reboots on `assert failed: tcp_arg` |
 
-Patches 2 and 3 share one cause: Arduino-ESP32 3.x builds lwIP with
-`CONFIG_LWIP_TCPIP_CORE_LOCKING=y` and `CONFIG_LWIP_CHECK_THREAD_SAFETY`, so any
-lwIP call made from an ordinary FreeRTOS task aborts the board. Every call
-AsyncTCP makes from an application task has to be marshalled onto the TCPIP
-thread with `tcpip_api_call`. The script does this and then verifies the result:
-`--check` fails loudly if any patch is missing or stale, and prints the count it
-found. Run it after **every** library install or upgrade.
+AsyncTCP 3.x marshals all of this upstream and ships `status()` already `const`,
+so the patches are obsolete and cannot even apply. `scripts/patch_async_tcp.py`
+detects the 3.x line and stands down, so `build.sh` and `verify_all.sh` keep
+working on either version instead of demanding patches that no longer have an
+anchor.
+
+> **Why the version matters so much.** On 1.1.4 the dashboard could never load:
+> the archived web server corrupted its `AsyncClient` whenever two HTTP requests
+> arrived together, killing Core 0 mid-response. A browser always opens six
+> connections, so the page rendered unstyled forever. The full diagnosis is in
+> `doc/opencode_agent/AGENTS.md`.
 
 > The **Firebase Arduino Client Library is no longer used.** Removing it freed
 > ~376 KB of flash, which is where the embedded dashboard lives.
