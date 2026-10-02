@@ -215,26 +215,6 @@ void NVSManager::saveEnergyKWh(uint8_t channel, float value) {
   prefs.putFloat(key.c_str(), value);
 }
 
-// --- ntfy.sh push notification ---
-
-String NVSManager::loadNtfyTopic() {
-  return prefs.getString("ntfy_topic", "");
-}
-
-void NVSManager::saveNtfyTopic(const String &topic) {
-  prefs.putString("ntfy_topic", topic);
-  DEBUG_LOG("  [NVS] saved ntfy topic: \"%s\"\n", topic.c_str());
-}
-
-bool NVSManager::loadNtfyEnabled() {
-  return prefs.getBool("ntfy_enable", false);
-}
-
-void NVSManager::saveNtfyEnabled(bool on) {
-  prefs.putBool("ntfy_enable", on);
-  DEBUG_LOG("  [NVS] saved ntfy enabled: %s\n", on ? "true" : "false");
-}
-
 // --- Monthly rollover marker ---
 
 int32_t NVSManager::loadLastMonth() {

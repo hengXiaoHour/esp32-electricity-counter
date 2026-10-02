@@ -107,8 +107,13 @@ if [ "$DO_BUILD" -eq 1 ]; then
       >/tmp/opencode/verify_build.log 2>&1
   record $? "arduino-cli compile"
 
-  WARNINGS=$(grep -c 'warning:' /tmp/opencode/verify_build.log)
-  printf '  info %s warning(s) (2 pre-existing banner format warnings expected)\n' "$WARNINGS"
+  # Zero warnings is now the bar. The two -Wformat warnings that used to sit in
+  # the banner printf were fixed rather than tolerated, because a warning gate
+  # you always have to ignore is not a gate.
+  WARNINGS=$(grep -c 'warning:' /tmp/opencode/verify_build.log || true)
+  [ "$WARNINGS" -eq 0 ]
+  record $? "clean build: $WARNINGS compiler warning(s)"
+  grep -E 'warning:' /tmp/opencode/verify_build.log | head -10 | sed 's/^/      /'
 
   grep -E 'Sketch uses|Global variables' /tmp/opencode/verify_build.log | sed 's/^/  /'
 

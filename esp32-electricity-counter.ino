@@ -274,8 +274,13 @@ void setup() {
   DEBUG_LOG("  =============================================\n");
   DEBUG_LOG("   ESP32-S3 6-Channel Electricity Counter\n");
   DEBUG_LOG("  =============================================\n");
-  DEBUG_LOG("  CPU: %d MHz  |  Flash: %d MB  |  PSRAM: %s\n",
-    getCpuFrequencyMhz(), ESP.getFlashChipSize() / (1024*1024),
+  // %u, not %d: getFlashChipSize() is uint32_t and %d expects int. This pair of
+  // -Wformat warnings had been sitting in the build log since before the
+  // AP-only migration; the clean-build gate is only worth having if the tree
+  // is actually clean.
+  DEBUG_LOG("  CPU: %u MHz  |  Flash: %u MB  |  PSRAM: %s\n",
+    (unsigned)getCpuFrequencyMhz(),
+    (unsigned)(ESP.getFlashChipSize() / (1024 * 1024)),
     psramFound() ? "OK" : "N/A");
   Serial.println();
 

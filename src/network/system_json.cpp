@@ -12,7 +12,7 @@
 // every connected browser 6-7 times a second, and the dashboard keeps six
 // 240-sample history buffers keyed by the same names.
 //
-// Reads nvs->loadLastMonth()/loadNtfyTopic()/loadNtfyEnabled() on every call.
+// Reads nvs->loadLastMonth() on every call.
 // That is a flash read per broadcast; it was equally true before this moved,
 // and the NVS cache keeps it cheap.
 void buildSystemJson(const SystemData &data, PowerCalculator *powerCalc,
@@ -79,11 +79,7 @@ void buildSystemJson(const SystemData &data, PowerCalculator *powerCalc,
   json += ",\"age\":";
   json += (long)timeSync.secondsSinceSync();
   json += "}";
-  json += ",\"ntfy\":{\"topic\":\"";
-  json += nvs->loadNtfyTopic();
-  json += "\",\"enabled\":";
-  json += nvs->loadNtfyEnabled() ? "true" : "false";
-  json += "},\"ch\":[";
+  json += ",\"ch\":[";
   for (int i = 0; i < NUM_CHANNELS; i++) {
     const ChannelData &ch = data.channels[i];
     json += "{\"n\":\"";

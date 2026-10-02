@@ -46,13 +46,13 @@ static bool extractJsonString(const String &s, const char *key, String &outVal) 
 // Shared command handler for the WebSocket server.
 // Mirrors the command vocabulary of the frontend dashboard:
 // set_name, reset_counter, test_inject, set_voltage_cal, set_current_cal,
-// set_monthly_kwh, set_noise_floor, set_lpf, set_rms_samples, set_ntfy_topic,
-// set_ntfy_enabled, reset_ch_cal, reset_ch_to_default, reset_nvs_defaults,
-// test_force_rollover, set_time.
+// set_monthly_kwh, set_noise_floor, set_lpf, set_rms_samples, reset_ch_cal,
+// reset_ch_to_default, reset_nvs_defaults, test_force_rollover, set_time,
+// verify_pin, set_pin.
 //
-// (The ntfy verbs still parse and are still accepted so an old dashboard
-// build does not error, but ntfy.sh is unreachable in AP-only mode so they
-// only persist a setting nothing reads. Phase 6 removes them.)
+// The two ntfy verbs are GONE rather than left as accepted no-ops: ntfy.sh
+// needs the internet this board does not have, and keeping a setting that
+// silently does nothing is worse than removing it.
 bool processCommand(NVSManager *nvs, SystemData *sysData,
                     SemaphoreHandle_t *dataMutex,
                     PowerCalculator *powerCalc, LimitManager *limitMgr,
@@ -232,26 +232,6 @@ bool processCommand(NVSManager *nvs, SystemData *sysData,
         }
         handled = true;
       }
-    }
-
-  } else if (s.indexOf("\"cmd\":\"set_ntfy_topic\"") >= 0) {
-    int vi = s.indexOf("\"val\":\"");
-    if (vi >= 0) {
-      vi += 7;
-      int end = s.indexOf("\"", vi);
-      if (end > vi) {
-        String topic = s.substring(vi, end);
-        nvs->saveNtfyTopic(topic);
-        handled = true;
-      }
-    }
-
-  } else if (s.indexOf("\"cmd\":\"set_ntfy_enabled\"") >= 0) {
-    int vi = s.indexOf("\"val\":");
-    if (vi >= 0) {
-      bool on = s.substring(vi + 6, vi + 10) == "true";
-      nvs->saveNtfyEnabled(on);
-      handled = true;
     }
 
   } else if (s.indexOf("\"cmd\":\"reset_ch_cal\"") >= 0) {

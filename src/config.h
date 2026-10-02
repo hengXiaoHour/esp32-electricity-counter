@@ -19,12 +19,6 @@
 #define PIN_RGB_LED       48
 
 // ==============================
-// ntfy.sh Push Notification
-// ==============================
-#define NTFY_HOST  "ntfy.sh"
-#define NTFY_PORT  443
-
-// ==============================
 // ADC Configuration
 // ==============================
 #define ADC_RESOLUTION        12
@@ -37,12 +31,14 @@
 // ADC sampling
 #define ADC_READ_INTERVAL_US  40     // 25kHz sampling rate
 #define MAX_RMS_SAMPLES       2000   // Max buffer size for runtime-tunable RMS samples
-#define SAMPLES_PER_CYCLE      500   // ~500 samples per 50Hz cycle at 25kHz
 
 // ==============================
 // Firmware Version
 // ==============================
-#define FIRMWARE_VERSION "2.0.0"
+// 3.0.0 = AP-only architecture: the board serves its own dashboard from
+// flash, lends its clock from the browser, and gates every mutating command
+// behind an admin PIN. No station interface, no cloud, no ntfy.
+#define FIRMWARE_VERSION "3.0.0"
 
 // ==============================
 // Default Calibration Constants
@@ -79,7 +75,6 @@
 // ==============================
 // Timing Constants (milliseconds)
 // ==============================
-#define ENERGY_UPDATE_INTERVAL_MS  1000
 #define WS_UPDATE_INTERVAL_MS      150
 #define SENSOR_CYCLE_INTERVAL_MS   80
 
@@ -88,15 +83,6 @@
 // ==============================
 #define EVENT_LOG_SIZE    50
 #define EVENT_MSG_LEN     64
-
-// ==============================
-// WiFi
-// ==============================
-#define WIFI_RETRY_INTERVAL_MS  10000
-#define WIFI_MAX_RETRIES        5
-#define AP_FALLBACK_TIMEOUT_MS  30000
-#define WIFI_CONNECT_TIMEOUT_MS 10000
-#define WIFI_MAX_BOOT_FAILURES  10
 
 // ==============================
 // Channel Status Enum

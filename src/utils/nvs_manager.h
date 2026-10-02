@@ -69,12 +69,6 @@ public:
   float loadEnergyKWh(uint8_t channel);
   void saveEnergyKWh(uint8_t channel, float value);
 
-  // ntfy.sh push notification config
-  String loadNtfyTopic();
-  void saveNtfyTopic(const String &topic);
-  bool loadNtfyEnabled();
-  void saveNtfyEnabled(bool on);
-
   // Month (YYYYMM) of last energy rollover — monthly reset marker
   int32_t loadLastMonth();
   void saveLastMonth(int32_t month);
