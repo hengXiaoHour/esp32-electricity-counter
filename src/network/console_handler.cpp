@@ -6,6 +6,7 @@
 #include "../core/power_calculator.h"
 #include "../network/ota_handler.h"
 #include "../network/wifi_manager.h"
+#include "../network/ap_creds.h"
 #include "../ui/buzzer.h"
 #include "../ui/status_led.h"
 #include "../utils/nvs_manager.h"
