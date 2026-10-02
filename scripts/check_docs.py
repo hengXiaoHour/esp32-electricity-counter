@@ -211,7 +211,7 @@ def main():
           "sessionStorage.getItem('esp32counter_pin')" in js and
           "localStorage.setItem('esp32counter_pin'" not in js)
     c.add("service worker cache name was bumped past the pre-migration one",
-          "esp32-counter-v13" in sw)
+          "esp32-counter-v14" in sw)
     c.add("demo mode is reachable without a board",
           "?demo=1" in js)
 
