@@ -179,15 +179,42 @@ on the board's WiFi.
   ---
   test led          rms_samples <N>     curr_cal <ch> <val>
   auto_zero <ch>    volt_cal <val>      clearwifi
+  set_ap <name> <pw> reset_ap
   nvs_debug         reboot
   ```
 
-  `status` and `debug` toggle live serial streams. `test led`, `nvs_debug` and
-  `reboot` are deferred: they are acknowledged immediately and run on Core 1,
-  where blocking is safe.
+  `status` and `debug` toggle live serial streams. `test led`, `nvs_debug`,
+  `reboot`, `set_ap` and `reset_ap` are deferred: they are acknowledged
+  immediately and run on Core 1, where blocking is safe.
 
 `setwifi` no longer exists — the board has no network to join. `clearwifi` is
 retained only to erase credentials stored by older firmware.
+
+## Changing the network name and password
+
+The board's own WiFi name and password are settings, not constants. Either from
+**Settings → Access Point** in the dashboard, or over serial:
+
+```
+set_ap "Living Room Meter" hunter2hunter2
+reset_ap
+```
+
+- Saved to flash immediately, then **the board reboots** to apply them. The
+  reboot is deferred by a second so the confirmation is written out first.
+- After the restart, your phone has dropped off — join the **new** network and
+  reopen `http://192.168.4.1/`.
+- Name: 1–32 characters, no leading/trailing spaces. Password: **8–63**
+  characters. An open network (blank password) is not offered, because every
+  mutating command on the board is behind the admin PIN and an open AP would
+  hand that PIN to anyone in range.
+- Nothing is written unless both fields are valid. A password the radio would
+  refuse (under 8 characters) makes `softAP()` fail and would leave the board
+  with no network at all, so it is rejected up front instead.
+- **Forgot the password?** `reset_ap` (or the **Defaults** button) restores
+  `ESP32-Elec-Counter` / `configure123` and reboots.
+- The stored values are also what `wifi` prints, and the boot banner shows them
+  — that banner is how you tell which network to join after a rename.
 
 ## Limitations
 
