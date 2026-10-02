@@ -163,6 +163,76 @@ function handleDisconnect() {
   showConnectPanel();
 }
 
+// ============ Access Point (name + password) ============
+// The board's own network identity. Saved to its flash, then the board reboots
+// to apply it, so the page it is about to lose the connection to says so first.
+//
+// The length rules below are a copy of src/network/ap_creds.cpp. The board is
+// the authority and re-checks everything - these only save the user a round
+// trip and a surprise reboot. Keep the two in step; there is a check in
+// scripts/check_docs.py that fails if they drift apart.
+const AP_SSID_MAX = 32;
+const AP_PASS_MIN = 8;
+const AP_PASS_MAX = 63;
+
+function apValidationMessage(ssid, pass) {
+  if (!ssid) return 'Enter a network name';
+  // Length is counted the same way the board counts it: octets.
+  if (new TextEncoder().encode(ssid).length > AP_SSID_MAX) {
+    return `Network name must be ${AP_SSID_MAX} characters or fewer`;
+  }
+  if (ssid !== ssid.trim()) return 'Network name cannot start or end with a space';
+  if (/^[ ]+$/.test(ssid)) return 'Network name cannot be only spaces';
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f]/.test(ssid) || /[\u0000-\u001f]/.test(pass)) {
+    return 'Name and password cannot contain control characters';
+  }
+  if (!pass) return 'Enter a password (an open network is not allowed)';
+  const passLen = new TextEncoder().encode(pass).length;
+  if (passLen < AP_PASS_MIN) return `Password must be at least ${AP_PASS_MIN} characters`;
+  if (passLen > AP_PASS_MAX) return `Password must be ${AP_PASS_MAX} characters or fewer`;
+  return '';
+}
+
+function saveApSettings() {
+  const ssidInput = document.getElementById('apSsid');
+  const passInput = document.getElementById('apPass');
+  const ssid = (ssidInput.value || '').trim();
+  const pass = passInput.value || '';
+
+  const problem = apValidationMessage(ssid, pass);
+  if (problem) return showToast(problem);
+  if (isDemo) return showToast('Not available in demo mode');
+
+  // Say the reboot is coming BEFORE the frame goes out. sendCommand resolves
+  // as soon as the frame is written, not when the board acknowledges it, and
+  // the connection is about to disappear.
+  return sendCommand({ cmd: 'set_ap', ssid: ssid, pass: pass }).then(() => {
+    passInput.value = '';
+    showToast(`Saved — the board is restarting as "${ssid}"`, 6000);
+    showToast('Rejoin that WiFi, then reopen http://192.168.4.1/', 6000);
+    // The page is about to lose its socket. Say so plainly rather than letting
+    // the reconnect logic spin.
+    const hint = document.getElementById('apHint');
+    if (hint) {
+      hint.innerHTML = '<strong>The board is rebooting to join "' + ssid +
+        '".</strong> Join that network, then reopen ' +
+        '<span class="mono">http://192.168.4.1/</span>.';
+    }
+    setTimeout(() => handleDisconnect(), 1500);
+    return true;
+  }).catch(() => false);
+}
+
+function resetApSettings() {
+  if (isDemo) return showToast('Not available in demo mode');
+  return sendCommand({ cmd: 'reset_ap' }).then(() => {
+    showToast('Resetting to the default network name — the board is restarting', 6000);
+    setTimeout(() => handleDisconnect(), 1500);
+    return true;
+  }).catch(() => false);
+}
+
 // ============ Admin PIN ============
 // The ESP32 enforces the PIN (see src/network/auth_gate.cpp); this side only
 // decides what the UI is allowed to show. Unlocking is explicit: a viewer gets
