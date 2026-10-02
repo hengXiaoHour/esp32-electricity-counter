@@ -422,6 +422,24 @@ def verify(src: Path) -> int:
     expect(TCP_NEW_MARKER in c, "patch 2: _tcp_new_api() wrapper present")
     expect("_pcb = _tcp_new();" in c, "patch 2: AsyncServer::begin() uses _tcp_new()")
     expect("tcp_pcb* pcb = _tcp_new();" in c, "patch 2: AsyncClient::connect() uses _tcp_new()")
+    expect(CB_MARKER in c, "patch 3: _tcp_set_callbacks_api() wrapper present")
+    expect("_tcp_set_data_callbacks(" in c and "_tcp_set_listen_callbacks(" in c,
+           "patch 3: both helper wrappers present")
+
+    # Patch 3 must rewrite EVERY application-task site, not just the one that
+    # happened to abort. Assert on the exact call count, and assert that the
+    # three already-TCPIP-thread blocks were deliberately left alone (marshalling
+    # those would deadlock the board instead of fixing it).
+    for i, (old, new) in enumerate(CB_SUBS):
+        expect(old not in c, f"patch 3: site {i} no longer calls lwIP raw")
+        expect(c.count(new) == 1, f"patch 3: site {i} rewritten exactly once")
+    expect(c.count("        tcp_arg(_pcb, this);\n") == 1,
+           "patch 3: AsyncClient ctor left raw (already on the TCPIP thread)")
+    expect("        tcp_arg(_pcb, NULL);\n        if(_pcb->state == LISTEN) {" in c,
+           "patch 3: _error()/_lwip_fin() left raw (lwIP callbacks)")
+    expect(c.count("static void _tcp_set_data_callbacks(") == 1
+           and c.count("static void _tcp_set_listen_callbacks(") == 1,
+           "patch 3: helpers defined exactly once")
 
     # No *unguarded* allocation left. Comments legitimately mention
     # tcp_new_ip_type() (the PATCH notes and the wrapper's own body), so strip
