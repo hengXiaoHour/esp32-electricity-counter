@@ -75,13 +75,10 @@ def emit_text(data: bytes, name: str) -> str:
             "Change RAW_CLOSE in this generator to a sequence that cannot occur."
             % (name, RAW_CLOSE)
         )
-    body = text if text.endswith("\n") else text + "\n"
-    if not text.endswith("\n"):
-        # Close on the content's last byte so nothing is added or removed.
-        body = text + RAW_CLOSE + ";"
-    else:
-        body = text + RAW_CLOSE + ";"
-    return "static const char %s[] PROGMEM = %s%s\n" % (name, RAW_OPEN, body)
+    # Close immediately after the last content byte. When the source already
+    # ends in a newline this naturally lands on its own line (readable); when it
+    # does not, it appends inline. Either way no byte is added or removed.
+    return "static const char %s[] PROGMEM = %s%s%s;\n\n" % (name, RAW_OPEN, text, RAW_CLOSE)
 
 
 def emit_bin(data: bytes, name: str) -> str:
