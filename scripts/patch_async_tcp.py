@@ -423,6 +423,33 @@ def revert(src: Path) -> int:
     return problems
 
 
+def _function_bodies(src: str, names) -> dict:
+    """Map each named function to its body, brace-matched.
+
+    Written because a substring count cannot distinguish "calls the wrapper
+    through tcpip_api_call" from "calls it directly", and the difference
+    between those two is the entire bug.
+    """
+    import re
+    out = {}
+    for name in names:
+        m = re.search(r"^static\s+\w[\w \*]*\b" + re.escape(name) + r"\s*\(", src, re.M)
+        if not m:
+            continue
+        start = src.index("{", m.end())
+        depth, i = 0, start
+        while i < len(src):
+            if src[i] == "{":
+                depth += 1
+            elif src[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+            i += 1
+        out[name] = src[start:i + 1]
+    return out
+
+
 def verify(src: Path) -> int:
     """Post-condition check. Returns number of failed expectations."""
     bad = 0
