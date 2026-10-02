@@ -468,44 +468,13 @@ void ConsoleHandler::cmdClearWifi(String &out) {
   consoleAppendf(out, "%s", "  (the board is AP-only and never joins a network)");
 }
 
-// Splits `set_ap` arguments into the two fields. Either may be wrapped in double
-// quotes; quoting exists for the SSID, which is the field most likely to contain
-// a space ("Living Room Meter"). An UNQUOTED password takes the rest of the line
-// verbatim, so a password with an internal or trailing space survives.
-static bool splitApArgs(const String &args, String &ssid, String &pass) {
-  String s = args;
-  s.trim();
-  if (s.length() == 0) return false;
-
-  String rest;
-  if (s[0] == '"') {
-    int close = s.indexOf('"', 1);
-    if (close < 0) return false;
-    ssid = s.substring(1, close);
-    rest = s.substring(close + 1);
-  } else {
-    int sp = s.indexOf(' ');
-    if (sp <= 0) return false;
-    ssid = s.substring(0, sp);
-    rest = s.substring(sp + 1);
-  }
-
-  rest.trim();
-  if (rest.length() == 0) return false;
-  if (rest[0] == '"') {
-    // A quoted password must actually be closed. `"abc` would otherwise store
-    // the literal character `"` and lose the rest of what was typed.
-    if (rest.length() < 2 || rest[rest.length() - 1] != '"') return false;
-    pass = rest.substring(1, rest.length() - 1);
-  } else {
-    pass = rest;
-  }
-  return ssid.length() > 0;
-}
-
 void ConsoleHandler::cmdSetAp(const String &args, String &out) {
-  String ssid, pass;
-  if (!splitApArgs(args, ssid, pass)) {
+  // Parsing (including the quoted "name with spaces" form) lives in ap_creds so
+  // it can be unit-tested on the host; see ap_creds_splitArgs().
+  char ssidBuf[AP_MAX_SSID_LEN + 1];
+  char passBuf[AP_MAX_PASS_LEN + 1];
+  if (!ap_creds_splitArgs(args.c_str(), ssidBuf, sizeof(ssidBuf),
+                          passBuf, sizeof(passBuf))) {
     consoleAppendf(out, "%s", "  Usage: set_ap <name> <password>");
     consoleAppendf(out, "%s", "         quote a name that contains spaces:");
     consoleAppendf(out, "%s", "         set_ap \"Living Room Meter\" mypass123");
@@ -516,7 +485,7 @@ void ConsoleHandler::cmdSetAp(const String &args, String &out) {
   // radio can actually broadcast. A short PSK makes softAP() fail, and the board
   // would come back with no network at all - recoverable only over serial.
   const char *reason = nullptr;
-  if (!ap_creds_validate(ssid.c_str(), pass.c_str(), &reason)) {
+  if (!ap_creds_validate(ssidBuf, passBuf, &reason)) {
     consoleAppendf(out, "  Not saved: %s", reason ? reason : "invalid credentials");
     consoleAppendf(out, "%s", "  Name 1-32 chars; password 8-63 chars.");
     return;
@@ -526,11 +495,11 @@ void ConsoleHandler::cmdSetAp(const String &args, String &out) {
   // against sensorTask's 5 s energy save, which takes the same handle under
   // this same mutex.
   bool locked = (xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE);
-  nvs->saveApCredentials(ssid, pass);
+  nvs->saveApCredentials(ssidBuf, passBuf);
   nvs->commit();
   if (locked) xSemaphoreGive(*dataMutex);
 
-  consoleAppendf(out, "  Saved. New network name: \"%s\"", ssid.c_str());
+  consoleAppendf(out, "  Saved. New network name: \"%s\"", ssidBuf);
   consoleAppendf(out, "%s",
                  "  The board reboots now - join that network and reopen the page.");
   requestReboot("  (AP credentials changed - restarting)");
