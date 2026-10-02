@@ -83,6 +83,7 @@ private:
   bool pendingDefer;
   String pendingCmd;
   String pendingOutput;
+  String pendingRebootNote;
 
   // Non-blocking test led state machine.
   bool ledTestActive;
