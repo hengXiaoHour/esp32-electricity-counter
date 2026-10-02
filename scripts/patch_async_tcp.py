@@ -336,6 +336,12 @@ def main():
         if problems:
             print()
             fail(f"{problems} problem(s) — see above")
+            if args.check:
+                print()
+                fail("AsyncTCP is NOT in the required state. Either patches are")
+                fail("missing (a library install/upgrade wiped them) or an anchor")
+                fail("no longer matches. Build with:")
+                fail("    python3 scripts/patch_async_tcp.py")
             return 1
         if not args.check and not args.no_verify:
             print()
