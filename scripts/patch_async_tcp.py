@@ -387,6 +387,11 @@ def apply_patches(src: Path, check_only: bool) -> int:
             anchors = [_anchor for _, _, _anchor in subs if _anchor]
             applied_already = all(a in text for a in anchors) if anchors else all(
                 new in text for _, new, _ in subs)
+            if applied_already and not all(new in text for _, new, _ in subs):
+                # Anchor present but the body is a stale revision: treat it as
+                # NOT applied so the current block replaces the old one.
+                ok(f"{name}: stale revision detected — reapplying")
+                applied_already = False
             if applied_already:
                 ok(f"{name}: already applied")
                 continue
