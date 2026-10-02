@@ -204,7 +204,45 @@ def main():
           "it is committed again - untrack with "
           "'git rm --cached src/network/web_assets.h'")
 
-    bad = r.out()
+    # --- 8. the AP rename path must stay wired end to end -------------------
+# Not a dead-code rule in the usual sense, but the same disease seen from the
+# other side: every layer of this feature can be removed one at a time and each
+# removal individually looks like tidying. Delete the WebSocket verb and the
+# dashboard button silently becomes a no-op; delete the console verb and
+# "I forgot the password" becomes impossible; delete the validation and the
+# board bricks its own radio. Assert the chain.
+cmd = read("src/network/command_processor.cpp")
+ch = read("src/network/console_handler.cpp")
+nm = read("src/utils/nvs_manager.cpp")
+js = read("frontend/script.js")
+ap_missing = []
+for what, needle, hay in [
+        ("firmware verb (set_ap)", '"cmd\\":\\"set_ap\\""', cmd),
+        ("firmware verb (reset_ap)", '"cmd\\":\\"reset_ap\\""', cmd),
+        ("console verb (set_ap)", "set_ap ", ch),
+        ("console verb (reset_ap)", "reset_ap", ch),
+        ("NVS writer", "saveApCredentials", nm),
+        ("NVS eraser", "clearApCredentials", nm),
+        ("dashboard save", "cmd: 'set_ap'", js),
+        ("dashboard reset", "cmd: 'reset_ap'", js),
+        ("dashboard panel", 'id="apSsid"', read("frontend/index.html"))]:
+    if needle not in hay:
+        ap_missing.append(what)
+r.add("the AP rename feature is still wired end to end", not ap_missing,
+      "disconnected at: " + ", ".join(ap_missing))
+
+# --- 9. the defaults the docs quote must be the ones the code uses ------
+# Two copies of "ESP32-Elec-Counter" exist on purpose (config.h for the
+# firmware, mock_device.py for the E2E harness) precisely because the harness
+# must not import firmware headers. That makes drift possible and silent.
+mcfg = re.search(r'AP_SSID_DEFAULT\s*=\s*"([^"]+)"', read("src/config.h"))
+mmock = re.search(r'AP_SSID_DEFAULT\s*=\s*"([^"]+)"', read("scripts/mock_device.py"))
+r.add("the mock board's factory SSID matches src/config.h",
+      mcfg and mmock and mcfg.group(1) == mmock.group(1),
+      "config.h=%s mock=%s" % (mcfg.group(1) if mcfg else "?",
+                               mmock.group(1) if mmock else "?"))
+
+bad = r.out()
     return 1 if bad else 0
 
 
