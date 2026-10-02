@@ -185,6 +185,11 @@ function apValidationMessage(ssidRaw, pass) {
   // saving something other than what they typed.
   if (ssid !== ssidRaw) return 'Network name cannot start or end with a space';
   if (/^[ ]+$/.test(ssid)) return 'Network name cannot be only spaces';
+  // Length is counted the way the board counts it: OCTETS, not characters, so a
+  // 20-character accented name is measured the same way on both sides.
+  if (new TextEncoder().encode(ssid).length > AP_SSID_MAX) {
+    return `Network name must be ${AP_SSID_MAX} characters or fewer`;
+  }
   // eslint-disable-next-line no-control-regex
   if (/[\u0000-\u001f]/.test(ssid) || /[\u0000-\u001f]/.test(pass)) {
     return 'Name and password cannot contain control characters';
