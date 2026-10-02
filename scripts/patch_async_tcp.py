@@ -220,12 +220,24 @@ static err_t _tcp_bind_api(struct tcpip_api_call_data *api_call_msg){"""
 # file -- each is anchored on a neighbouring line that makes it so.
 CB_SUBS = [
     # AsyncClient::operator=
-    ("        _rx_last_packet = millis();\n"
+    # The anchor reaches back over `_closed_slot = other._closed_slot;` on purpose:
+    # the five-line tcp_arg/tcp_recv/tcp_sent/tcp_err/tcp_poll block appears TWICE
+    # verbatim (the AsyncClient(pcb) constructor and operator=), so anchoring on the
+    # block itself patched the CONSTRUCTOR — the one site that must stay raw, since
+    # its only caller is AsyncServer::_accept on the TCPIP thread — and left the
+    # application-task site unpatched.
+    ("    _pcb = other._pcb;\n"
+     "    _closed_slot = other._closed_slot;\n"
+     "    if (_pcb) {\n"
+     "        _rx_last_packet = millis();\n"
      "        tcp_arg(_pcb, this);\n"
      "        tcp_recv(_pcb, &_tcp_recv);\n"
      "        tcp_sent(_pcb, &_tcp_sent);\n"
      "        tcp_err(_pcb, &_tcp_error);\n"
      "        tcp_poll(_pcb, &_tcp_poll, 1);\n",
+     "    _pcb = other._pcb;\n"
+     "    _closed_slot = other._closed_slot;\n"
+     "    if (_pcb) {\n"
      "        _rx_last_packet = millis();\n"
      "        _tcp_set_data_callbacks(_pcb, this, &_tcp_recv, &_tcp_sent, &_tcp_error, &_tcp_poll);   // PATCH: was 5 raw core-locked calls\n"),
     # AsyncClient::connect()
