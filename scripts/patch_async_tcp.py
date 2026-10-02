@@ -87,6 +87,29 @@ def arduino_data_dirs():
     return out
 
 
+def library_version(lib_dir: Path):
+    """Return (name, version) from the library's library.properties, or (None, None)."""
+    # lib_dir is the src/ directory; library.properties sits one level up.
+    props = lib_dir.parent / "library.properties"
+    if not props.is_file():
+        return None, None
+    name = version = None
+    for line in props.read_text(errors="replace").splitlines():
+        if line.startswith("name="):
+            name = line.split("=", 1)[1].strip()
+        elif line.startswith("version="):
+            version = line.split("=", 1)[1].strip()
+    return name, version
+
+
+def version_major(version):
+    """Leading integer of a dotted version string, or None if unparsable."""
+    if not version:
+        return None
+    head = version.strip().split(".", 1)[0]
+    return int(head) if head.isdigit() else None
+
+
 def find_lib_dir(explicit=None):
     """Return the AsyncTCP src/ directory, or None."""
     if explicit:
