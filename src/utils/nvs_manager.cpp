@@ -31,6 +31,41 @@ void NVSManager::savePin(const String &pin) {
   DEBUG_LOG("  [NVS] admin PIN updated (%d digits)\n", (int)pin.length());
 }
 
+// --- Access Point credentials ---
+
+String NVSManager::loadApSsid() {
+  String ssid = prefs.getString("ap_ssid", "");
+  if (ssid.length() == 0) {
+    // Fresh board, or `reset_ap` was run. The default lives in config.h; the
+    // key stays absent on purpose so the fallback is still there after a
+    // firmware update that changes the default.
+    return String(AP_SSID_DEFAULT);
+  }
+  return ssid;
+}
+
+String NVSManager::loadApPass() {
+  String pass = prefs.getString("ap_pass", "");
+  if (pass.length() == 0) return String(AP_PASS_DEFAULT);
+  return pass;
+}
+
+void NVSManager::saveApCredentials(const String &ssid, const String &pass) {
+  // NOTE: staged only. The caller MUST call commit() or the board keeps
+  // broadcasting the old identity across its restart - which is exactly what
+  // processCommand()'s trailing `if (handled) nvs->commit();` is for.
+  prefs.putString("ap_ssid", ssid);
+  prefs.putString("ap_pass", pass);
+  DEBUG_LOG("  [NVS] AP credentials staged: ssid=\"%s\" pass=%d chars\n",
+            ssid.c_str(), (int)pass.length());
+}
+
+void NVSManager::clearApCredentials() {
+  prefs.remove("ap_ssid");
+  prefs.remove("ap_pass");
+  DEBUG_LOG("  [NVS] AP credentials cleared — defaults apply after restart\n");
+}
+
 // --- WiFi ---
 
 bool NVSManager::loadWiFi(String &ssid, String &password) {
