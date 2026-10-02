@@ -1,6 +1,7 @@
 #include "system_json.h"
 #include "../core/power_calculator.h"
 #include "../utils/nvs_manager.h"
+#include "time_sync.h"
 
 #include <time.h>
 
@@ -70,6 +71,14 @@ void buildSystemJson(const SystemData &data, PowerCalculator *powerCalc,
   json += (long)time(nullptr);
   json += ",\"lastMonth\":";
   json += nvs->loadLastMonth();
+  // Clock health. Read straight from TimeSync rather than through SystemData:
+  // it is owned by the network layer, needs no mutex, and must be visible even
+  // when it has never been set (which is the case worth showing).
+  json += ",\"time\":{\"ok\":";
+  json += timeSync.isSynced() ? "true" : "false";
+  json += ",\"age\":";
+  json += (long)timeSync.secondsSinceSync();
+  json += "}";
   json += ",\"ntfy\":{\"topic\":\"";
   json += nvs->loadNtfyTopic();
   json += "\",\"enabled\":";

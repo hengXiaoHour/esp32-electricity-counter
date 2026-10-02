@@ -55,3 +55,7 @@ private:
 // is a bug or a hostile frame, not a phone.
 static constexpr int64_t PLAUSIBLE_MIN_EPOCH = 1609459200LL;   // 2021-01-01
 static constexpr int64_t PLAUSIBLE_MAX_EPOCH = 4102444800LL;   // 2100-01-01
+
+// The one shared clock. processCommand() is a free function, so like
+// consoleHandler it is a global rather than an injected dependency.
+extern TimeSync timeSync;

@@ -10,6 +10,27 @@ void NVSManager::end() {
   prefs.end();
 }
 
+// --- Admin PIN ---
+
+const char *NVSManager::defaultPin() { return "1234"; }
+
+String NVSManager::loadPin() {
+  String pin = prefs.getString("admin_pin", "");
+  if (pin.length() == 0) {
+    // First boot (or a board that never set one). Seed the default so the
+    // key exists in NVS and the dashboard has something to compare against.
+    pin = defaultPin();
+    prefs.putString("admin_pin", pin);
+    DEBUG_LOG("  [NVS] no admin PIN set - seeded default\n");
+  }
+  return pin;
+}
+
+void NVSManager::savePin(const String &pin) {
+  prefs.putString("admin_pin", pin);
+  DEBUG_LOG("  [NVS] admin PIN updated (%d digits)\n", (int)pin.length());
+}
+
 // --- WiFi ---
 
 bool NVSManager::loadWiFi(String &ssid, String &password) {

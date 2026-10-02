@@ -1,8 +1,14 @@
 #include "time_sync.h"
 #include "../utils/log_gate.h"
 
+// Defined here so every translation unit shares one clock.
+
 #include <sys/time.h>
 #include <time.h>
+
+// Single shared instance. processCommand() is a free function with no state
+// of its own, so - exactly like consoleHandler - the clock lives as a global.
+TimeSync timeSync;
 
 RTC_DATA_ATTR int64_t TimeSync::rtcLastEpoch = 0;
 RTC_DATA_ATTR uint32_t TimeSync::rtcLastMillis = 0;

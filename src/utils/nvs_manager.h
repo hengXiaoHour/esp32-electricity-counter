@@ -8,6 +8,23 @@ public:
   void begin();
   void end();
 
+  // --- Admin PIN -------------------------------------------------
+  // Guards every mutating command. In AP-only mode the network password is
+  // the ONLY thing standing between a passer-by with the dashboard open and
+  // a board they can zero counters, retune CT calibration or reboot. The old
+  // answer was Google sign-in plus Firebase security rules; both died with
+  // the cloud, so this replaces them and - unlike the old UI-level admin
+  // flag on Local mode - it is enforced here, on the ESP32.
+  //
+  // Plaintext on purpose: this is a soft lock on a device you already own
+  // and can erase with a factory reset, not a credential protecting
+  // anything of value. Hashing it would add a footgun (a bad hash bricks
+  // admin access) without raising the bar meaningfully - anyone who can read
+  // NVS over the AP can equally just issue commands.
+  String loadPin();
+  void savePin(const String &pin);
+  static const char *defaultPin();
+
   // WiFi credentials
   bool loadWiFi(String &ssid, String &password);
   void saveWiFi(const String &ssid, const String &password);

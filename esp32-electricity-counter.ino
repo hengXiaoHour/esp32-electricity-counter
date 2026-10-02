@@ -5,6 +5,7 @@
 #include "src/network/wifi_manager.h"
 #include "src/network/websocket_server.h"
 #include "src/network/ota_handler.h"
+#include "src/network/time_sync.h"
 #include "src/network/console_handler.h"
 #include "src/ui/status_led.h"  
 #include "src/ui/buzzer.h"
@@ -279,6 +280,11 @@ void setup() {
   Serial.println();
 
   DEBUG_LOG("  %-19s%s\n", "NVS", "OK"); nvs.begin();
+
+  // Restore the clock saved in RTC memory before anything reads the date:
+  // LimitManager defers the monthly rollover until time() is valid, so this
+  // must run before the first sensor cycle.
+  timeSync.begin();
 
   // Restore the forensic event tail saved to flash before the last power
   // loss (the RAM ring is wiped by any restart). Restored entries are pushed

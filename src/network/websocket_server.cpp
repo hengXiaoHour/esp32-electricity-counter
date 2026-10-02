@@ -138,8 +138,9 @@ void WebSocketServer::onWsEvent(AsyncWebSocket *srv, AsyncWebSocketClient *clien
 
 void WebSocketServer::handleCommand(AsyncWebSocketClient *client, const char *msg) {
   String response;
+  bool authRejected = false;
   bool handled = processCommand(nvs, sysData, dataMutex, powerCalc, limitMgr,
-                                msg, &response);
+                                msg, &response, &authRejected);
   // Console commands answer with text — ship it back to the requesting client
   // only (broadcasting it to every client would spam other dashboards).
   if (client && response.length() > 0) {
@@ -147,6 +148,12 @@ void WebSocketServer::handleCommand(AsyncWebSocketClient *client, const char *ms
     out += consoleJsonEscape(response);
     out += "\"}";
     client->text(out);
+  }
+  // A rejected command gets its own frame type. The dashboard cannot tell
+  // "not allowed" from "silently ignored" otherwise, and the whole point of
+  // moving the admin check onto the ESP32 is that the UI is not the authority.
+  if (client && authRejected) {
+    client->text("{\"type\":\"auth\",\"ok\":false}");
   }
   if (handled) lastBroadcast = 0;  // force an immediate refresh
 }
