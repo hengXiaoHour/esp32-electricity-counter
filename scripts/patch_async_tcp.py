@@ -588,7 +588,7 @@ def verify(src: Path) -> int:
     helpers = _function_bodies(c, ("_tcp_set_data_callbacks", "_tcp_set_listen_callbacks"))
     expect(len(helpers) == 2,
            f"patch 3: both helper definitions found, got {len(helpers)}")
-    for fname, body in helpers:
+    for fname, body in helpers.items():
         expect("tcpip_api_call(_tcp_set_callbacks_api," in body,
                f"patch 3: {fname}() marshals via tcpip_api_call()")
         expect("_tcp_set_callbacks_api((struct" not in body,
