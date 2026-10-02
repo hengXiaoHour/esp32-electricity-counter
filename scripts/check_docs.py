@@ -240,6 +240,15 @@ def main():
               "scripts/e2e_aponly.js"]:
         c.add("referenced tooling exists: %s" % s, (ROOT / s).exists())
 
+    c.add("the console offers set_ap / reset_ap (serial is the recovery path when the network is lost)",
+          "set_ap" in ch and "reset_ap" in ch and
+          "ap_creds_validate" in ch)
+    c.add("the serial line buffer can hold a quoted 32-char name plus a 63-char password",
+          re.search(r"char serBuf\[(\d+)\]", ino) is not None and
+          int(re.search(r"char serBuf\[(\d+)\]", ino).group(1)) >= 128,
+          "serBuf is %s bytes; 'set_ap \"%s\" \"%s\"' needs 107"
+          % (re.search(r"char serBuf\[(\d+)\]", ino).group(1), "x" * 32, "x" * 63))
+
     bad = c.report()
     return 1 if bad else 0
 
