@@ -1,6 +1,7 @@
 #include "command_processor.h"
 #include "../core/limit_manager.h"
 #include "console_handler.h"
+#include "auth_gate.h"
 #include "time_sync.h"
 #include "../utils/log_gate.h"
 
@@ -42,33 +43,6 @@ static bool extractJsonString(const String &s, const char *key, String &outVal) 
   return true;
 }
 
-// Verbs that are deliberately NOT PIN-gated.
-//   set_time    - every viewer sends this on connect; gating it would mean the
-//                 monthly rollover stays dormant until someone unlocks the UI.
-//   verify_pin  - its whole job is to answer the PIN question.
-// Anything not listed here is treated as mutating and requires a valid PIN.
-static const char *const PIN_EXEMPT_VERBS[] = {"set_time", "verify_pin", nullptr};
-
-// True if `verb` mutates device state and therefore needs the admin PIN.
-static bool requiresPin(const char *verb) {
-  for (const char *const *v = PIN_EXEMPT_VERBS; *v; v++) {
-    if (strcmp(*v, verb) == 0) return false;
-  }
-  return true;
-}
-
-// Pulls the verb out of a frame without allocating a String per candidate.
-static String commandVerb(const String &s) {
-  String needle = "\"cmd\":\"";
-  int i = s.indexOf(needle);
-  if (i < 0) return String();
-  i += needle.length();
-  int end = i;
-  while (end < (int)s.length() && s[end] != '"') end++;
-  if (end >= (int)s.length()) return String();
-  return s.substring(i, end);
-}
-
 // Shared command handler for the WebSocket server.
 // Mirrors the command vocabulary of the frontend dashboard:
 // set_name, reset_counter, test_inject, set_voltage_cal, set_current_cal,
@@ -89,22 +63,23 @@ bool processCommand(NVSManager *nvs, SystemData *sysData,
   if (authRejected) *authRejected = false;
 
   // --- Admin gate, evaluated before any verb touches state --------------
-  // Placed here rather than inside each branch so a new mutating verb is
+  // Placed here rather than inside each branch, so a NEW mutating verb is
   // protected by default instead of by remembering to add a PIN check.
+  //
+  // The decision itself lives in auth_gate.cpp, which has no Arduino
+  // dependency and is unit-tested on the host by scripts/test_auth_gate.c
+  // (47 assertions, mutation-checked). Anything subtly wrong here would be a
+  // security hole with no test to catch it.
   {
-    String verb = commandVerb(s);
-    if (verb.length() > 0 && requiresPin(verb.c_str())) {
-      String want = nvs->loadPin();
-      String got;
-      extractJsonString(s, "pin", got);
-      if (got.length() == 0 || got != want) {
-        if (authRejected) *authRejected = true;
-        if (responseOut) {
-          *responseOut = String("  Admin PIN required (Settings -> Admin PIN)");
-        }
-        DEBUG_LOG("  [AUTH] rejected '%s' — PIN missing or wrong\n", verb.c_str());
-        return false;
+    char verb[AUTH_MAX_VERB];
+    String want = nvs->loadPin();
+    if (!auth_check(msg, want.c_str(), verb, sizeof(verb))) {
+      if (authRejected) *authRejected = true;
+      if (responseOut) {
+        *responseOut = String("  Admin PIN required (Settings -> Admin PIN)");
       }
+      DEBUG_LOG("  [AUTH] rejected '%s' — PIN missing or wrong\n", verb);
+      return false;
     }
   }
 

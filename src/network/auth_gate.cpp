@@ -14,6 +14,7 @@ bool auth_isExemptVerb(const char *verb) {
 
 // Copies the verb value out of a "cmd":"..." field.
 static bool extractVerb(const char *frame, char *out, size_t outLen) {
+  if (frame == NULL || out == NULL || outLen == 0) return false;
   const char *needle = "\"cmd\":\"";
   const char *p = strstr(frame, needle);
   if (p == NULL) return false;
@@ -56,12 +57,22 @@ bool auth_extractPin(const char *frame, char *out, size_t outLen) {
       out[n] = '\0';
       return true;
     }
-    if (n + 1 >= outLen) break;
+    if (n + 1 >= outLen) {
+      // Buffer full before the field closed: treat as malformed rather than
+      // silently truncating a PIN (which could make two different PINs compare
+      // equal after truncation).
+      out[0] = '\0';
+      return false;
+    }
     out[n++] = *p++;
   }
-  // Ran out of buffer or hit end of input without a closing quote.
-  out[n] = '\0';
-  return n > 0;
+  // Fell out of the loop: end of input or buffer exhaustion with no closing
+  // quote. Either way the frame is truncated. Earlier this returned true with
+  // whatever it had read, so a frame like {"cmd":"set_name","pin":"1234  (no
+  // closing quote) authenticated as 1234. Malformed input must never
+  // authenticate.
+  out[0] = '\0';
+  return false;
 }
 
 bool auth_check(const char *frame, const char *expectedPin, char *outVerb,

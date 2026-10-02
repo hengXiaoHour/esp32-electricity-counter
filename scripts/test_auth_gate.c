@@ -41,10 +41,12 @@ int main(void) {
          true);
   expect("verify_pin is exempt",
          auth_check("{\"cmd\":\"verify_pin\"}", PIN, verb, sizeof(verb)), true);
-  expect("exempt verb reported to caller",
-         strcmp(auth_check("{\"cmd\":\"set_time\"}", PIN, verb, sizeof(verb)), verb,
-                "set_time") == 0 || strcmp(verb, "set_time") == 0,
-         true);
+  verb[0] = 'X';
+  auth_check("{\"cmd\":\"set_time\",\"t\":1759400000}", PIN, verb, sizeof(verb));
+  expect("exempt verb is reported to the caller", strcmp(verb, "set_time") == 0, true);
+  verb[0] = 'X';
+  auth_check("{\"cmd\":\"set_name\"}", PIN, verb, sizeof(verb));
+  expect("mutating verb is reported to the caller", strcmp(verb, "set_name") == 0, true);
 
   printf("\n== mutating verbs require the PIN ==\n");
   const char *mutating[] = {
