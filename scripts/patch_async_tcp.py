@@ -598,10 +598,15 @@ def main():
                 fail("no longer matches. Build with:")
                 fail("    python3 scripts/patch_async_tcp.py")
             return 1
-        if not args.check and not args.no_verify:
+        # --check runs the post-condition verifier too. Without this, --check only
+        # asked "are the anchors findable", so a library whose helpers had been
+        # edited to stop marshalling still passed --check cleanly. A check mode
+        # is only a gate if it asserts the state the build actually depends on.
+        if not args.no_verify:
             print()
-            info("verifying")
-            verify(src)
+            info("verifying" + (" (check mode — reporting only)" if args.check else ""))
+            if verify(src) and args.check:
+                return 1
 
     print()
     if args.check:
