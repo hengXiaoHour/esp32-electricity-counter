@@ -26,6 +26,7 @@ they are untested assertions that always pass.
 """
 
 import hashlib
+import re
 import sys
 from pathlib import Path
 
@@ -158,44 +159,78 @@ def parse_back(header_text: str) -> dict:
     Deliberately independent of build(): it reads the header as text, finds
     each `static const char NAME[] PROGMEM = R"rawliteral(<content>)rawliteral";`
     or `static const uint8_t NAME[] PROGMEM = { 0x.., ... };`, and returns
-    {path: bytes}. A bug in build() that corrupted the encoding would have to
-    corrupt it identically in this parser to go unnoticed.
+    {device path: bytes}. A bug in build() that corrupted the encoding would
+    have to corrupt it identically in this parser to go unnoticed.
     """
-    found = {}
+    payloads = {}
 
     for m in re.finditer(
         r'static const char (WEB_ASSET_\w+)\[\] PROGMEM = R"rawliteral\((.*?)\)rawliteral";',
         header_text, re.S,
     ):
-        name, content = m.group(1), m.group(2)
-        found[name] = content.encode("utf-8")
+        payloads[m.group(1)] = m.group(2).encode("utf-8")
 
     for m in re.finditer(
         r'static const uint8_t (WEB_ASSET_\w+)\[\] PROGMEM = \{(.*?)\};', header_text, re.S
     ):
-        name, body = m.group(1), m.group(2)
-        found[name] = bytes(int(x, 16) for x in re.findall(r'0x([0-9a-fA-F]{2})', body))
+        payloads[m.group(1)] = bytes(
+            int(x, 16) for x in re.findall(r'0x([0-9a-fA-F]{2})', m.group(2))
+        )
 
-    # Route each parsed payload to its device path using the WEB_ASSETS table.
-    by_name = {}
-    for route, rel, mime, kind, data, i in entries_of(header_text):
-        by_name[rel] = found.get(ident(route, i))
-    return by_name
-
-
-def entries_of(header_text: str):
-    """Yield (route, rel, mime, kind, size, index) from the WEB_ASSETS table."""
-    row = re.compile(
-        r'\{\s*"([^"]+)",\s*"([^"]+)",\s*(?:\(const char \*\))?(WEB_ASSET_\w+),'
-        r'\s*\(uint32_t\)\((?:sizeof\(\3(?: - 1)?\))\s*\}'
+    # Walk the WEB_ASSETS table to map each payload back to its device path.
+    route_to_rel = {route: rel for route, rel, _m, _k, _o in ASSETS}
+    rows = re.findall(
+        r'\{\s*"([^"]+)",\s*"[^"]+",\s*(?:\(const char \*\))?(WEB_ASSET_\w+),', header_text
     )
-    for m in row.finditer(header_text):
-        route, mime, name = m.group(1), m.group(2), m.group(3)
-        # Rebuild the index and source path the same way build() named them.
-        i = ASSETS.index(next(
-            a for a in ASSETS if ident(a[0], ASSETS.index(a)) == name
-        ))
-        yield route, ASSETS[i][1], mime, ASSETS[i][3], name, i
+    return {route: payloads.get(name) for route, name in rows
+            if route in route_to_rel}
+
+
+def verify(header_text: str) -> int:
+    """Compare parsed-back bytes against frontend/. Returns process exit code."""
+    parsed = parse_back(header_text)
+    failures = 0
+
+    expected_routes = {route for route, rel, m, k, o in ASSETS
+                       if not o or (FRONTEND / rel).exists()}
+
+    if set(parsed) != expected_routes:
+        print("FAIL: table routes %s != expected %s"
+              % (sorted(parsed), sorted(expected_routes)))
+        return 1
+
+    for route in sorted(parsed):
+        src = FRONTEND / route_to_rel_for(route)
+        want = src.read_bytes()
+        got = parsed[route]
+        if got is None:
+            print("FAIL %-28s payload not found in header" % route)
+            failures += 1
+        elif got != want:
+            # Report the first difference so a shifted-by-one bug is obvious.
+            off = next((i for i in range(min(len(got), len(want)))
+                        if got[i] != want[i]), min(len(got), len(want)))
+            print("FAIL %-28s %d bytes served vs %d on disk; first diff at byte %d"
+                  % (route, len(got), len(want), off))
+            print("       served: %r" % got[max(0, off - 10):off + 10])
+            print("       disk  : %r" % want[max(0, off - 10):off + 10])
+            failures += 1
+        else:
+            print("  ok %-28s %7d bytes byte-for-byte" % (route, len(want)))
+
+    if failures:
+        print("FAIL: %d asset(s) would not be served correctly" % failures)
+        return 1
+    print("PASS: all %d assets round-trip byte-for-byte from the generated header"
+          % len(parsed))
+    return 0
+
+
+def route_to_rel_for(route: str) -> str:
+    for r, rel, _m, _k, _o in ASSETS:
+        if r == route:
+            return rel
+    raise KeyError(route)
 
 
 def main() -> int:
