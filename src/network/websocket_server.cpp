@@ -1,6 +1,5 @@
 #include "websocket_server.h"
 #include "../core/limit_manager.h"
-#include "ap_portal.h"
 #include "command_processor.h"
 #include "console_handler.h"
 #include "firebase_bridge.h"
