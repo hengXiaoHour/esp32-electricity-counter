@@ -328,7 +328,69 @@ bool processCommand(NVSManager *nvs, SystemData *sysData,
       }
     }
 
+  } else if (s.indexOf("\"cmd\":\"set_ap\"") >= 0) {
+    // Rename the network the board publishes, and set its password.
+    //
+    // PIN-gated by the gate above like everything else mutating - which matters
+    // more here than for most verbs: this one controls who can reach the board
+    // AT ALL.
+    String ssid, pass;
+    const char *reason = nullptr;
+    if (!extractJsonString(s, "ssid", ssid) || !extractJsonString(s, "pass", pass)) {
+      if (responseOut) *responseOut = "  Both a network name and a password are required";
+    } else if (!ap_creds_validate(ssid.c_str(), pass.c_str(), &reason)) {
+      // Nothing is written. A password the radio would refuse makes softAP()
+      // fail and the board comes back with no network - the one failure mode
+      // here that needs the serial port to recover from.
+      if (responseOut) {
+        *responseOut = String("  Not saved: ") + (reason ? reason : "invalid credentials");
+      }
+    } else {
+      // dataMutex around save+commit: commit() is prefs.end()+prefs.begin() and
+      // is not thread-safe against sensorTask's 5 s energy save, which touches
+      // the same Preferences handle under this same mutex.
+      bool locked = (dataMutex &&
+                     xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE);
+      nvs->saveApCredentials(ssid, pass);
+      // Committed HERE rather than relying on the trailing commit() below, which
+      // runs without the mutex. If the write were lost, the board would come
+      // back advertising the OLD name and the user would think the change never
+      // took - with no way to tell whether the button or the flash failed.
+      nvs->commit();
+      if (locked) xSemaphoreGive(*dataMutex);
+
+      handled = true;
+      if (responseOut) {
+        *responseOut = String("  Saved. The board is restarting on network \"") + ssid +
+                       "\" - join that WiFi and reopen the page.";
+      }
+      // Deferred, not immediate: restarting inside this handler would kill the
+      // socket before the reply above reaches the browser.
+      consoleHandler.requestReboot("  (AP credentials changed - restarting)");
+    }
+
+  } else if (s.indexOf("\"cmd\":\"reset_ap\"") >= 0) {
+    // The "I changed the password and forgot it" escape hatch. Restores the
+    // factory identity; the board then advertises the name printed on the
+    // silkscreen and in the README.
+    bool locked = (dataMutex &&
+                   xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE);
+    nvs->clearApCredentials();
+    nvs->commit();
+    if (locked) xSemaphoreGive(*dataMutex);
+
+    handled = true;
+    if (responseOut) {
+      *responseOut = String("  Reset to \"") + AP_SSID_DEFAULT + "\" / \"" +
+                     AP_PASS_DEFAULT + "\". The board is restarting.";
+    }
+    consoleHandler.requestReboot("  (AP credentials reset - restarting)");
+
   } else if (s.indexOf("\"cmd\":\"set_time\"") >= 0) {
+    // The browser lends us its clock. Sent automatically on WebSocket open, so
+    // it is deliberately NOT PIN-gated: a read-only viewer connecting is
+    // exactly the event that should give the board a valid time, otherwise
+    // the monthly rollover stays dormant until somebody types a PIN.
     int ti = s.indexOf("\"t\":");
     if (ti >= 0) {
       // toInt() stops at the first non-digit, so the trailing '}' is ignored.
