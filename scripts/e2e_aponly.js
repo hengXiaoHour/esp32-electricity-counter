@@ -242,6 +242,98 @@ function check(name, cond, detail) {
 
   await page.screenshot({ path: '/tmp/opencode/e2e-dashboard.png', fullPage: false });
 
+  // ---------------------------------------------------------------------
+  // Access Point name + password.
+  //
+  // LAST, and deliberately: saving one drops the board's own network, so the
+  // page this suite is driving loses its socket 1.5 s later. Every stage above
+  // needs that socket, so this one runs after them all.
+  //
+  // What it proves: the panel exists, the UI refuses an impossible password
+  // without bothering the board, the frame on the wire carries the credentials
+  // AND the PIN, and - the part that matters - the BOARD rejects a bad
+  // password on its own. A frontend that validated perfectly while the device
+  // accepted anything would brick the radio, and only the second half of this
+  // stage can see that.
+  console.log('\n== Access Point: rename the network ==');
+  // The stages above ended with a wrong-PIN attempt, so the UI is read-only
+  // again. Get back in; the device-side PIN never changed.
+  await page.evaluate((p) => window.unlockWithPin(p), PIN);
+  await page.waitForTimeout(500);
+  check('admin re-unlocked for the AP panel',
+        /Admin/.test(await page.locator('#roleBadge').textContent()));
+
+  await page.evaluate(() => window.showPage('settings'));
+  await page.waitForTimeout(300);
+  await page.locator('#apSsid').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: '/tmp/opencode/e2e-ap-panel.png' });
+
+  // --- negative control, client side: an impossible password never leaves ---
+  const beforeBad = await page.evaluate(() => window.__wsSent.length);
+  await page.fill('#apSsid', 'Meter AP');
+  await page.fill('#apPass', 'short7c');           // 7 characters
+  await page.click('#apSsid ~ button.btn-sm');
+  await page.waitForTimeout(400);
+  const afterBad = await page.evaluate(() => window.__wsSent.length);
+  check('a 7-character password is refused before it is sent',
+        afterBad === beforeBad, beforeBad + ' -> ' + afterBad);
+  const badToast = await page.locator('#toast').textContent();
+  check('...and says why',
+        /at least 8/i.test(badToast), 'toast = "' + badToast + '"');
+
+  // --- negative control, board side: the device refuses it too -------------
+  // Straight down a raw socket, so nothing about the UI can be involved.
+  const boardAp = await page.evaluate((pin) => new Promise((resolve) => {
+    const s = new WebSocket('ws://' + location.host + '/ws');
+    const log = [];
+    s.onopen = () => {
+      s.send(JSON.stringify({ cmd: 'set_ap', ssid: 'Meter AP', pass: 'short7c', pin: pin }));
+      setTimeout(() => s.send(JSON.stringify({ cmd: 'set_ap', ssid: '', pass: '12345678', pin: pin })), 350);
+      setTimeout(() => s.send(JSON.stringify({ cmd: 'set_ap', ssid: 'Meter AP', pass: 'goodpass1', pin: pin })), 700);
+    };
+    s.onmessage = (e) => { try { log.push(JSON.parse(e.data)); } catch (x) {} };
+    setTimeout(() => { s.close(); resolve(log); }, 1500);
+  }), PIN);
+
+  const apTexts = boardAp.filter(m => m.type === 'console').map(m => m.out || '');
+  check('BOARD refuses a 7-character password',
+        apTexts.some(t => /Not saved: Password must be at least 8/.test(t)),
+        JSON.stringify(apTexts));
+  check('BOARD refuses an empty network name',
+        apTexts.some(t => /Not saved: Network name cannot be empty/.test(t)),
+        JSON.stringify(apTexts));
+  check('BOARD accepts a valid pair',
+        apTexts.some(t => /restarting on network "Meter AP"/.test(t)),
+        JSON.stringify(apTexts));
+  // ...and the rejected ones never became the board's identity. If the mock had
+  // stored the 7-character password, the last accepted frame would still say
+  // "Meter AP" but the board would be broadcasting something unusable.
+  check('NEGATIVE CONTROL: a rejected save is not silently stored',
+        !apTexts.some(t => /restarting on network "short7c"/.test(t)));
+
+  // --- the UI path -------------------------------------------------------
+  const beforeSave = await page.evaluate(() => window.__wsSent.length);
+  await page.fill('#apSsid', 'Meter AP');
+  await page.fill('#apPass', 'goodpass1');
+  await page.click('#apSsid ~ button.btn-sm');
+  await page.waitForTimeout(600);
+
+  const sentAp = await page.evaluate(() => window.__wsSent.slice());
+  const apFrames = sentAp.filter(f => f.indexOf('"set_ap"') >= 0);
+  check('the panel puts a set_ap frame on the wire', apFrames.length >= 1,
+        'frames since load: ' + (sentAp.length - beforeSave));
+  const apFrame = apFrames[apFrames.length - 1] || '';
+  check('...carrying the new name and password',
+        apFrame.indexOf('"ssid":"Meter AP"') >= 0 && apFrame.indexOf('"pass":"goodpass1"') >= 0,
+        apFrame);
+  check('...and the admin PIN', /"pin":"1234"/.test(apFrame), apFrame);
+  check('the password box is cleared afterwards',
+        (await page.inputValue('#apPass')) === '');
+
+  const hint = await page.locator('#apHint').textContent();
+  check('the panel warns that the board is rebooting',
+        /rebooting/i.test(hint), 'hint = "' + (hint || '').slice(0, 80) + '"');
+
   console.log('\n' + checks + ' checks, ' + failures + ' failures');
   await browser.close();
   process.exit(failures === 0 ? 0 : 1);
