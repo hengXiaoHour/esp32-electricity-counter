@@ -281,6 +281,20 @@ function check(name, cond, detail) {
   check('...and says why',
         /at least 8/i.test(badToast), 'toast = "' + badToast + '"');
 
+  // A trailing space is the failure a user cannot SEE in the input box, so it is
+  // the one most likely to reach the board. The UI used to trim before checking
+  // and this test could not fail; now the check has to be able to fire.
+  await page.fill('#apPass', 'goodpass1');
+  await page.fill('#apSsid', 'Meter AP ');
+  await page.click('#apSsid ~ button.btn-sm');
+  await page.waitForTimeout(400);
+  const spaceToast = await page.locator('#toast').textContent();
+  check('a trailing space in the name is refused client-side',
+        /start or end with a space/i.test(spaceToast), 'toast = "' + spaceToast + '"');
+  check('...and still nothing was sent',
+        (await page.evaluate(() => window.__wsSent.length)) === beforeBad,
+        'frames: ' + (await page.evaluate(() => window.__wsSent.length)));
+
   // --- negative control, board side: the device refuses it too -------------
   // Straight down a raw socket, so nothing about the UI can be involved.
   //
