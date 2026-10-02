@@ -198,6 +198,7 @@ static void _tcp_set_data_callbacks(tcp_pcb * pcb, void * arg,
     msg.err_cb = err_cb;
     msg.poll_cb = poll_cb;
     msg.accept_cb = NULL;          // never touch tcp_accept on a data PCB
+    msg.err = ERR_OK;
     tcpip_api_call(_tcp_set_callbacks_api, (struct tcpip_api_call_data*)&msg);
 }
 
