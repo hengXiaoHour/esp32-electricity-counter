@@ -79,7 +79,12 @@ done
 record $? "no Firebase/RTDB/cloud code left in frontend/ (comments ignored)"
 [ -n "$CLOUD_HITS" ] && printf '%s' "$CLOUD_HITS"
 
-# --- 3b. Documentation claims match the code ---------------------------
+# --- 3b. No dead code or dead assets ------------------------------------
+stage "Dead code"
+python3 scripts/check_deadcode.py >/tmp/opencode/verify_dead.log 2>&1
+record $? "$(tail -1 /tmp/opencode/verify_dead.log)"
+
+# --- 3c. Documentation claims match the code ---------------------------
 stage "Documentation"
 python3 scripts/check_docs.py >/tmp/opencode/verify_docs.log 2>&1
 record $? "$(tail -1 /tmp/opencode/verify_docs.log)"

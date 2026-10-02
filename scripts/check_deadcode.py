@@ -145,7 +145,11 @@ def main():
 
     # --- 4. dead JS functions --------------------------------------------
     js_body = strip_js(js)
-    inline_handlers = html + " " + js_body
+    # HTML ONLY. Including js_body here double-counts each function's own
+    # declaration, so used_html was never 0 and this rule never fired - proven by
+    # a mutant function appended to a real copy of script.js and still reported
+    # "no JS function is declared but never called".
+    inline_handlers = html
     dead_js = []
     for m in re.finditer(r"^\s*(?:async\s+)?function\s+([A-Za-z_$][\w$]*)", js_body, re.M):
         fn = m.group(1)

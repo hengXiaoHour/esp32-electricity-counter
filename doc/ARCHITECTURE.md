@@ -76,6 +76,7 @@ esp32-electricity-counter/
 │   ├── test_auth_gate.c             # Host unit tests for the PIN gate
 │   ├── mock_device.py               # Mock board: serves frontend/, speaks /ws
 │   ├── e2e_aponly.js                # Playwright run of the real page
+│   ├── check_deadcode.py            # Fails if dead code/assets reappear
 │   ├── verify_all.sh                # Every gate, one command
 │   └── patch_async_tcp.py           # AsyncTCP 1.1.4 patches (see README)
 │
