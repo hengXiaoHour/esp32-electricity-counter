@@ -8,6 +8,8 @@ dashboard** — no cloud, no router, no internet required.
 
 1. Power on the board.
 2. Join the WiFi network **`ESP32-Elec-Counter`** (password `configure123`).
+   Both are the factory defaults and can be changed from the dashboard or the
+   serial console — see [Changing the network name and password](#changing-the-network-name-and-password).
 3. Open **`http://192.168.4.1/`**.
 
 That is the whole setup. The page is served from the board's own flash, so it
