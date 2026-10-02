@@ -209,7 +209,13 @@ void ConsoleHandler::exec(const String &line, String &out) {
   } else if (cmd.startsWith("setwifi")) {
     consoleAppendf(out, "%s", "  setwifi is gone: this board is AP-only.");
     consoleAppendf(out, "  It never joins a network. Join \"%s\" from your phone.",
-                   AP_SSID_DEFAULT);
+                   wifiMgr ? wifiMgr->getSSID() : AP_SSID_DEFAULT);
+
+  } else if (cmd.startsWith("set_ap ")) {
+    cmdSetAp(cmd.substring(7), out);
+
+  } else if (cmd == "reset_ap") {
+    cmdResetAp(out);
 
   } else if (cmd == "clearwifi") {
     cmdClearWifi(out);
