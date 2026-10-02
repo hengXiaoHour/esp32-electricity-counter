@@ -73,3 +73,78 @@ bool ap_creds_validate(const char *ssid, const char *pass, const char **reason) 
   if (!ap_creds_validateSsid(ssid, reason)) return false;
   return ap_creds_validatePass(pass, reason);
 }
+
+// Copies a possibly-quoted field out of `*p`, advancing `*p` past it.
+// Returns false when a quote is opened and never closed.
+static bool takeField(const char **p, char *out, size_t outLen) {
+  const char *s = *p;
+  if (*s == '"') {
+    const char *close = strchr(s + 1, '"');
+    if (close == NULL) return false;      // opened, never closed
+    size_t n = (size_t)(close - (s + 1));
+    if (n >= outLen) n = outLen - 1;
+    memcpy(out, s + 1, n);
+    out[n] = '\0';
+    *p = close + 1;
+  } else {
+    const char *end = strchr(s, ' ');
+    size_t n = (end != NULL) ? (size_t)(end - s) : strlen(s);
+    if (n >= outLen) n = outLen - 1;
+    memcpy(out, s, n);
+    out[n] = '\0';
+    *p = (end != NULL) ? end : s + strlen(s);
+  }
+  return true;
+}
+
+bool ap_creds_splitArgs(const char *args, char *ssid, size_t ssidLen,
+                        char *pass, size_t passLen) {
+  if (ssid == NULL || pass == NULL || ssidLen == 0 || passLen == 0) return false;
+  ssid[0] = '\0';
+  pass[0] = '\0';
+  if (args == NULL) return false;
+
+  // Leading whitespace: the console trims the line, but the web console sends
+  // `line` verbatim and a leading space there would otherwise parse as an
+  // empty name.
+  const char *p = args;
+  while (*p == ' ' || *p == '\t') p++;
+
+  if (*p == '"') {
+    const char *close = strchr(p + 1, '"');
+    if (close == NULL) return false;
+    size_t n = (size_t)(close - (p + 1));
+    if (n >= ssidLen) n = ssidLen - 1;
+    memcpy(ssid, p + 1, n);
+    ssid[n] = '\0';
+    p = close + 1;
+  } else {
+    const char *end = strchr(p, ' ');
+    if (end == NULL || end == p) return false;   // no separator / empty name
+    size_t n = (size_t)(end - p);
+    if (n >= ssidLen) n = ssidLen - 1;
+    memcpy(ssid, p, n);
+    ssid[n] = '\0';
+    p = end;
+  }
+
+  while (*p == ' ' || *p == '\t') p++;
+  if (*p == '\0') return false;                 // a name with no password
+  if (!takeField(&p, pass, passLen)) return false;
+
+  // Trailing whitespace after an UNQUOTED password is not meaningful (the
+  // console already trimmed the line) but after a quoted one it is not part of
+  // the field either, so nothing is stripped here: what was inside the quotes
+  // is what gets stored.
+  if (*p == '\0') return true;
+
+  // Anything left over is refused rather than silently ignored. `set_ap Meter
+  // hunter2 oops` is almost certainly a typo, and storing "hunter2 oops" would
+  // look like it worked right up until the phone could not join.
+  if (*p == ' ' || *p == '\t') {
+    const char *rest = p;
+    while (*rest == ' ' || *rest == '\t') rest++;
+    if (*rest == '\0') return true;            // trailing spaces only
+  }
+  return false;
+}
