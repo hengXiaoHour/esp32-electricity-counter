@@ -3,6 +3,7 @@
 #include <WiFi.h>
 #include <DNSServer.h>
 #include "../config.h"
+#include "ap_creds.h"
 
 // The board is AP-only. There is no station interface, no upstream network,
 // and no cloud: the ESP32 publishes a WiFi network of its own, serves the
