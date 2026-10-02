@@ -162,6 +162,10 @@ SET_CALLBACKS_BLOCK = """// PATCH (project): callback registration is core-locke
 // DO NOT call these from a lwIP callback (AsyncServer::_accept,
 // AsyncClient::_error, AsyncClient::_lwip_fin): those already run on the TCPIP
 // thread and tcpip_api_call() would deadlock there.
+// PATCH3_REV2 — bump this whenever the block below changes. It is also the
+// idempotence anchor: testing only the function name let an OLDER revision of
+// this block count as "already applied", so a real fix to the block (adding the
+// err_t err field the compiler then demanded) was silently skipped.
 typedef struct {
     struct tcpip_api_call_data call;
     tcp_pcb * pcb;
