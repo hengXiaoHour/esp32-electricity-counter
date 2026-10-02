@@ -69,6 +69,8 @@ def main():
     apc_cpp = read("src/network/ap_creds.cpp")
     nvs = read("src/utils/nvs_manager.cpp")
     nvs_h = read("src/utils/nvs_manager.h")
+    cmd = read("src/network/command_processor.cpp")
+    ch = read("src/network/console_handler.cpp")
     ws_code = strip_comments(read("src/network/websocket_server.cpp"))
     wm = read("src/network/wifi_manager.cpp")
     wm_h = read("src/network/wifi_manager.h")
