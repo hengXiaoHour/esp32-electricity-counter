@@ -253,6 +253,8 @@ void ConsoleHandler::runDeferred() {
   String cmd = pendingCmd;
   pendingCmd = "";
   pendingOutput = "";
+  String note = pendingRebootNote;
+  pendingRebootNote = "";
 
   if (cmd == "test led") {
     ledTestActive = true;
