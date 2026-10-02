@@ -359,16 +359,16 @@ void ConsoleHandler::flushEnergy() {
   // every ~5 s under dataMutex. With STA gone, `reboot` is now the ONLY
   // restart path in the firmware, so this flush is the last chance to get the
   // counters into flash - it must not race the periodic save.
-  if (xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-    consoleAppendf(pendingOutput, "%s",
-                   "  WARN: data mutex busy, energy may not be saved");
-  }
+  //
+  // Bounded wait: if sensorTask happens to hold the mutex we proceed anyway
+  // rather than skip the flush, because a missed save on a reboot is exactly
+  // the data loss this function exists to prevent.
+  bool locked = (xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE);
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {
     nvs->saveEnergyKWh(ch, powerCalc->getEnergyKWh(ch));
   }
   nvs->commit();
-  if (xSemaphoreGetCount(*dataMutex)) { /* not held */ }
-  xSemaphoreGive(*dataMutex);
+  if (locked) xSemaphoreGive(*dataMutex);
 }
 
 void ConsoleHandler::cmdReboot(String &out) {
