@@ -247,20 +247,41 @@ int main(void) {
     expectReason("a refused parse leaves the name buffer EMPTY, not garbage",
                  ssid, "");
 
-    /* Truncation, not overflow. The serial buffer is bounded, so a long paste
-     * must not run past the destination. */
+    /* Overflow. The serial buffer is bounded, so a long paste must not run past
+     * the destination - and it must NOT be silently shortened either: truncating
+     * a 39-character name to 32 produces a perfectly valid SSID, and the board
+     * would broadcast something other than what was typed. The first version of
+     * this function truncated, and only this test caught it. */
     {
       char big[AP_MAX_SSID_LEN + 8];
       memset(big, 'N', sizeof(big) - 1);
       big[sizeof(big) - 1] = '\0';
       char line[AP_MAX_SSID_LEN + 8 + 16];
       snprintf(line, sizeof(line), "%s hunter2hunter2", big);
-      expect("an over-long name is accepted by the SPLITTER (validation rejects it later)",
+      expect("an over-long name is REFUSED, not truncated",
+             ap_creds_splitArgs(line, ssid, sizeof(ssid), pass, sizeof(pass)), false);
+      expectReason("...and nothing is left behind in the buffers", ssid, "");
+
+      /* The boundary itself still works: exactly 32 octets fits. */
+      char exact[AP_MAX_SSID_LEN + 1];
+      memset(exact, 'N', AP_MAX_SSID_LEN);
+      exact[AP_MAX_SSID_LEN] = '\0';
+      snprintf(line, sizeof(line), "%s hunter2hunter2", exact);
+      expect("a name of exactly the maximum length is accepted",
              ap_creds_splitArgs(line, ssid, sizeof(ssid), pass, sizeof(pass)), true);
-      expectReason("...and truncated to the buffer, not overflowed",
-                   strlen(ssid) == AP_MAX_SSID_LEN ? NULL : "not truncated", NULL);
-      expect("...which means the validator then refuses it",
-             ap_creds_validate(ssid, pass, NULL), false);
+      expectReason("...stored whole", strlen(ssid) == AP_MAX_SSID_LEN ? NULL : "shortened", NULL);
+
+      /* Same for the password: 63 octets fits, 64 does not. */
+      char longpass[AP_MAX_PASS_LEN + 2];
+      memset(longpass, 'p', AP_MAX_PASS_LEN + 1);
+      longpass[AP_MAX_PASS_LEN + 1] = '\0';
+      snprintf(line, sizeof(line), "Meter %s", longpass);
+      expect("a password one over the maximum is REFUSED",
+             ap_creds_splitArgs(line, ssid, sizeof(ssid), pass, sizeof(pass)), false);
+      snprintf(line, sizeof(line), "Meter %.*s", AP_MAX_PASS_LEN, longpass);
+      expect("a password of exactly the maximum length is accepted",
+             ap_creds_splitArgs(line, ssid, sizeof(ssid), pass, sizeof(pass)), true);
+      expectReason("...stored whole", strlen(pass) == AP_MAX_PASS_LEN ? NULL : "shortened", NULL);
     }
   }
 
