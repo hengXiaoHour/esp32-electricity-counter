@@ -144,6 +144,83 @@ def auth_check(frame, expected_pin):
     return got == expected_pin, verb
 
 
+# --- AP credential rules -------------------------------------------------
+# Port of src/network/ap_creds.cpp, including the exact reason strings: the
+# E2E suite asserts on them, so a mock that paraphrased the firmware would let
+# the frontend drift away from the device without anything failing. Lengths are
+# OCTETS (what strlen counts), not characters.
+AP_MAX_SSID_LEN = 32
+AP_MIN_PASS_LEN = 8
+AP_MAX_PASS_LEN = 63
+
+
+def _has_control(s):
+    return any(ord(c) < 0x20 for c in s)
+
+
+def ap_validate_ssid(ssid):
+    """Returns a reason string, or None when the SSID is usable."""
+    if ssid is None:
+        return "Network name is missing"
+    if len(ssid.encode("utf-8")) == 0:
+        return "Network name cannot be empty"
+    if len(ssid.encode("utf-8")) > AP_MAX_SSID_LEN:
+        return "Network name must be 32 characters or fewer"
+    if _has_control(ssid):
+        return "Network name cannot contain control characters"
+    if ssid.startswith(" ") or ssid.endswith(" "):
+        return "Network name cannot start or end with a space"
+    if ssid and all(c == " " for c in ssid):
+        return "Network name cannot be only spaces"
+    return None
+
+
+def ap_validate_pass(pass_):
+    if pass_ is None:
+        return "Password is missing"
+    n = len(pass_.encode("utf-8"))
+    if n == 0:
+        return "Password cannot be empty (an open network is not allowed)"
+    if n < AP_MIN_PASS_LEN:
+        return "Password must be at least 8 characters"
+    if n > AP_MAX_PASS_LEN:
+        return "Password must be 63 characters or fewer"
+    if _has_control(pass_):
+        return "Password cannot contain control characters"
+    return None
+
+
+def ap_validate(ssid, pass_):
+    return ap_validate_ssid(ssid) or ap_validate_pass(pass_)
+
+
+def extract_json_string(frame, key):
+    """Value of a JSON string field, honouring backslash escapes.
+
+    Mirrors command_processor.cpp's extractJsonString() closely enough for the
+    fields the mock handles. Returns None when the field is absent or
+    unterminated - an unterminated field is malformed, not empty.
+    """
+    needle = '"%s":"' % key
+    i = frame.find(needle)
+    if i < 0:
+        return None
+    i += len(needle)
+    out = []
+    while i < len(frame):
+        c = frame[i]
+        if c == "\\" and i + 1 < len(frame):
+            nxt = frame[i + 1]
+            i += 2
+            out.append({"n": "\n", "t": "\t", "r": "\r"}.get(nxt, nxt))
+            continue
+        if c == '"':
+            return "".join(out)
+        out.append(c)
+        i += 1
+    return None      # truncated -> malformed
+
+
 class State:
     """Everything the mock 'remembers' between frames."""
 
