@@ -329,10 +329,6 @@ bool processCommand(NVSManager *nvs, SystemData *sysData,
     }
 
   } else if (s.indexOf("\"cmd\":\"set_time\"") >= 0) {
-    // The browser lends us its clock. Sent automatically on WebSocket open, so
-    // it is deliberately NOT PIN-gated: a read-only viewer connecting is
-    // exactly the event that should give the board a valid time, otherwise
-    // the monthly rollover stays dormant until somebody types a PIN.
     int ti = s.indexOf("\"t\":");
     if (ti >= 0) {
       // toInt() stops at the first non-digit, so the trailing '}' is ignored.
