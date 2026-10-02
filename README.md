@@ -1,6 +1,32 @@
 # ESP32-S3 6-Channel AC Electricity Counter
 
-Monitors 6 AC circuits with current sensors, 1 voltage reference, RGB status LED, active buzzer alert, and a real-time WebSocket dashboard with OTA updates.
+Monitors 6 AC circuits with current sensors, 1 voltage reference, RGB status LED
+and an active buzzer. The board is an **access point that hosts its own
+dashboard** — no cloud, no router, no internet required.
+
+## How to use it
+
+1. Power on the board.
+2. Join the WiFi network **`ESP32-Elec-Counter`** (password `configure123`).
+3. Open **`http://192.168.4.1/`**.
+
+That is the whole setup. The page is served from the board's own flash, so it
+works with the router unplugged. Because the phone has already joined the
+board's network, opening that address is all it takes — and because the page
+and the WebSocket share an origin, live data connects with no configuration,
+no login and no mixed-content problems.
+
+To use the dashboard again later, rejoin the network and reload the page.
+
+### Admin PIN
+
+Viewing is always open. Anything that changes the board — channel names and
+limits, calibration, counters, the console, rebooting, changing the PIN — needs
+the admin PIN (**`1234`** by default; change it in Settings → Admin PIN).
+
+The PIN is checked **on the ESP32**, not in the browser: hiding a button is a
+convenience, not a protection. If the PIN is changed on the device while a
+dashboard is open, that tab drops back to read-only on its next command.
 
 ## Hardware Setup
 
@@ -11,84 +37,129 @@ Monitors 6 AC circuits with current sensors, 1 voltage reference, RGB status LED
 | Active buzzer | GPIO13 |
 | RGB LED (WS2812) | GPIO48 |
 
-Each channel has an independent monthly kWh limit. When a channel reaches 100% of its limit it trips (RED LED blink) and the buzzer rings N beeps (N = channel number, ch1 = 1 beep … ch6 = 6 beeps).
+Each channel has an independent monthly kWh limit. When a channel reaches 100%
+of its limit it trips: the buzzer rings N beeps (N = channel number, ch1 = 1
+beep … ch6 = 6 beeps), the channel shows TRIP, an event is logged, and the
+dashboard raises a browser notification if it is open.
 
 ## Arduino IDE Setup
 
 1. **Board:** Tools → Board → ESP32 Arduino → `ESP32S3 Dev Module`
-2. **Partition Scheme:** Tools → Partition Scheme → `No FS 4MB (2MB APP with OTA)` — REQUIRED. The firmware (with the Firebase library) does not fit the default 1.25MB APP partition.
+2. **Partition Scheme:** Tools → Partition Scheme → `No FS 4MB (2MB APP with OTA)`
 3. **Flash Size:** 4MB (matches the onboard XMC embedded flash)
 4. **PSRAM:** Enabled (2MB PSRAM on this board)
 
-## Required Libraries
-
-Install via Arduino Library Manager:
+### Required Libraries
 
 | Library | Version |
 |---|---|
 | `Adafruit NeoPixel` | ≥1.15 |
 | `ESP Async WebServer` | ≥3.11 |
 | `AsyncTCP` | ≥1.1 |
-| `Firebase Arduino Client Library for ESP8266 and ESP32` | ≥4.4.17 |
+| `ArduinoOTA` | (bundled with the ESP32 core) |
 
-## Firebase Cloud Setup (Cloud dashboard mode)
+`AsyncTCP` 1.1.4 needs two patches on Arduino-ESP32 3.3.x, both lost on every
+library upgrade — run `python3 scripts/patch_async_tcp.py` after installing it,
+or the build fails at `ESPAsyncWebServer.h:1699`.
 
-The dashboard supports a **Cloud** mode over Firebase Realtime Database (reachable from anywhere, no port-forwarding), alongside the LAN **WebSocket** mode.
+> The **Firebase Arduino Client Library is no longer used.** Removing it freed
+> ~376 KB of flash, which is where the embedded dashboard lives.
 
-1. Create a Firebase project (e.g. `esp32-electricity-counter`) and a Realtime Database instance (us-central1).
-2. Deploy the RTDB rules + hosting from this repo:
-   ```bash
-   firebase deploy
-   ```
-3. **Device credentials** — Firebase Console → Project Settings → Service Accounts → *Generate new private key*. Fill the values into `src/network/firebase_config.h` (copy from `src/network/firebase_config.example.h`; this file is gitignored).
-4. **Google sign-in (admin)** — Firebase Console → Authentication → Get started → enable the **Google** sign-in provider, then add `heng.xiao.hour@gmail.com` to `frontend/config.js` -> `adminEmails` (the list here only drives the UI; enforce it in `database.rules.json` -> `isAdmin()` which is deployed with `firebase deploy`). The web `apiKey`/`authDomain` in `frontend/config.js` come from Project Settings → Your apps → Web app.
-5. **Dashboard config** — copy `frontend/config.js` from `frontend/config.example.js` (gitignored) and verify `databaseURL` matches your RTDB instance.
-6. Re-upload the firmware (Firebase starts automatically when WiFi connects) and open the dashboard: pick **Cloud** on the connect screen. Guests (who haven't signed in with the admin Google account) are **read-only** — commands, console, calibration, counters and OTA stay locked.
-
-**Auth scope note:** admin gating is enforced by the RTDB security rules, so **Cloud** mode is always protected even if the dashboard UI is bypassed. **Local (WebSocket)** mode has no server-side auth on the ESP32, so the admin check there is UI-level only — treat Local as trusted-LAN-only. **Demo** mode is intentionally fully open.
-
-Data flow: the device pushes its live snapshot to `/latest` every 1 s (service-account auth); the dashboard subscribes to it; commands are fire-and-forget pushes to `/commands` that the device polls and executes.
-
-## First Boot — WiFi Setup
-
-1. Power on the ESP32-S3
-2. Connect to the **ESP32-Elec-Counter** WiFi AP (password: `configure123`)
-3. Open any webpage — the captive portal shows the config form
-4. Enter your WiFi SSID/password and click Save
-5. The device reboots and connects. Find its IP on your router or check Serial output.
-
-## Dashboard
-
-The dashboard lives in `frontend/` and is deployed to **Firebase Hosting** (https://esp32-electricity-counter.web.app) — it is *not* served from the device:
+## Build & verify
 
 ```bash
-firebase deploy --only hosting   # after changing frontend/ files
+arduino-cli compile --fqbn esp32:esp32:esp32s3:FlashSize=4M,PartitionScheme=no_fs,CDCOnBoot=cdc --warnings all
 ```
 
-Three connection modes on the connect screen:
-- **Cloud** — Firebase RTDB (`/latest` + `/commands`), works from anywhere
-- **Local** — WebSocket directly to `ws://<esp32-ip>/ws` on your LAN
-- **Demo** — mock data, no device required
+Current size: **1,177,661 bytes (57%)** of the 2 MB app partition, 0 warnings.
+
+```bash
+./scripts/verify_all.sh --build
+```
+
+Runs every gate: the embedded-asset round-trip, the admin-PIN unit tests, the
+frontend syntax and cloud-token scan, an end-to-end run of the real page against
+a mock board, the firmware build, and a check that the dashboard really is in
+the resulting `.bin`.
+
+### Updating the dashboard
+
+`frontend/` is the source of truth. The firmware does **not** read it at runtime
+— it is compiled into flash by a generator, so change it and re-flash (or OTA)
+the board:
+
+```bash
+python3 scripts/embed_web.py     # regenerate src/network/web_assets.h
+./scripts/verify_all.sh          # confirm the assets round-trip
+```
+
+`--check` fails if the generated header is stale, and `--verify-binary <bin>`
+fails if the dashboard is not actually present in a compiled firmware image.
 
 ## OTA Updates
 
-Once connected to WiFi, you can upload new firmware over-the-air:
-1. Arduino IDE → Select the ESP32 IP as a network port
-2. Sketch → Upload
+1. Join the board's WiFi network.
+2. Arduino IDE → Select the ESP32 network port (or enter `192.168.4.1`
+   manually if it is not discovered).
+3. Sketch → Upload.
 
-The RGB LED turns blue during OTA. The dashboard shows OTA progress.
+The RGB LED turns blue during OTA and the dashboard shows progress.
 
 ## Architecture
 
-The firmware runs on two FreeRTOS cores:
+Two FreeRTOS tasks on two cores:
 
-- **Core 0** — Networking: WiFi management, WebSocket server, Firebase RTDB bridge, OTA handler
-- **Core 1** — Sensing: ADC sampling, power calculation, limit checking, buzzer alerts
+- **Core 0 — `networkTask`** (prio 2): soft AP + captive DNS, the AsyncWebServer
+  that serves the dashboard, the WebSocket, and ArduinoOTA.
+- **Core 1 — `sensorTask`** (prio 2): ADC sampling, power math, limit checks,
+  buzzer, LED, and the ~5 s energy save to NVS.
 
-Shared data between cores is protected by a mutex (`SemaphoreHandle_t`).
+Shared `SystemData` is protected by a FreeRTOS mutex. `commit()` is not
+thread-safe, so both cores serialise their NVS writes through it.
+
+There is no third task: the old `firebaseTask` existed only to keep the cloud's
+blocking TLS work away from the broadcast loop.
+
+### The clock
+
+The board has no internet, so it has no NTP. It **borrows the browser's clock**:
+the dashboard sends its timestamp when the WebSocket opens and every 10 minutes,
+and the firmware stores it in RTC memory so the time survives a restart with no
+phone attached.
+
+This matters beyond the clock display. `LimitManager::rolloverIfNeeded()`
+deliberately does nothing while the clock is unset, so **without a connected
+dashboard the monthly billing reset never happens.** Settings shows the clock
+state for that reason.
+
+### Notifications
+
+Trip alerts are browser notifications, not a server push. There is no server.
+They fire while a dashboard is open — which in AP-only mode means while you are
+on the board's WiFi.
 
 ## Serial Monitor
 
 - Baud: 115200
-- Boot messages, connection status, and sensor readings are printed on startup
-- Calibration values can be adjusted via the dashboard under the Calibration section
+- The boot banner prints the network name, password and dashboard URL.
+- `help` lists the diagnostic commands (`status`, `ch <N>`, `cal`, `info`,
+  `buzz <N>`, `inject`, `reset <N>`, `auto_zero <ch>`, `rms_samples`, `reboot`,
+  …). `status` and `debug` toggle live streams.
+
+`setwifi` no longer exists — the board has no network to join. `clearwifi` is
+retained only to erase credentials stored by older firmware.
+
+## Limitations
+
+- **No access from outside your own WiFi.** This is the deliberate trade for
+  removing the cloud. There is no port-forwarding and no remote access.
+- **No true PWA install.** Service workers require a secure context, and
+  `http://192.168.4.1` is not one, so the browser will offer "Add to Home
+  Screen" (a shortcut) rather than a standalone install. Serving HTTPS from the
+  board would need a self-signed certificate.
+- **The AP radio never sleeps.** The old eco mode (modem sleep when nobody was
+  watching) applied only to a station link and has no meaning for an access
+  point, which must keep beaconing.
+- **~10 clients** maximum, the ESP32 soft-AP limit.
+- WiFi credentials from older firmware may still sit in NVS. Nothing reads them;
+  run `clearwifi` to remove them.
