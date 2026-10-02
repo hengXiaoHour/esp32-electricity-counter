@@ -6,8 +6,9 @@ Automates the whole first-boot setup:
   1. Fill gitignored configs step-by-step (frontend/config.js, src/network/firebase_config.h)
   2. Check Python deps (cryptography for tools/hosting_deploy.py)
   3. Check Arduino CLI + ESP32 core + required libraries
-  4. Check Firebase CLI / REST deploy path
-  5. Optionally compile firmware (arduino-cli)
+  4. Patch AsyncTCP for Arduino-ESP32 3.x (see scripts/patch_async_tcp.py)
+  5. Check Firebase CLI / REST deploy path
+  6. Optionally compile firmware (arduino-cli)
 
 Usage:
   python3 scripts/setup.py              # interactive wizard + auto-install Arduino libs/cores
@@ -168,7 +169,7 @@ def write_firebase_config(values, dest: Path):
 
 # ── Steps ───────────────────────────────────────────────────────────────────
 def ensure_frontend_config(force=False, dry=False, yes=False, cli_overrides=None):
-    print(f"\n{color('[1/5] Frontend config', 'cyan')}  frontend/config.js  — step-by-step wizard")
+    print(f"\n{color('[1/6] Frontend config', 'cyan')}  frontend/config.js  — step-by-step wizard")
     if FRONTEND_TARGET.exists() and not force:
         ok(f"exists: {FRONTEND_TARGET.relative_to(ROOT)} (kept)")
         try:
@@ -238,7 +239,7 @@ def ensure_frontend_config(force=False, dry=False, yes=False, cli_overrides=None
     return True
 
 def ensure_firebase_config(force=False, dry=False, yes=False):
-    print(f"\n{color('[2/5] Firmware Firebase config', 'cyan')}  src/network/firebase_config.h  — step-by-step wizard")
+    print(f"\n{color('[2/6] Firmware Firebase config', 'cyan')}  src/network/firebase_config.h  — step-by-step wizard")
     if FIREBASE_TARGET.exists() and not force:
         ok(f"exists: {FIREBASE_TARGET.relative_to(ROOT)} (kept)")
         txt = FIREBASE_TARGET.read_text()
@@ -304,7 +305,7 @@ def ensure_firebase_config(force=False, dry=False, yes=False):
         return False
 
 def check_python_deps(dry=False):
-    print(f"\n{color('[3/5] Python dependencies', 'cyan')}")
+    print(f"\n{color('[3/6] Python dependencies', 'cyan')}")
     # cryptography is required for tools/firebase_rest.py token minting
     try:
         import cryptography  # noqa: F401
@@ -320,7 +321,7 @@ def check_python_deps(dry=False):
     return True
 
 def check_arduino(install=True, dry=False, yes=False):
-    print(f"\n{color('[4/5] Arduino toolchain', 'cyan')}  arduino-cli + ESP32 core + libs (auto-install missing)")
+    print(f"\n{color('[4/6] Arduino toolchain', 'cyan')}  arduino-cli + ESP32 core + libs (auto-install missing)")
     if not have("arduino-cli"):
         fail("arduino-cli not found in PATH")
         dim("Install: https://arduino.github.io/arduino-cli/latest/installation/")
@@ -426,8 +427,28 @@ def check_arduino(install=True, dry=False, yes=False):
 
     return all_ok
 
+def patch_async_tcp(dry=False):
+    print(f"\n{color('[5/6] AsyncTCP patch', 'cyan')}  Arduino-ESP32 3.x compatibility")
+    script = ROOT / "scripts" / "patch_async_tcp.py"
+    if not script.exists():
+        fail("scripts/patch_async_tcp.py not found")
+        return False
+    cmd = [sys.executable, str(script)] + (["--check"] if dry else [])
+    rc, out = run(cmd)
+    for line in out.splitlines():
+        if line.strip():
+            print("    " + line)
+    if rc == 0:
+        return True
+    if rc == 2:
+        fail('AsyncTCP not found — install it first: arduino-cli lib install "AsyncTCP"')
+    else:
+        fail(f"AsyncTCP patch failed (exit {rc}) — the board would reboot-loop on boot")
+    return False
+
+
 def check_firebase():
-    print(f"\n{color('[5/5] Firebase deploy', 'cyan')}")
+    print(f"\n{color('[6/6] Firebase deploy', 'cyan')}")
     if have("firebase"):
         rc, out = run(["firebase", "--version"])
         ok(f"firebase CLI {out.strip() if out else 'found'}")
@@ -538,6 +559,10 @@ def main():
     results.append(("firebase_config.h", ensure_firebase_config(force=args.force, dry=dry, yes=args.yes)))
     results.append(("python deps", check_python_deps(dry=dry)))
     results.append(("arduino", check_arduino(install=auto_install, dry=dry, yes=args.yes)))
+    # MUST run after check_arduino: installing/upgrading AsyncTCP wipes both
+    # patches, and without patch 2 the board hard-aborts on boot in
+    # tcp_alloc ("Required to lock TCPIP core functionality!").
+    results.append(("asynctcp patch", patch_async_tcp(dry=dry)))
     results.append(("firebase", check_firebase()))
 
     if args.compile and not dry:

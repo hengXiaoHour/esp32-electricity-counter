@@ -106,9 +106,12 @@ void LimitManager::updateBuzzer() {
 }
 
 void LimitManager::rolloverIfNeeded() {
-  static bool rolloverDoneThisBoot = false;
-  if (rolloverDoneThisBoot) return;
-
+  // No once-per-boot latch here on purpose. The persisted billing month IS the
+  // idempotency guard (see the billingMonth == loadLastMonth() check below), so
+  // re-evaluating the clock every cycle is safe and cheap. A "done this boot"
+  // latch made an always-on board fire this exactly once — on the first valid
+  // NTP, when the stored month is still 0 — and then never again, so the
+  // monthly reset was silently skipped for the remainder of that boot session.
   time_t now = time(nullptr);
   if (now <= 1600000000) return;  // NTP not synced yet
 
@@ -127,19 +130,23 @@ void LimitManager::rolloverIfNeeded() {
 
   if (billingMonth == nvs->loadLastMonth()) return;
 
-  rolloverDoneThisBoot = true;
   STATUS_LOG("  [ROLLOVER] billingMonth=%ld  (was %ld) — zeroing all counters\n",
                 (long)billingMonth, (long)nvs->loadLastMonth());
   nvs->saveLastMonth(billingMonth);
-  nvs->commit();  // persist immediately — prevents repeat on next boot
 
+  // Persist the zeros in the SAME commit that advances the billing month.
+  // Zeroing only in RAM used to let a reboot between here and the next periodic
+  // save restore the old kWh from flash while last_month had already moved on —
+  // losing the reset permanently.
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {
     powerCalc->setEnergyKWh(ch, 0.0f);
     sysData->channels[ch].energyKWh = 0.0f;
     sysData->channels[ch].status = STATUS_OK;
+    nvs->saveEnergyKWh(ch, 0.0f);
     tripNotified[ch] = false;
     autoRecoverLogged[ch] = false;
   }
+  nvs->commit();  // persist immediately — prevents repeat on next boot
   if (buzzer) buzzer->stop();
   logForensicEvent(0, STATUS_OK, "Monthly reset — counters zeroed", 0.0f);
 }

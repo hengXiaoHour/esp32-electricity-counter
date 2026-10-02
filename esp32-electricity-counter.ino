@@ -94,10 +94,17 @@ static void updateSharedData() {
 // pre-restart hook so the STA connect-timeout reboot never loses counter
 // data (the 5 s sensorTask save alone can lag behind by a full interval).
 static void flushEnergyToNvs() {
+  // Runs from networkTask (WiFiManager pre-restart hook) with NO mutex held,
+  // while sensorTask's 5s save does the same putFloat+commit() on the same
+  // Preferences handle under the mutex. NVSManager::commit() is
+  // prefs.end()+prefs.begin(), which is not thread-safe — without this the two
+  // cores can interleave and silently drop counter writes. Serialize here too.
+  if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) != pdTRUE) return;
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {
     nvs.saveEnergyKWh(ch, powerCalc.getEnergyKWh(ch));
   }
   nvs.commit();
+  xSemaphoreGive(dataMutex);
 }
 
 // ==============================
@@ -275,13 +282,17 @@ void sensorTask(void *pvParameters) {
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
       updateSharedData();
 
-      // Persist energy to NVS every ~5s (60 cycles × 80ms)
+      // Persist energy to NVS every ~5s (60 cycles × 80ms).
+      // commit() is REQUIRED: saveEnergyKWh only stages a putFloat in the
+      // Preferences handle, so without it the counters never reach flash and a
+      // restart silently reverts them to the last command's commit point.
       static uint32_t lastEnergySave = 0;
       if (millis() - lastEnergySave > 5000) {
         lastEnergySave = millis();
         for (int ch = 0; ch < NUM_CHANNELS; ch++) {
           nvs.saveEnergyKWh(ch, powerCalc.getEnergyKWh(ch));
         }
+        nvs.commit();
       }
 
       xSemaphoreGive(dataMutex);
