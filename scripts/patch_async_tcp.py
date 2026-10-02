@@ -442,7 +442,9 @@ def verify(src: Path) -> int:
     # three already-TCPIP-thread blocks were deliberately left alone (marshalling
     # those would deadlock the board instead of fixing it).
     for i, (old, new) in enumerate(CB_SUBS):
-        expect(old not in c, f"patch 3: site {i} no longer calls lwIP raw")
+        expect(c.count(old) == 0,
+               f"patch 3: site {i} no longer calls lwIP raw "
+               f"(still present {c.count(old)}x)")
         expect(c.count(new) == 1, f"patch 3: site {i} rewritten exactly once")
     expect(c.count("        tcp_arg(_pcb, this);\n") == 1,
            "patch 3: AsyncClient ctor left raw (already on the TCPIP thread)")
