@@ -256,7 +256,11 @@ int main(void) {
       char big[AP_MAX_SSID_LEN + 8];
       memset(big, 'N', sizeof(big) - 1);
       big[sizeof(big) - 1] = '\0';
-      char line[AP_MAX_SSID_LEN + 8 + 16];
+      /* Deliberately generous. A tighter `line` here let snprintf truncate the
+       * fixture before the parser saw it, so the "one over the maximum" case
+       * silently tested a short password and the whole overflow block proved
+       * nothing. */
+      char line[256];
       snprintf(line, sizeof(line), "%s hunter2hunter2", big);
       expect("an over-long name is REFUSED, not truncated",
              ap_creds_splitArgs(line, ssid, sizeof(ssid), pass, sizeof(pass)), false);
