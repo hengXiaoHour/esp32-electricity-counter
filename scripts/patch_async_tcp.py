@@ -166,6 +166,7 @@ typedef struct {
     struct tcpip_api_call_data call;
     tcp_pcb * pcb;
     void * arg;
+    err_t err;                  // the other _api() handlers all carry one
     tcp_recv_fn recv_cb;
     tcp_sent_fn sent_cb;
     tcp_err_fn err_cb;
