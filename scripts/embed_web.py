@@ -135,10 +135,7 @@ def build() -> str:
     for route, rel, mime, kind, data, i in entries:
         name = ident(route, i)
         out.append("// ---- %s  (%s, %d bytes) ----" % (route, rel, len(data)))
-        out.append(emit_text(data, name, 0) if kind == "text" else emit_bin(data, name))
-        if kind == "text":
-            # Append a NUL sentinel comment for sizeof()-1 readability.
-            out[-1] = out[-1].rstrip("\n") + "\n"
+        out.append(emit_text(data, name) if kind == "text" else emit_bin(data, name))
 
     out.append("#define WEB_ASSET_COUNT %d\n" % len(entries))
     out.append("static const WebAsset WEB_ASSETS[WEB_ASSET_COUNT] = {")
@@ -153,6 +150,52 @@ def build() -> str:
     out.append("};\n")
 
     return "\n".join(out)
+
+
+def parse_back(header_text: str) -> dict:
+    """Reconstruct asset bytes by parsing the generated C++.
+
+    Deliberately independent of build(): it reads the header as text, finds
+    each `static const char NAME[] PROGMEM = R"rawliteral(<content>)rawliteral";`
+    or `static const uint8_t NAME[] PROGMEM = { 0x.., ... };`, and returns
+    {path: bytes}. A bug in build() that corrupted the encoding would have to
+    corrupt it identically in this parser to go unnoticed.
+    """
+    found = {}
+
+    for m in re.finditer(
+        r'static const char (WEB_ASSET_\w+)\[\] PROGMEM = R"rawliteral\((.*?)\)rawliteral";',
+        header_text, re.S,
+    ):
+        name, content = m.group(1), m.group(2)
+        found[name] = content.encode("utf-8")
+
+    for m in re.finditer(
+        r'static const uint8_t (WEB_ASSET_\w+)\[\] PROGMEM = \{(.*?)\};', header_text, re.S
+    ):
+        name, body = m.group(1), m.group(2)
+        found[name] = bytes(int(x, 16) for x in re.findall(r'0x([0-9a-fA-F]{2})', body))
+
+    # Route each parsed payload to its device path using the WEB_ASSETS table.
+    by_name = {}
+    for route, rel, mime, kind, data, i in entries_of(header_text):
+        by_name[rel] = found.get(ident(route, i))
+    return by_name
+
+
+def entries_of(header_text: str):
+    """Yield (route, rel, mime, kind, size, index) from the WEB_ASSETS table."""
+    row = re.compile(
+        r'\{\s*"([^"]+)",\s*"([^"]+)",\s*(?:\(const char \*\))?(WEB_ASSET_\w+),'
+        r'\s*\(uint32_t\)\((?:sizeof\(\3(?: - 1)?\))\s*\}'
+    )
+    for m in row.finditer(header_text):
+        route, mime, name = m.group(1), m.group(2), m.group(3)
+        # Rebuild the index and source path the same way build() named them.
+        i = ASSETS.index(next(
+            a for a in ASSETS if ident(a[0], ASSETS.index(a)) == name
+        ))
+        yield route, ASSETS[i][1], mime, ASSETS[i][3], name, i
 
 
 def main() -> int:
