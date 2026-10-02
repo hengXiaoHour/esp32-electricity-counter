@@ -612,20 +612,27 @@ void ConsoleHandler::cmdInfo(String &out) {
 
 void ConsoleHandler::cmdWifi(String &out) {
   // Was: mode / SSID / RSSI / local IP. All of those described a station link,
-  // which no longer exists. What is left is the network the board publishes.
+  // which no longer exists. What is left is the network the board publishes -
+  // and the name and password it shows are the LIVE ones (loaded from NVS at
+  // boot, or the compiled defaults), not the factory constants.
   consoleAppendf(out, "  %-16s%s", "Mode:", "AP ONLY (no station interface)");
-  consoleAppendf(out, "  %-16s\"%s\"", "Network:", AP_SSID_DEFAULT);
-  consoleAppendf(out, "  %-16s%s", "Password:", AP_PASS_DEFAULT);
+  consoleAppendf(out, "  %-16s\"%s\"", "Network:",
+                 wifiMgr ? wifiMgr->getSSID() : AP_SSID_DEFAULT);
+  consoleAppendf(out, "  %-16s%s", "Password:",
+                 wifiMgr ? wifiMgr->getPass() : AP_PASS_DEFAULT);
   consoleAppendf(out, "  %-16s%s", "AP IP:", WiFi.softAPIP().toString().c_str());
   consoleAppendf(out, "  %-16s%s", "Dashboard:", "http://192.168.4.1/");
   consoleAppendf(out, "  %-16s%d", "Clients:", wifiMgr ? (int)wifiMgr->clientCount() : 0);
+  consoleAppendf(out, "%s", "");
+  consoleAppendf(out, "%s", "  Change it: set_ap <name> <password>   (reboots)");
+  consoleAppendf(out, "%s", "  Forgot it? reset_ap                    (back to defaults)");
 
   String ssid, pass;
   nvs->loadWiFi(ssid, pass);
   if (ssid.length() > 0) {
     consoleAppendf(out, "%s", "");
     consoleAppendf(out, "%s",
-                   "  Note: a stale SSID is still stored in NVS but is never used.");
+                   "  Note: a stale STATION SSID is still stored in NVS but is never used.");
     consoleAppendf(out, "%s", "  Run 'clearwifi' to erase it.");
   }
 }
