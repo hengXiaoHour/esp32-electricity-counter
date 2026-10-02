@@ -2,6 +2,7 @@
 #include "../core/limit_manager.h"
 #include "console_handler.h"
 #include "auth_gate.h"
+#include "ap_creds.h"
 #include "time_sync.h"
 #include "../utils/log_gate.h"
 
