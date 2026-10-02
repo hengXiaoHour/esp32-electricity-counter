@@ -17,6 +17,10 @@ build/
 *.bin
 *.elf
 
+# scripts/build.sh default output (its *.bin files are already covered by
+# the *.bin rule below, but name the dir so the intent is obvious)
+.build-out/
+
 # Local agent scratch
 .workflow/*.md
 .workflow/active.json
