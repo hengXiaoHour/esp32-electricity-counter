@@ -349,7 +349,10 @@ function check(name, cond, detail) {
         'console replies: ' + JSON.stringify(apTexts));
   check('BOARD refuses an empty network name',
         apTexts.some(t => /Not saved: Network name cannot be empty/.test(t)),
-        JSON.stringify(apTexts));
+        'console replies: ' + JSON.stringify(apTexts));
+  check('BOARD refuses a trailing space in the name',
+        apTexts.some(t => /Not saved: Network name cannot start or end with a space/.test(t)),
+        'console replies: ' + JSON.stringify(apTexts));
   check('BOARD accepts a valid pair',
         apTexts.some(t => /restarting on network "Meter AP"/.test(t)),
         JSON.stringify(apTexts));
