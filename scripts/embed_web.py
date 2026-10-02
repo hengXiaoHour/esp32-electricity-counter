@@ -233,8 +233,53 @@ def route_to_rel_for(route: str) -> str:
     raise KeyError(route)
 
 
+def verify_binary(bin_path: str) -> int:
+    """Assert every asset's exact bytes are present in a compiled .bin.
+
+    --verify proves the header is correct; this proves the header actually
+    reached flash. They are different failures: a PROGMEM array that the linker
+    drops (nothing references it), or a table entry pointing at the wrong
+    symbol, both leave a header that parses perfectly and a device that 404s
+    on every page. An earlier check of this kind was wrong in a useful way - it
+    probed for '--esp32-counter-v12', which is not a substring of sw.js, and
+    reported a healthy asset as missing.
+    """
+    p = Path(bin_path)
+    if not p.exists():
+        print("FAIL: firmware image not found: %s" % bin_path)
+        return 1
+    blob = p.read_bytes()
+
+    parsed = parse_back(OUT.read_text()) if OUT.exists() else {}
+    if not parsed:
+        print("FAIL: %s missing - run scripts/embed_web.py first" % OUT)
+        return 1
+
+    failures = 0
+    for route in sorted(parsed):
+        payload = parsed[route]
+        at = blob.find(payload)
+        if at < 0:
+            print("FAIL %-28s not present in %s" % (route, p.name))
+            failures += 1
+        else:
+            print("  ok %-28s %7d bytes at flash offset %d" % (route, len(payload), at))
+
+    if failures:
+        print("FAIL: %d asset(s) missing from the firmware image" % failures)
+        return 1
+    total = sum(len(v) for v in parsed.values() if v)
+    print("PASS: all %d assets (%d bytes) present in %s (%d bytes)"
+          % (len(parsed), total, p.name, len(blob)))
+    return 0
+
+
 def main() -> int:
     text = build()
+
+    for i, a in enumerate(sys.argv):
+        if a == "--verify-binary":
+            return verify_binary(sys.argv[i + 1])
 
     if "--verify" in sys.argv:
         return verify(OUT.read_text() if OUT.exists() else text)

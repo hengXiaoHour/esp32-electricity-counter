@@ -207,8 +207,8 @@ void ConsoleHandler::exec(const String &line, String &out) {
 
   } else if (cmd.startsWith("setwifi")) {
     consoleAppendf(out, "%s", "  setwifi is gone: this board is AP-only.");
-    consoleAppendf(out, "%s", "  It never joins a network. Join \"" AP_SSID_DEFAULT
-                     "\" from your phone instead.");
+    consoleAppendf(out, "  It never joins a network. Join \"%s\" from your phone.",
+                   AP_SSID_DEFAULT);
 
   } else if (cmd == "clearwifi") {
     cmdClearWifi(out);

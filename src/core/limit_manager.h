@@ -4,7 +4,6 @@
 
 #include "../config.h"
 #include "../core/power_calculator.h"
-#include "../network/ntfy_notifier.h"
 #include "../ui/buzzer.h"
 #include "../utils/nvs_manager.h"
 
@@ -12,7 +11,7 @@ class LimitManager {
 public:
   void begin(NVSManager &nvs,
              PowerCalculator &powerCalc, SystemData *sysData,
-             SemaphoreHandle_t *mutex, NtfyNotifier *ntfy, Buzzer *buzzer);
+             SemaphoreHandle_t *mutex, Buzzer *buzzer);
 
   // Call from sensorTask (~80ms). Takes dataMutex internally.
   void loop();
@@ -30,7 +29,6 @@ private:
   PowerCalculator *powerCalc;
   SystemData *sysData;
   SemaphoreHandle_t *dataMutex;
-  NtfyNotifier *ntfy;
   Buzzer *buzzer;
 
   bool tripNotified[NUM_CHANNELS];
@@ -44,7 +42,8 @@ private:
 
   void logEvent(uint8_t ch, ChannelStatus s, const char *msg, float v);
   // Critical events: RAM log + persist tail of the ring to NVS flash so
-  // the trail survives a reboot (and reaches Firebase on reconnect).
+  // the trail survives a power cut. The restored tail is pushed to the
+  // dashboard on the next WebSocket broadcast.
   // Call ONLY with dataMutex already held (all current callers do).
   void logForensicEvent(uint8_t ch, ChannelStatus s, const char *msg, float v);
   void persistForensic();

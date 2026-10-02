@@ -2,7 +2,7 @@
 #include "../core/limit_manager.h"
 #include "command_processor.h"
 #include "console_handler.h"
-#include "firebase_bridge.h"
+#include "system_json.h"
 #include "wifi_manager.h"
 #include <time.h>
 
@@ -76,11 +76,12 @@ bool WebSocketServer::serveAsset(AsyncWebServerRequest *request) {
   const WebAsset *asset = findAsset(request->url());
   if (!asset) return false;
 
-  // Explicit-length PROGMEM response. The uint8_t overload is required: the
-  // PGM_P overload measures with strlen(), which would truncate every PNG at
-  // its first 0x00 byte.
-  AsyncWebServerResponse *res = request->beginResponse_P(
-      200, asset->mime, (const uint8_t *)asset->data, asset->size);
+  // Explicit-length response. The uint8_t overload is required: the char*
+  // overload measures with strlen(), which would truncate every PNG at its
+  // first 0x00 byte. beginResponse (not the deprecated beginResponse_P) is
+  // what ESPAsyncWebServer 3.12 wants.
+  AsyncWebServerResponse *res = request->beginResponse(
+      200, String(asset->mime), (const uint8_t *)asset->data, asset->size);
   // The device is the only origin and the assets live in flash, so there is
   // nothing to revalidate against - force the browser to ask every time.
   res->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");

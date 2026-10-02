@@ -4,9 +4,7 @@
 
 #include "src/network/wifi_manager.h"
 #include "src/network/websocket_server.h"
-#include "src/network/firebase_bridge.h"
 #include "src/network/ota_handler.h"
-#include "src/network/ntfy_notifier.h"
 #include "src/network/console_handler.h"
 #include "src/ui/status_led.h"  
 #include "src/ui/buzzer.h"
@@ -19,11 +17,9 @@ NVSManager      nvs;
 PowerCalculator powerCalc;
 Buzzer          buzzer;
 LimitManager    limitMgr;
-NtfyNotifier    ntfyNotifier;
 
 WiFiManager     wifiMgr;
 WebSocketServer wsServer;
-FirebaseBridge  fbBridge;
 OTAHandler      otaHandler;
 StatusLED       statusLED;
 
@@ -113,7 +109,6 @@ void networkTask(void *pvParameters) {
   while (true) {
     wifiMgr.loop();
     wsServer.loop();
-    ntfyNotifier.loop();
     otaHandler.loop();
 
     // Serial processing on Core 0
@@ -203,27 +198,6 @@ void networkTask(void *pvParameters) {
   }
 }
 
-// Firebase bridge runs on its own Core 0 task. Its HTTPS calls are blocking,
-// so keeping them here (never in networkTask) protects the 150 ms WebSocket
-// broadcast cadence — otherwise a slow /latest push or command poll stalls LAN.
-// pushLatest()/loop() are throttled internally to FIREBASE_*_INTERVAL_MS.
-void firebaseTask(void *pvParameters) {
-  TickType_t lastWake = xTaskGetTickCount();
-  static bool fbStarted = false;
-  while (true) {
-    // Start Firebase here — the blocking TLS handshake + token exchange
-    // (Firebase.begin) takes 10-20s and must never run in networkTask
-    // (would starve IDLE0 and trigger WDT).
-    if (!fbStarted && wifiMgr.isConnected()) {
-      fbStarted = true;
-      fbBridge.start();
-    }
-    fbBridge.loop();
-    fbBridge.pushLatest();
-    vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(50));
-  }
-}
-
 void sensorTask(void *pvParameters) {
   TickType_t lastWake = xTaskGetTickCount();
 
@@ -306,9 +280,9 @@ void setup() {
 
   DEBUG_LOG("  %-19s%s\n", "NVS", "OK"); nvs.begin();
 
-  // Restore the forensic event tail saved to flash before the last reboot
-  // (RAM log is wiped on restart; Firebase is unreachable while WiFi is
-  // down). Restored entries ride the normal Firebase push on reconnect.
+  // Restore the forensic event tail saved to flash before the last power
+  // loss (the RAM ring is wiped by any restart). Restored entries are pushed
+  // to the dashboard on the next WebSocket broadcast.
   {
     uint8_t n = nvs.loadForensicEvents(systemData.events, EVENT_LOG_SIZE);
     systemData.eventCount = n;
@@ -355,11 +329,10 @@ void setup() {
   dataMutex = xSemaphoreCreateMutex();
   DEBUG_LOG("  %-19s%s\n", "Mutex", "OK");
 
-  ntfyNotifier.begin(nvs.loadNtfyEnabled(), nvs.loadNtfyTopic());
-  limitMgr.begin(nvs, powerCalc, &systemData, &dataMutex, &ntfyNotifier, &buzzer);
+  limitMgr.begin(nvs, powerCalc, &systemData, &dataMutex, &buzzer);
 
   // Shared text-command engine: drives both the serial console and the web
-  // UI console (via processCommand -> WebSocket / Firebase).
+  // UI console (via processCommand -> WebSocket).
   // Blocking commands (test led, nvs_debug, reboot) are deferred and run from
   // loop() on Core 1 where blocking is safe (no WDT, no network stall).
   consoleHandler.begin(&nvs, &powerCalc, &systemData, &dataMutex, &buzzer,
@@ -368,23 +341,21 @@ void setup() {
   WiFi.onEvent(onWiFiEvent);
 
   wsServer.begin(nvs, &systemData, &dataMutex, &powerCalc, &limitMgr, &wifiMgr);
-  fbBridge.begin(nvs, &systemData, &dataMutex, &powerCalc, &limitMgr);
 
-   wifiMgr.begin();
+  wifiMgr.begin();
   statusLED.setMode(LED_SOLID_RED);
   DEBUG_LOG("  %-19sAP @ %s (always)\n", "WiFi", WiFi.softAPIP().toString().c_str());
   DEBUG_LOG("  %-19s\"%s\" / \"%s\"\n", "Network", WiFiManager::AP_SSID, WiFiManager::AP_PASS);
 
-  // otaHandler.begin() runs deferred from networkTask once WiFi is up
-  // (ArduinoOTA started pre-connect never listens). See serverStarted block.
+  // otaHandler.begin() runs from networkTask once the AP has an IP
+  // (ArduinoOTA started pre-IP never listens). See the isReady() gate there.
   DEBUG_LOG("  %-19s%s\n", "OTA", "READY");
 
-  // Firmware helper tasks. networkTask keeps priority 2 so its WebSocket
-  // broadcast always preempts firebaseTask (priority 1). Firebase's blocking
-  // HTTPS/TLS work must never delay the 150 ms broadcast loop on Core 0.
+  // Two tasks on two cores. The firebaseTask that used to sit at priority 1
+  // on Core 0 to keep its blocking TLS work away from the broadcast loop is
+  // gone with the cloud: networkTask is the only Core 0 task now.
   xTaskCreatePinnedToCore(networkTask, "network", 8192, NULL, 2, NULL, 0);
   xTaskCreatePinnedToCore(sensorTask, "sensor", 8192, NULL, 2, NULL, 1);
-  xTaskCreatePinnedToCore(firebaseTask, "firebase", 32768, NULL, 1, NULL, 0);
 
   Serial.println();
 }
