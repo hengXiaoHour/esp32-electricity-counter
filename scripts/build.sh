@@ -50,16 +50,22 @@ python3 scripts/embed_web.py
 step "Verifying the generated header round-trips byte-for-byte"
 python3 scripts/embed_web.py --check
 
-# --- 2. The AsyncTCP patches must be present ----------------------------
-# These are lost on every `arduino-cli lib install`/upgrade. Without them the
-# build dies at ESPAsyncWebServer.h:1699, or - worse - at runtime with an
-# LWIP core-lock assert. Check, don't auto-patch: the patcher edits files inside
-# ~/.arduino15 and that should be a thing you asked for, not a build side effect.
-step "Checking AsyncTCP 1.1.4 patches"
+# --- 2. The AsyncTCP core-locking compatibility gate ---------------------
+# On AsyncTCP 1.1.4 three patches are required and are lost on every
+# `arduino-cli lib install`/upgrade: without them the build dies at
+# ESPAsyncWebServer.h:1699, or - worse - at runtime with an LWIP core-lock
+# assert that still compiles cleanly. AsyncTCP 3.x fixes all of that upstream,
+# so the patcher stands down and this gate becomes a no-op.
+#
+# Check, don't auto-patch: the patcher edits files inside ~/.arduino15 and that
+# should be a thing you asked for, not a build side effect.
+step "Checking AsyncTCP core-locking compatibility"
 if ! python3 scripts/patch_async_tcp.py --check; then
   echo >&2
-  echo "AsyncTCP patches are MISSING or PARTIALLY applied." >&2
-  echo "Fix with:  python3 scripts/patch_async_tcp.py" >&2
+  echo "AsyncTCP is not in a usable state." >&2
+  echo "On 1.1.4 the patches are missing or partial - fix with:" >&2
+  echo "    python3 scripts/patch_async_tcp.py" >&2
+  echo "On 3.x the version was not recognised; reinstall AsyncTCP 3.x." >&2
   exit 1
 fi
 
