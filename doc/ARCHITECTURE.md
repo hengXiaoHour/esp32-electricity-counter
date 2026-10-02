@@ -70,6 +70,7 @@ esp32-electricity-counter/
 │   └── icons/
 │
 ├── scripts/
+│   ├── build.sh                     # THE build entry point: embed + patch check + compile
 │   ├── embed_web.py                 # frontend/ -> src/network/web_assets.h
 │   ├── test_auth_gate.c             # Host unit tests for the PIN gate
 │   ├── mock_device.py               # Mock board: serves frontend/, speaks /ws
