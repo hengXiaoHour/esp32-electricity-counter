@@ -64,6 +64,12 @@ DEFAULTS = {
     "rms_samples": 1000,
 }
 
+# Factory identity, matching src/config.h. Kept as literals here on purpose: the
+# mock must not import the firmware's headers, and a drift between this and
+# config.h is caught by scripts/check_docs.py.
+AP_SSID_DEFAULT = "ESP32-Elec-Counter"
+AP_PASS_DEFAULT = "configure123"
+
 
 def json_number(frame, key):
     """Value of a numeric JSON field, e.g. json_number(f, "ch") -> 0.
