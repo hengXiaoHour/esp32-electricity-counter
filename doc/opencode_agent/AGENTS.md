@@ -112,3 +112,71 @@ Fixing one core-locked call proved nothing on its own — the board simply abort
 on the next one. Enumerate every core-locked call in the file and decide per
 site which thread it runs on, rather than patching the one that happened to
 crash first.
+
+## The dashboard cannot load — root cause (2026-10-02)
+
+**The board serves exactly one TCP connection at a time. Two concurrent HTTP
+requests kill it.** A browser opens six, so the dashboard has never been able to
+load. This is an upstream library defect, not a frontend or firmware bug.
+
+```
+Guru Meditation Error: Core 0 panic'ed (LoadProhibited). Exception was unhandled.
+EXCVADDR: 0x00000000
+PC 0x42016894 -> AsyncClient::onData                              AsyncTCP.cpp:744
+                AsyncWebServerRequest::AsyncWebServerRequest      WebRequest.cpp:77
+```
+
+`std_function.h:391` executes `__x._M_manager(...)`, so `EXCVADDR 0x0` means the
+`AsyncClient` was already corrupt when its callbacks were installed — the three
+`onXxx()` calls before it in the constructor succeeded, so the pointer was valid
+and the object itself was clobbered. Heap corruption, not exhaustion: 128 KB was
+free at the moment of the crash.
+
+### Measured, not assumed
+
+| Probe | Result |
+|---|---|
+| 1 request at a time | every asset `200`, byte-exact |
+| 2 concurrent tiny assets (951/1221/1116 B) | **panics** |
+| 3 concurrent, all 6 page assets | **panics** in <1 s |
+| Free heap at crash | 128 KB — not exhaustion |
+| Embedded CSS vs `frontend/style.css` | byte-identical |
+| `?v=` routing, service worker, cache | all ruled out |
+
+It is **not** the AsyncTCP patches: the crash is in the *unpatched*
+`AsyncWebServerRequest` constructor path, which runs before any patched code,
+and `AsyncClient::AsyncClient(tcp_pcb*)` is deliberately left raw.
+
+### Why the symptoms looked like a CSS problem
+
+Chrome reports the crash as `ERR_CONNECTION_RESET 200 (OK)` — the status line
+arrives, then Core 0 dies mid-body — followed by `ERR_INTERNET_DISCONNECTED` for
+every request queued behind it. `index.html` (requested first) renders, then
+`style.css` and `script.js` never arrive, so the page is unstyled and
+`showPage is not defined`. The dashboard you see may be a **cached** copy.
+
+### Reproduce it (do not debug this by eye)
+
+Join the AP, then hammer it. Never test one request at a time — that always
+passes and hides the bug.
+
+```bash
+for r in $(seq 1 8); do
+  for a in manifest.json icons/icon-192.png; do
+    curl -sS -o /dev/null --max-time 4 "http://192.168.4.1/$a" &
+  done; wait
+done
+```
+
+Two parallel `curl`s are enough. Watch the serial console for `Guru Meditation`.
+Opening `/dev/ttyACM*` asserts DTR/RTS and resets the board — deassert it first
+and hold one fd open, never reopen per read.
+
+### Status
+
+`ESP_Async_WebServer` 3.12.1 + `AsyncTCP` 1.1.4 are **archived** (Jan 2025) and
+carry an open upstream issue, *"ESP32 corrupt heap when handling multiple
+simultaneous requests."* The fix is the maintained successor:
+`ESP32Async/ESPAsyncWebServer` 3.6.0 + `ESP32Async/AsyncTCP` 3.3.2. STA mode is
+**not** a workaround — the crash is above the radio and happens identically in
+AP mode, which also contradicts trap #1 anyway.
