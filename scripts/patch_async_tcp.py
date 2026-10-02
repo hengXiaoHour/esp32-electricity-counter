@@ -494,8 +494,18 @@ def verify(src: Path) -> int:
                f"patch 3: site {i} no longer calls lwIP raw "
                f"(still present {c.count(old)}x)")
         expect(c.count(new) == 1, f"patch 3: site {i} rewritten exactly once")
-    expect(c.count("        tcp_arg(_pcb, this);\n") == 1,
-           "patch 3: AsyncClient ctor left raw (already on the TCPIP thread)")
+    # The constructor and operator= shared a byte-identical 5-line block, so "the
+    # constructor stays raw" is only meaningful if BOTH functions are inspected by
+    # name. A single substring count cannot tell which one was patched — that is
+    # exactly the mistake this check now prevents.
+    ctor = _function_body(c, "AsyncClient::AsyncClient")
+    opassign = _function_body(c, "AsyncClient::operator=")
+    expect(bool(ctor) and "tcp_arg(_pcb, this);" in ctor
+           and "_tcp_set_data_callbacks" not in ctor,
+           "patch 3: AsyncClient(pcb) ctor left raw (its only caller _accept runs on the TCPIP thread)")
+    expect(bool(opassign) and "_tcp_set_data_callbacks(" in opassign
+           and "tcp_arg(_pcb, this);" not in opassign,
+           "patch 3: AsyncClient::operator= marshalled (runs on an application task)")
     expect("        tcp_arg(_pcb, NULL);\n        if(_pcb->state == LISTEN) {" in c,
            "patch 3: _error()/_lwip_fin() left raw (lwIP callbacks)")
     expect(c.count("static void _tcp_set_data_callbacks(") == 1
