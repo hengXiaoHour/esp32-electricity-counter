@@ -59,7 +59,15 @@ def ident(path: str, index: int) -> str:
     return "WEB_ASSET_%d_%s" % (index, slug.upper())
 
 
-def emit_text(data: bytes, name: str, lineno: int) -> str:
+def emit_text(data: bytes, name: str) -> str:
+    """PROGMEM raw string literal holding `data` byte-for-byte.
+
+    The literal opens immediately before the first content byte and, when the
+    source ends in a newline, closes on its own line purely for readability.
+    No newline is inserted at the front: an earlier version opened with
+    `R"rawliteral(` + "\\n", which silently prepended one byte to every text
+    asset and made the served file differ from the file on disk.
+    """
     text = data.decode("utf-8")
     if RAW_CLOSE in text:
         raise SystemExit(
@@ -67,11 +75,13 @@ def emit_text(data: bytes, name: str, lineno: int) -> str:
             "Change RAW_CLOSE in this generator to a sequence that cannot occur."
             % (name, RAW_CLOSE)
         )
+    body = text if text.endswith("\n") else text + "\n"
     if not text.endswith("\n"):
-        text += "\n"
-    return "static const char %s[] PROGMEM = %s\n%s%s;\n\n" % (
-        name, RAW_OPEN, text, RAW_CLOSE,
-    )
+        # Close on the content's last byte so nothing is added or removed.
+        body = text + RAW_CLOSE + ";"
+    else:
+        body = text + RAW_CLOSE + ";"
+    return "static const char %s[] PROGMEM = %s%s\n" % (name, RAW_OPEN, body)
 
 
 def emit_bin(data: bytes, name: str) -> str:
@@ -79,8 +89,8 @@ def emit_bin(data: bytes, name: str) -> str:
     for i in range(0, len(data), 16):
         chunk = data[i:i + 16]
         lines.append("  " + ",".join("0x%02x" % b for b in chunk) + ",")
-    lines.append("};\n\n")
-    return "\n".join(lines)
+    lines.append("};\n")
+    return "\n".join(lines) + "\n"
 
 
 def build() -> str:
