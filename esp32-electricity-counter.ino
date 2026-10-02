@@ -31,7 +31,6 @@ SystemData systemData;
 SemaphoreHandle_t dataMutex;
 
 static uint32_t lastSensorCycle = 0;
-static bool wifiIpPrinted = false;
 
 // Auto-zero is processed in small chunks per sensor cycle so the sensing loop
 // (update + broadcast) never stalls while a channel is being captured. More
@@ -39,11 +38,12 @@ static bool wifiIpPrinted = false;
 static const int AZ_BATCHES_PER_CYCLE = 2;
 
 void onWiFiEvent(WiFiEvent_t event, arduino_event_info_t info) {
-  if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
-    wifiIpPrinted = true;
-  }
+  // Only AP events matter now. The old STA_GOT_IP hook existed to gate a
+  // one-shot banner print; that banner waits on wifiMgr.isReady() instead,
+  // which is a stronger signal than the event (softAP() has returned and the
+  // interface actually holds 192.168.4.1).
   if (event == ARDUINO_EVENT_WIFI_AP_START) {
-    wifiIpPrinted = true;
+    STATUS_LOG("  [WiFi] soft AP started\n");
   }
 }
 
@@ -379,15 +379,10 @@ void setup() {
   wsServer.begin(nvs, &systemData, &dataMutex, &powerCalc, &limitMgr, &wifiMgr);
   fbBridge.begin(nvs, &systemData, &dataMutex, &powerCalc, &limitMgr);
 
-   wifiMgr.begin(nvs);
-  wifiMgr.setPreRestartFlush(flushEnergyToNvs);
+   wifiMgr.begin();
   statusLED.setMode(LED_SOLID_RED);
-  if (wifiMgr.isApMode()) {
-    DEBUG_LOG("  %-19sAP @ %s\n", "WiFi", WiFi.softAPIP().toString().c_str());
-    DEBUG_LOG("  %-19s\"%s\" / \"%s\"\n", "SSID", wifiMgr.getSSID(), WiFiManager::AP_PASS);
-  } else {
-    DEBUG_LOG("  %-19s%s\n", "WiFi", "CONNECTING");
-  }
+  DEBUG_LOG("  %-19sAP @ %s (always)\n", "WiFi", WiFi.softAPIP().toString().c_str());
+  DEBUG_LOG("  %-19s\"%s\" / \"%s\"\n", "Network", WiFiManager::AP_SSID, WiFiManager::AP_PASS);
 
   // otaHandler.begin() runs deferred from networkTask once WiFi is up
   // (ArduinoOTA started pre-connect never listens). See serverStarted block.
