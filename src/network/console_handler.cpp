@@ -267,6 +267,7 @@ void ConsoleHandler::runDeferred() {
   if (cmd == "nvs_debug") {
     cmdNvsDebug(pendingOutput);
   } else if (cmd == "reboot") {
+    if (note.length() > 0) consoleAppendf(pendingOutput, "%s", note.c_str());
     cmdReboot(pendingOutput);
   }
 }
