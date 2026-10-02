@@ -91,7 +91,6 @@ private:
   void cmdCurrCal(const String &args, String &out);
   void cmdAutoZero(const String &args, String &out);
   void cmdVoltCal(const String &args, String &out);
-  void cmdSetWifi(const String &args, String &out);
   void cmdClearWifi(String &out);
 
   // Push RAM energy counters to NVS + commit. Called before every

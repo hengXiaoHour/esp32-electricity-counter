@@ -461,14 +461,9 @@ void ConsoleHandler::cmdStatus(String &out) {
   consoleAppendf(out, "  %-16s%02lu:%02lu:%02lu", "Uptime:",
                  (unsigned long)(up / 3600), (unsigned long)((up % 3600) / 60),
                  (unsigned long)(up % 60));
-  const char *wifiState = "DISCONNECTED";
-  int rssi = 0;
-  if (wifiMgr) {
-    wifiState = wifiMgr->isConnected() ? "CONNECTED"
-              : wifiMgr->isApMode()    ? "AP MODE" : "DISCONNECTED";
-    rssi = wifiMgr->getRSSI();
-  }
-  consoleAppendf(out, "  %-16s%s  (RSSI: %d dBm)", "WiFi:", wifiState, rssi);
+  consoleAppendf(out, "  %-16s%s  (%d client(s))", "Network:",
+                 (wifiMgr && wifiMgr->isReady()) ? "AP MODE" : "STARTING",
+                 wifiMgr ? (int)wifiMgr->clientCount() : 0);
   consoleAppendf(out, "  %-16s%.1f V", "Voltage:", powerCalc->getVoltageRMS());
   consoleAppendf(out, "  %-16s%s (%d%%)", "OTA:",
                  (otaHandler && otaHandler->isInProgress()) ? "IN PROGRESS" : "IDLE",
