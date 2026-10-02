@@ -204,10 +204,15 @@ function apValidationMessage(ssidRaw, pass) {
 function saveApSettings() {
   const ssidInput = document.getElementById('apSsid');
   const passInput = document.getElementById('apPass');
-  const ssid = (ssidInput.value || '').trim();
+  const ssidRaw = ssidInput.value || '';
+  const ssid = ssidRaw.trim();
   const pass = passInput.value || '';
 
-  const problem = apValidationMessage(ssid, pass);
+  // The RAW value goes to the validator, not the trimmed one. Passing `ssid`
+  // here made its leading/trailing-space rule unreachable, and a silent save of
+  // "Meter AP" when the box said "Meter AP " is exactly the confusion the rule
+  // exists to prevent.
+  const problem = apValidationMessage(ssidRaw, pass);
   if (problem) return showToast(problem);
   if (isDemo) return showToast('Not available in demo mode');
 
