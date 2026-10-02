@@ -298,6 +298,11 @@ REVERTS = [
      "    tcp_pcb* pcb = tcp_new_ip_type(IPADDR_TYPE_V4);"),
     ("AsyncTCP.cpp", NEW_TCP_NEW_BLOCK,
      "static err_t _tcp_bind_api(struct tcpip_api_call_data *api_call_msg){"),
+    # Patch 3 is reverted before patch 2, because patch 3's anchor line is the
+    # one patch 2 consumes; reverting in list order restores a pristine file.
+    *[(("AsyncTCP.cpp", new, old)) for old, new in reversed(CB_SUBS)],
+    ("AsyncTCP.cpp", SET_CALLBACKS_BLOCK,
+     "static err_t _tcp_bind_api(struct tcpip_api_call_data *api_call_msg){"),
 ]
 
 
