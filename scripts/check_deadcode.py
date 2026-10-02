@@ -214,18 +214,30 @@ def main():
     cmd = read("src/network/command_processor.cpp")
     ch = read("src/network/console_handler.cpp")
     nm = read("src/utils/nvs_manager.cpp")
+
+    # Anchored on WORD BOUNDARIES, not substrings. A first version matched the
+    # bare string "saveApCredentials", so renaming the definition to
+    # saveApCredentialsX left the check passing - the mutation was invisible to
+    # the very rule meant to catch it. Same for the console verb: "set_ap "
+    # occurs in the dispatcher AND in the help text, so removing the help entry
+    # changed nothing.
+    def has(word, hay):
+        return re.search(r"(?<![A-Za-z0-9_])" + re.escape(word) + r"(?![A-Za-z0-9_])",
+                         hay) is not None
+
     ap_missing = []
-    for what, needle, hay in [
-            ("firmware verb (set_ap)", '"cmd\\":\\"set_ap\\""', cmd),
-            ("firmware verb (reset_ap)", '"cmd\\":\\"reset_ap\\""', cmd),
-            ("console verb (set_ap)", "set_ap ", ch),
-            ("console verb (reset_ap)", "reset_ap", ch),
-            ("NVS writer", "saveApCredentials", nm),
-            ("NVS eraser", "clearApCredentials", nm),
-            ("dashboard save", "cmd: 'set_ap'", js),
-            ("dashboard reset", "cmd: 'reset_ap'", js),
-            ("dashboard panel", 'id="apSsid"', read("frontend/index.html"))]:
-        if needle not in hay:
+    for what, present in [
+            ("firmware verb (set_ap)", has("set_ap", cmd)),
+            ("firmware verb (reset_ap)", has("reset_ap", cmd)),
+            ("console verb (set_ap)", has("set_ap", ch)),
+            ("console verb (reset_ap)", has("reset_ap", ch)),
+            ("console help lists set_ap", "set_ap <name> <pw>" in ch),
+            ("NVS writer", has("saveApCredentials", nm)),
+            ("NVS eraser", has("clearApCredentials", nm)),
+            ("dashboard save", "cmd: 'set_ap'" in js),
+            ("dashboard reset", "cmd: 'reset_ap'" in js),
+            ("dashboard panel", 'id="apSsid"' in read("frontend/index.html"))]:
+        if not present:
             ap_missing.append(what)
     r.add("the AP rename feature is still wired end to end", not ap_missing,
           "disconnected at: " + ", ".join(ap_missing))
