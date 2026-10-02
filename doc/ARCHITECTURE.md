@@ -504,6 +504,43 @@ recording:
 wiped automatically — a downgrade to an older build still finds them. `clearwifi`
 exists purely to erase them.
 
+### The network name and password are settings
+
+The AP-only migration hard-coded the identity: `AP_SSID_DEFAULT` /
+`AP_PASS_DEFAULT` were `constexpr` in `wifi_manager.h`, and `WiFiManager::begin()`
+took no arguments. Renaming the network therefore meant a rebuild.
+
+Now the identity is a **persisted setting**. `WiFiManager::begin(NVSManager*)`
+reads `ap_ssid` / `ap_pass`, validates the pair, and only then calls
+`softAP()`; the live values are kept in `WiFiManager`'s own buffers and published
+through the existing `AP_SSID` / `AP_PASS` pointers, so the serial banner, `wifi`
+and everything else that printed the constants now print what the radio is
+actually broadcasting. The defaults moved to `config.h` because `NVSManager`
+needs them as a fallback and has no business including `<WiFi.h>` for two string
+literals.
+
+Three properties are load-bearing:
+
+| Property | Why |
+|---|---|
+| Validation happens **before** the write | `esp_wifi_set_config()` rejects a PSK under 8 octets. `softAP()` then returns false and the board boots with **no radio** — recoverable only over serial. So `ap_creds_validate()` runs on both the console and the WebSocket path, and a bad pair never reaches flash. |
+| The validation lives in an Arduino-free module | `ap_creds.h` is host-compiled by `scripts/test_ap_creds.c`, exactly like `auth_gate.h`. A rule that can only be tested by bricking a board is a rule nobody tests. The suite is mutation-checked (7 broken validators, 7 caught). |
+| The stored pair is re-validated at boot | `loadCredentials()` writes the defaults into its buffers *first* and can only fail back to them. A truncated write or a hand-edited value costs you your custom name, never your board. |
+
+An open network (blank password) is not offered: every mutating command is PIN
+gated, and an unencrypted AP hands that PIN to anyone in radio range. The escape
+hatch for a forgotten password is `reset_ap`, which restores the factory
+identity and reboots — which is also why the AP name and password live in the
+same *separate* place from the legacy station credentials.
+
+Applying a change is a **reboot**, not a live radio switch. That is deliberate:
+reconfiguring the interface from inside the WebSocket handler would kill the
+socket before the acknowledgement reaches the browser, and a `softAP()` that
+fails halfway through a live switch has no second chance to broadcast anything.
+The write is committed *before* the restart is requested, so a reboot cannot
+resurrect the old identity, and the restart is deferred by a second so the reply
+flies first.
+
 ### Eco mode is gone
 
 The old design slept the modem and slowed cloud pushes to 10 s when nobody was
