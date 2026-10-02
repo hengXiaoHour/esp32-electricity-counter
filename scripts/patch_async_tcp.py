@@ -28,6 +28,24 @@ so run this again afterwards. It is idempotent: re-running is a no-op.
       was the only gap. This adds a matching _tcp_new() and routes both sites
       through it.  File: src/AsyncTCP.cpp
 
+  PATCH 3 — callback registration   (runtime reboot loop)
+      Same root cause, different API. Registering the PCB callbacks is just as
+      core-locked as allocating it: tcp_arg, tcp_recv, tcp_sent, tcp_err,
+      tcp_poll and tcp_accept all run LWIP_ASSERT_CORE_LOCKED(). Patch 2 fixed
+      only the allocation, so the very next line aborted the board instead:
+          assert failed: tcp_arg /IDF/components/lwip/lwip/src/core/tcp.c:2035
+              (Required to lock TCPIP core functionality!)
+      which is the reboot loop reported on 2026-10-02: the app boots, prints the
+      AP banner, dies on wsServer.startServer() -> AsyncServer::begin(), and
+      reboots, forever. Adds _tcp_set_data_callbacks() / _tcp_set_listen_callbacks()
+      and routes the five call sites that run on an APPLICATION task through them.
+
+      Deliberately NOT patched, because they already execute on the TCPIP thread
+      and tcpip_api_call() there would deadlock:
+          AsyncClient::AsyncClient(tcp_pcb*)   (only caller is _accept)
+          AsyncClient::_error() / _lwip_fin()  (lwIP callbacks)
+      File: src/AsyncTCP.cpp
+
 Usage:
     python3 scripts/patch_async_tcp.py            # patch (default)
     python3 scripts/patch_async_tcp.py --check    # report only, change nothing
