@@ -163,13 +163,19 @@ def main():
           '"cmd\\":\\"set_ap"' not in ino and
           "ap_creds_validate" in cmd and "requestReboot" in cmd)
     # Persistence has to happen BEFORE the restart, or the reboot resurrects the
-    # old identity and the change silently evaporates.
+    # old identity and the change silently evaporates. Both orderings are
+    # asserted, because "saved but not committed" and "restarted before the
+    # commit" are the two ways this feature quietly does nothing.
     save_at = cmd.find("nvs->saveApCredentials")
     commit_at = cmd.find("nvs->commit()", save_at)
     reboot_at = cmd.find("requestReboot", save_at)
     c.add("set_ap commits to flash before it asks for the restart",
           save_at > 0 and commit_at > save_at and reboot_at > commit_at,
           "save@%d commit@%d reboot@%d" % (save_at, commit_at, reboot_at))
+    c.add("set_ap's commit is inside the dataMutex bracket, not after it",
+          re.search(r"xSemaphoreTake\(\*dataMutex[^;]*;[\s\S]{0,900}?"
+                    r"nvs->saveApCredentials[\s\S]{0,300}?nvs->commit\(\);"
+                    r"[\s\S]{0,120}?xSemaphoreGive\(\*dataMutex\)", cmd) is not None)
     # The frontend's copy of these limits must match the device's, or the UI
     # rejects something the board accepts (annoying) or accepts something the
     # board rejects - which, for the minimum, means the phone drops off a network
