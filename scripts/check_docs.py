@@ -65,6 +65,8 @@ def main():
     rdme = read("README.md")
     cfg = read("src/config.h")
     gate = read("src/network/auth_gate.cpp")
+    apc = read("src/network/ap_creds.h")
+    apc_cpp = read("src/network/ap_creds.cpp")
     nvs = read("src/utils/nvs_manager.cpp")
     nvs_h = read("src/utils/nvs_manager.h")
     ws_code = strip_comments(read("src/network/websocket_server.cpp"))
