@@ -292,26 +292,39 @@ function check(name, cond, detail) {
   const boardAp = await page.evaluate((pin) => new Promise((resolve) => {
     const s = new WebSocket('ws://' + location.host + '/ws');
     const log = [];
+    let opened = false;
+    let sendThrew = null;
     s.onopen = () => {
-      s.send(JSON.stringify({ cmd: 'set_ap', ssid: 'Meter AP', pass: 'short7c', pin: pin }));
-      setTimeout(() => s.send(JSON.stringify({ cmd: 'set_ap', ssid: '', pass: '12345678', pin: pin })), 350);
-      setTimeout(() => s.send(JSON.stringify({ cmd: 'set_ap', ssid: 'Meter AP', pass: 'goodpass1', pin: pin })), 700);
+      opened = true;
+      try {
+        s.send(JSON.stringify({ cmd: 'set_ap', ssid: 'Meter AP', pass: 'short7c', pin: pin }));
+        setTimeout(() => s.send(JSON.stringify({ cmd: 'set_ap', ssid: '', pass: '12345678', pin: pin })), 350);
+        setTimeout(() => s.send(JSON.stringify({ cmd: 'set_ap', ssid: 'Meter AP', pass: 'goodpass1', pin: pin })), 700);
+      } catch (e) { sendThrew = e.message; }
     };
     s.onmessage = (e) => {
       try { log.push(JSON.parse(e.data)); }
       catch (x) { log.push({ type: 'CORRUPT', out: String(e.data).slice(0, 80) }); }
     };
-    setTimeout(() => { s.close(); resolve(log); }, 1500);
+    setTimeout(() => {
+      const state = { opened, sendThrew, readyState: s.readyState, log };
+      try { s.close(); } catch (x) {}
+      resolve(state);
+    }, 1500);
   }), PIN);
 
+  check('the raw socket opened',
+        boardAp.opened === true && boardAp.sendThrew === null,
+        'opened=' + boardAp.opened + ' sendThrew=' + boardAp.sendThrew +
+        ' readyState=' + boardAp.readyState);
   check('no frame was corrupted in transit',
-        !boardAp.some(m => m.type === 'CORRUPT'),
-        JSON.stringify(boardAp.filter(m => m.type === 'CORRUPT').slice(0, 2)));
+        !boardAp.log.some(m => m.type === 'CORRUPT'),
+        JSON.stringify(boardAp.log.filter(m => m.type === 'CORRUPT').slice(0, 2)));
   // A snapshot-only log means the device never answered, which is a different
   // bug from "answered with the wrong text". Report which so a failure says so.
   check('the device answered the raw frames at all',
-        boardAp.some(m => m.type === 'console' || m.type === 'auth'),
-        'message types: ' + JSON.stringify(boardAp.reduce((a, m) => {
+        boardAp.log.some(m => m.type === 'console' || m.type === 'auth'),
+        'message types: ' + JSON.stringify(boardAp.log.reduce((a, m) => {
           a[m.type || 'snapshot'] = (a[m.type || 'snapshot'] || 0) + 1; return a;
         }, {})));
 
