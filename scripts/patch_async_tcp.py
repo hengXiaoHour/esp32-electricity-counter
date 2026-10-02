@@ -279,6 +279,13 @@ PATCHES = [
          "    tcp_pcb* pcb = _tcp_new();   // PATCH: was tcp_new_ip_type() — needs TCPIP thread",
          "    tcp_pcb* pcb = _tcp_new();   // PATCH"),
     ]),
+    ("3-callback-helpers", "AsyncTCP.cpp", [
+        ("static err_t _tcp_bind_api(struct tcpip_api_call_data *api_call_msg){",
+         SET_CALLBACKS_BLOCK,
+         CB_MARKER),
+    ]),
+    *[(f"3-call-{i}", "AsyncTCP.cpp", [(old, new, new)])
+      for i, (old, new) in enumerate(CB_SUBS)],
 ]
 
 REVERTS = [
