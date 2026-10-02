@@ -31,9 +31,20 @@ record() {
 }
 
 # --- 1. The generated header matches frontend/ and round-trips ----------
+# Generate first: web_assets.h is no longer committed, so on a fresh clone there
+# is nothing to check and the old --check-first order failed with "does not
+# exist". Regenerating unconditionally is also what makes a stale copy impossible
+# rather than merely detectable.
 stage "Embedded dashboard assets"
-python3 scripts/embed_web.py --check >/tmp/opencode/verify_assets.log 2>&1
+python3 scripts/embed_web.py >/tmp/opencode/verify_assets.log 2>&1 &&
+  python3 scripts/embed_web.py --check >>/tmp/opencode/verify_assets.log 2>&1
 record $? "assets match frontend/ and round-trip byte-for-byte"
+
+# The AsyncTCP patches are lost on every library install. Missing patch #2 does
+# not fail the build - it ships firmware that reboot-loops at runtime on
+# server->begin(). Check it explicitly rather than discovering it on the board.
+python3 scripts/patch_async_tcp.py --check >/tmp/opencode/verify_patch.log 2>&1
+record $? "AsyncTCP 1.1.4 patches are applied"
 
 # --- 2. Admin-PIN gate unit tests (host build, no hardware) ------------
 stage "Admin PIN gate (unit)"
@@ -111,11 +122,12 @@ wait "$MOCK_PID" 2>/dev/null
 # --- 5. Firmware build + assets actually in flash -----------------------
 if [ "$DO_BUILD" -eq 1 ]; then
   stage "Firmware"
-  ~/.local/bin/arduino-cli compile --fqbn \
-      esp32:esp32:esp32s3:FlashSize=4M,PartitionScheme=no_fs,CDCOnBoot=cdc \
-      --warnings all --output-dir /tmp/opencode/verify-build \
+  # Deliberately the SAME entry point a user would run. A verification gate that
+  # compiles by a different route than the documented one is testing a build
+  # nobody performs.
+  ./scripts/build.sh --output-dir /tmp/opencode/verify-build \
       >/tmp/opencode/verify_build.log 2>&1
-  record $? "arduino-cli compile"
+  record $? "scripts/build.sh (embed + patch check + arduino-cli compile)"
 
   # Zero warnings is now the bar. The two -Wformat warnings that used to sit in
   # the banner printf were fixed rather than tolerated, because a warning gate

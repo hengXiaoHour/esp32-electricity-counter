@@ -179,7 +179,8 @@ def main():
             "src/sensor", "src/utils/device_id.h", "src/utils/device_id.cpp",
             "src/network/firebase_bridge.cpp", "src/network/firebase_config.h",
             "src/network/ntfy_notifier.cpp", "src/network/ap_portal.h",
-            "scripts/__pycache__", "opencode.json", ".workflow/VERIFICATION.log"]
+            "scripts/__pycache__", "opencode.json", ".workflow/VERIFICATION.log",
+            "doc/esp32s3-electricity-counter-prompt.md"]
     # NOTE: the .workflow DIRECTORY itself is deliberately not in this list. It is
     # legitimate per-task scratch (PLAN.md / RESEARCH.md / active.json, all
     # gitignored) and is expected to reappear while a task is in flight. Only the
@@ -190,6 +191,18 @@ def main():
     # to be kept deleted would just make the gate noisy. Pass --output-dir.
     back = [g for g in gone if (ROOT / g).exists()]
     r.add("the cleanup deletions stay deleted", not back, "reappeared: " + ", ".join(back))
+
+    # --- 7. the generated header must stay out of git -------------------
+    # src/network/web_assets.h is 151 KB derived from frontend/. Committing it
+    # put a fifth of the working tree in git and, because each migration phase
+    # rewrote it, ~940 KB of near-duplicate blobs in history.
+    import subprocess
+    tracked = subprocess.run(
+        ["git", "ls-files", "--error-unmatch", "src/network/web_assets.h"],
+        cwd=str(ROOT), capture_output=True, text=True)
+    r.add("the generated web_assets.h stays untracked", tracked.returncode != 0,
+          "it is committed again - untrack with "
+          "'git rm --cached src/network/web_assets.h'")
 
     bad = r.out()
     return 1 if bad else 0

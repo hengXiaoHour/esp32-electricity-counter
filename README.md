@@ -67,34 +67,49 @@ or the build fails at `ESPAsyncWebServer.h:1699`.
 
 ## Build & verify
 
+**Use `scripts/build.sh`.** It is the only supported build entry point:
+
 ```bash
-arduino-cli compile --fqbn esp32:esp32:esp32s3:FlashSize=4M,PartitionScheme=no_fs,CDCOnBoot=cdc --warnings all
+./scripts/build.sh                    # compile to ./.build-out
+./scripts/build.sh --clean            # full rebuild, no cache
 ```
 
-Current size: **1,177,661 bytes (57%)** of the 2 MB app partition, 0 warnings.
+It does three things, in this order:
+
+1. regenerates `src/network/web_assets.h` from `frontend/`,
+2. verifies the AsyncTCP patches are applied (and aborts with instructions if not),
+3. compiles, with `--output-dir` so no stray 4 MB of binaries lands in `build/`.
+
+Current size: **1,176,401 bytes (57%)** of the 2 MB app partition, 0 warnings.
+
+Then the full gate suite:
 
 ```bash
 ./scripts/verify_all.sh --build
 ```
 
-Runs every gate: the embedded-asset round-trip, the admin-PIN unit tests, the
-frontend syntax and cloud-token scan, an end-to-end run of the real page against
-a mock board, the firmware build, and a check that the dashboard really is in
-the resulting `.bin`.
+Runs every gate: the embedded-asset round-trip, the AsyncTCP patch check, the
+admin-PIN unit tests, the dead-code rules, the documentation claims, an
+end-to-end run of the real page against a mock board, the firmware build, and a
+check that the dashboard really is in the resulting `.bin`. It builds through
+`scripts/build.sh` too, so the gate never tests a build route nobody uses.
 
 ### Updating the dashboard
 
 `frontend/` is the source of truth. The firmware does **not** read it at runtime
 — it is compiled into flash by a generator, so change it and re-flash (or OTA)
-the board:
+the board. **There is nothing extra to run:** `scripts/build.sh` regenerates the
+embedded copy on every build, so you cannot ship a firmware that serves a stale
+page.
 
-```bash
-python3 scripts/embed_web.py     # regenerate src/network/web_assets.h
-./scripts/verify_all.sh          # confirm the assets round-trip
-```
+`src/network/web_assets.h` (~151 KB) is generated and **not committed** — it was
+a fifth of the working tree and appeared five times in this repo's history for
+~940 KB of blobs nobody reads. After a fresh clone, run `./scripts/build.sh`
+once; `python3 scripts/embed_web.py` on its own also works.
 
-`--check` fails if the generated header is stale, and `--verify-binary <bin>`
-fails if the dashboard is not actually present in a compiled firmware image.
+`--check` verifies the generated header round-trips byte-for-byte, and
+`--verify-binary <bin>` fails if the dashboard is not actually present in a
+compiled firmware image.
 
 ## OTA Updates
 

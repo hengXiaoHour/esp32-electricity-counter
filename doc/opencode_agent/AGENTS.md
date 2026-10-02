@@ -32,7 +32,11 @@ no internet required.
    every one must actually `commit()` or it never reaches flash.
 6. **AsyncTCP 1.1.4 needs patching on Arduino-ESP32 3.3.x.** Run
    `python3 scripts/patch_async_tcp.py` after any library install or upgrade.
-   It is idempotent; skipping it fails the build at `ESPAsyncWebServer.h:1699`.
+   It is idempotent. Skipping it fails the build at `ESPAsyncWebServer.h:1699`
+   for patch #1 — but patch #2 **does not fail the build at all**. Without it
+   the firmware compiles cleanly and then reboot-loops on the board with
+   `LWIP_ASSERT_CORE_LOCKED` from `server->begin()`. `build.sh` checks both
+   before compiling, for that reason.
 7. **Admin PIN is enforced on the ESP32, not in the UI.** See
    `src/network/auth_gate.cpp`. Hiding a button is convenience, not protection.
    New mutating verbs are gated automatically because the check runs *before*
@@ -49,15 +53,20 @@ no internet required.
 ## Before you change anything
 
 ```bash
-./scripts/verify_all.sh --build     # every gate, ~2 min
+./scripts/build.sh                   # THE build command — nothing else
+./scripts/verify_all.sh --build      # every gate, ~2 min
 ```
 
-It checks the embedded dashboard assets byte-for-byte, unit-tests the PIN gate,
-scans the frontend for dead cloud code, verifies the documentation's claims,
-runs the real page against a mock board, and compiles with `-Werror`-style
-strictness. If you are about to touch `frontend/`, run
-`python3 scripts/embed_web.py` afterwards — the firmware serves a generated
-copy, not your edit.
+`verify_all.sh` checks the embedded dashboard assets byte-for-byte, verifies the
+AsyncTCP patches, unit-tests the PIN gate, scans the frontend for dead cloud
+code, enforces the dead-code rules, verifies the documentation's claims, runs the
+real page against a mock board, and compiles with `-Werror`-style strictness.
+
+**If you edit `frontend/`, do not regenerate anything yourself.**
+`src/network/web_assets.h` is generated, is *not* committed, and `build.sh`
+rebuilds it on every compile — the firmware can never serve a stale page. If you
+find yourself hand-running `embed_web.py` to "catch up", something has gone
+wrong with the build path; fix that instead.
 
 ## Hardware facts
 

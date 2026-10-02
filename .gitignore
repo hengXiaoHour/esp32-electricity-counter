@@ -3,6 +3,12 @@ tests/
 *.pyc
 __pycache__/
 
+# GENERATED from frontend/ by scripts/embed_web.py. Not committed: it is 151 KB
+# (a fifth of the working tree) and appeared ~5x in history for ~940 KB of blobs
+# nobody reads. scripts/build.sh regenerates it on every build, so a stale copy
+# can never reach the flash. Run ./scripts/build.sh after a fresh clone.
+src/network/web_assets.h
+
 # Build artifacts. NOTE: arduino-cli's default build dir IS ./build, so a plain
 # `arduino-cli compile` recreates a 4 MB directory of binaries next to the
 # sources. It is always stale-able and is NOT what gets flashed unless you copy
