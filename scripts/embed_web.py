@@ -12,10 +12,17 @@ hand-written number, so the table cannot drift from the bytes.
 Usage:
     python3 scripts/embed_web.py           # write src/network/web_assets.h
     python3 scripts/embed_web.py --check   # fail if the checked-in header is stale
+    python3 scripts/embed_web.py --verify  # parse the header BACK and compare bytes
 
---check is the gate used in VERIFICATION: it re-derives the header in memory
-and compares it byte-for-byte with what is on disk, so a forgotten regeneration
-fails loudly instead of shipping an old dashboard.
+--check re-derives the header and compares it with the file on disk, so a
+forgotten regeneration fails loudly instead of shipping an old dashboard.
+--verify is the independent half: it parses the generated C++ (raw literals and
+byte arrays) back into bytes and compares each asset against frontend/. That is
+the check that actually proves the device would serve the real file, because it
+does not trust the generator's own in-memory value.
+
+Both flags must be run against a deliberately mutated copy at least once, or
+they are untested assertions that always pass.
 """
 
 import hashlib
