@@ -401,13 +401,27 @@ def apply_patches(src: Path, check_only: bool) -> int:
                 ok(f"{name}: already applied")
                 continue
             changed = True
+            # A revision-marked block spans many lines and ends at a shared anchor
+            # (_tcp_bind_api). Replacing just its first line leaves the stale tail
+            # behind, so the file ends up with TWO helper definitions and TWO
+            # tcpip_api_call sites. Cut any previous copy out wholesale first.
+            for _old, _new, _anchor in subs:
+                if "REV" not in (_anchor or ""):
+                    continue
+                _i = text.find(_new)
+                while _i != -1:
+                    _end = text.find("static err_t _tcp_bind_api(", _i)
+                    if _end == -1:
+                        break
+                    text = text[:_i] + text[_end:]
+                    _i = text.find(_new)
             for old, new, _anchor in subs:
                 if new in text:
                     continue  # this substitution already done
                 if old not in text:
                     fail(f"{name}: anchor not found — library layout changed, "
                          f"patch needs re-evaluating")
-                    dim(f"expected: {old.strip()[:70]}")
+                    dim(f"expected: {old.strip().splitlines()[0][:70]}")
                     problems += 1
                     changed = False
                     break
