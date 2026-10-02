@@ -173,9 +173,15 @@ def main():
           save_at > 0 and commit_at > save_at and reboot_at > commit_at,
           "save@%d commit@%d reboot@%d" % (save_at, commit_at, reboot_at))
     c.add("set_ap's commit is inside the dataMutex bracket, not after it",
-          re.search(r"xSemaphoreTake\(\*dataMutex[^;]*;[\s\S]{0,900}?"
-                    r"nvs->saveApCredentials[\s\S]{0,300}?nvs->commit\(\);"
-                    r"[\s\S]{0,120}?xSemaphoreGive\(\*dataMutex\)", cmd) is not None)
+          # Comments are stripped first. The real code has a five-line comment
+          # between the write and the commit, and a window sized for code alone
+          # does not reach across it - so the first version of this check failed
+          # on the CLEAN tree, which quietly made every mutation "caught" for the
+          # wrong reason. A gate that fails on correct code is worse than none.
+          re.search(r"xSemaphoreTake\(\*dataMutex[^;]*;[\s\S]{0,200}?"
+                    r"nvs->saveApCredentials[\s\S]{0,200}?nvs->commit\(\);"
+                    r"[\s\S]{0,120}?xSemaphoreGive\(\*dataMutex\)",
+                    strip_comments(cmd)) is not None)
     # The frontend's copy of these limits must match the device's, or the UI
     # rejects something the board accepts (annoying) or accepts something the
     # board rejects - which, for the minimum, means the phone drops off a network
