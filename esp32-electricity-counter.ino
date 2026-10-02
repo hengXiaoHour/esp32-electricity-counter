@@ -353,7 +353,10 @@ void setup() {
 
   wsServer.begin(nvs, &systemData, &dataMutex, &powerCalc, &limitMgr, &wifiMgr);
 
-  wifiMgr.begin();
+  // The AP's name and password come from NVS (falling back to the compiled
+  // defaults), which is why this needs the NVS handle the AP-only migration
+  // removed. begin() has returned before anything else reads AP_SSID/AP_PASS.
+  wifiMgr.begin(&nvs);
   statusLED.setMode(LED_SOLID_RED);
   DEBUG_LOG("  %-19sAP @ %s (always)\n", "WiFi", WiFi.softAPIP().toString().c_str());
   DEBUG_LOG("  %-19s\"%s\" / \"%s\"\n", "Network", WiFiManager::AP_SSID, WiFiManager::AP_PASS);
