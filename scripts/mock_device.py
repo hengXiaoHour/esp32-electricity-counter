@@ -371,6 +371,35 @@ class State:
             if verb == "console":
                 return True, "  Unknown command. Type 'help'.", False
 
+            if verb == "set_ap":
+                ssid = extract_json_string(frame, "ssid")
+                pass_ = extract_json_string(frame, "pass")
+                if ssid is None or pass_ is None:
+                    return True, "  Both a network name and a password are required", False
+                # Same order as ap_creds_validate(): report the name first.
+                reason = ap_validate(ssid, pass_)
+                if reason:
+                    # REJECTED: nothing stored. The firmware returns handled ==
+                    # False here, so a client that only reloads on success gets
+                    # the same treatment here.
+                    return False, "  Not saved: " + reason, False
+                self.ap_ssid = ssid
+                self.ap_pass = pass_
+                self.applied.append(("set_ap", ssid, pass_))
+                self.rebooted = True
+                self.reboot_reason = "set_ap"
+                return True, ('  Saved. The board is restarting on network "%s"'
+                              ' - join that WiFi and reopen the page.' % ssid), False
+
+            if verb == "reset_ap":
+                self.ap_ssid = AP_SSID_DEFAULT
+                self.ap_pass = AP_PASS_DEFAULT
+                self.applied.append(("reset_ap",))
+                self.rebooted = True
+                self.reboot_reason = "reset_ap"
+                return True, ('  Reset to "%s" / "%s". The board is restarting.'
+                              % (AP_SSID_DEFAULT, AP_PASS_DEFAULT)), False
+
             return False, None, False
 
 
