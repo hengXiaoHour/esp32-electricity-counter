@@ -141,7 +141,8 @@ static tcp_pcb * _tcp_new(void) {
 static err_t _tcp_bind_api(struct tcpip_api_call_data *api_call_msg){"""
 
 TCP_NEW_MARKER = "static err_t _tcp_new_api("
-CB_MARKER = "static err_t _tcp_set_callbacks_api("
+# The revision marker, not the function name: see the note in the block below.
+CB_MARKER = "PATCH3_REV2"
 
 # PATCH 3 -------------------------------------------------------------------
 # Registering callbacks is core-locked exactly like allocating the PCB, and
