@@ -93,7 +93,7 @@ It does three things, in this order:
 2. verifies the AsyncTCP patches are applied (and aborts with instructions if not),
 3. compiles, with `--output-dir` so no stray 4 MB of binaries lands in `build/`.
 
-Current size: **1,176,401 bytes (57%)** of the 2 MB app partition, 0 warnings.
+Current size: **1,176,561 bytes (57%)** of the 2 MB app partition, 0 warnings.
 
 Then the full gate suite:
 
