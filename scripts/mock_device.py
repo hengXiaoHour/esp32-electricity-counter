@@ -235,6 +235,14 @@ class State:
         self.time_synced = True
         self.time_rejects = 0
         self.applied = []             # log of accepted mutations, for assertions
+        # The board's own network identity, in "flash". The mock cannot reboot,
+        # so it records the pending reboot instead of performing one - the E2E
+        # suite asserts on `rebooted`, which is what the deferred restart in
+        # ConsoleHandler::cmdReboot would cause.
+        self.ap_ssid = AP_SSID_DEFAULT
+        self.ap_pass = AP_PASS_DEFAULT
+        self.rebooted = False
+        self.reboot_reason = None
 
     def snapshot(self):
         with self.lock:
