@@ -211,16 +211,16 @@ def main():
     # the dashboard button silently becomes a no-op; delete the console verb and
     # "I forgot the password" becomes impossible; delete the validation and the
     # board bricks its own radio. Assert the chain.
-    cmd = read("src/network/command_processor.cpp")
-    ch = read("src/network/console_handler.cpp")
-    nm = read("src/utils/nvs_manager.cpp")
+    cmd = strip_cpp(read("src/network/command_processor.cpp"))
+    ch = strip_cpp(read("src/network/console_handler.cpp"))
+    nm = strip_cpp(read("src/utils/nvs_manager.cpp"))
 
-    # Anchored on WORD BOUNDARIES, not substrings. A first version matched the
-    # bare string "saveApCredentials", so renaming the definition to
-    # saveApCredentialsX left the check passing - the mutation was invisible to
-    # the very rule meant to catch it. Same for the console verb: "set_ap "
-    # occurs in the dispatcher AND in the help text, so removing the help entry
-    # changed nothing.
+    # Two traps here, both found by mutation testing rather than by reading:
+    #   * substrings - "saveApCredentials" is a prefix of "saveApCredentialsX",
+    #     so renaming the definition left the check passing;
+    #   * COMMENTS - the file's header comment lists the whole verb vocabulary,
+    #     including set_ap, so a plain search matched the documentation of the
+    #     verb rather than the verb. Comments are stripped for that reason.
     def has(word, hay):
         return re.search(r"(?<![A-Za-z0-9_])" + re.escape(word) + r"(?![A-Za-z0-9_])",
                          hay) is not None
