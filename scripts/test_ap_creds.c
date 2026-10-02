@@ -188,6 +188,84 @@ int main(void) {
   expect("validateSsid with a NULL reason out-param survives failure",
          ap_creds_validateSsid("", NULL), false);
 
+  printf("\n== serial console argument splitting ==\n");
+  {
+    char ssid[AP_MAX_SSID_LEN + 1];
+    char pass[AP_MAX_PASS_LEN + 1];
+
+    expect("plain two fields", ap_creds_splitArgs("Meter hunter2hunter2", ssid,
+                                                  sizeof(ssid), pass, sizeof(pass)), true);
+    expectReason("...name parsed", ssid, "Meter");
+    expectReason("...password parsed", pass, "hunter2hunter2");
+
+    expect("quoted name with spaces",
+           ap_creds_splitArgs("\"Living Room Meter\" hunter2hunter2", ssid,
+                              sizeof(ssid), pass, sizeof(pass)), true);
+    expectReason("...spaces preserved inside the quotes", ssid, "Living Room Meter");
+
+    expect("quoted password", ap_creds_splitArgs("Meter \"pass word\"", ssid,
+                                                 sizeof(ssid), pass, sizeof(pass)), true);
+    expectReason("...inner space kept", pass, "pass word");
+
+    expect("both quoted",
+           ap_creds_splitArgs("\"My Meter\" \"my pass\"", ssid, sizeof(ssid),
+                              pass, sizeof(pass)), true);
+    expectReason("...name", ssid, "My Meter");
+    expectReason("...password", pass, "my pass");
+
+    expect("extra leading spaces are ignored",
+           ap_creds_splitArgs("   Meter hunter2hunter2", ssid, sizeof(ssid),
+                              pass, sizeof(pass)), true);
+    expectReason("...name still parsed", ssid, "Meter");
+
+    /* A password containing a quote or a backslash is legal; the console does
+     * NOT unescape, so what was typed is what gets stored. */
+    expect("quoted password containing a quote is rejected as unterminated",
+           ap_creds_splitArgs("Meter \"he said \"hi\"\"", ssid, sizeof(ssid),
+                              pass, sizeof(pass)), true);
+    expectReason("...and stores what was inside the first pair of quotes",
+                 pass, "he said ");
+
+    printf("  -- malformed input must be refused, not guessed at --\n");
+    expect("no separator", ap_creds_splitArgs("Meter", ssid, sizeof(ssid),
+                                               pass, sizeof(pass)), false);
+    expect("name only, no password", ap_creds_splitArgs("Meter ", ssid, sizeof(ssid),
+                                                        pass, sizeof(pass)), false);
+    expect("unterminated quote in the name",
+           ap_creds_splitArgs("\"Meter hunter2hunter2", ssid, sizeof(ssid),
+                              pass, sizeof(pass)), false);
+    expect("unterminated quote in the password",
+           ap_creds_splitArgs("Meter \"hunter2hunter2", ssid, sizeof(ssid),
+                              pass, sizeof(pass)), false);
+    expect("three fields is a typo, not a password with a space",
+           ap_creds_splitArgs("Meter hunter2 oops", ssid, sizeof(ssid),
+                              pass, sizeof(pass)), false);
+    expect("empty line", ap_creds_splitArgs("", ssid, sizeof(ssid),
+                                             pass, sizeof(pass)), false);
+    expect("only whitespace", ap_creds_splitArgs("     ", ssid, sizeof(ssid),
+                                                 pass, sizeof(pass)), false);
+    expect("NULL line", ap_creds_splitArgs(NULL, ssid, sizeof(ssid),
+                                           pass, sizeof(pass)), false);
+    expectReason("a refused parse leaves the name buffer EMPTY, not garbage",
+                 ssid, "");
+
+    /* Truncation, not overflow. The serial buffer is bounded, so a long paste
+     * must not run past the destination. */
+    {
+      char big[AP_MAX_SSID_LEN + 8];
+      memset(big, 'N', sizeof(big) - 1);
+      big[sizeof(big) - 1] = '\0';
+      char line[AP_MAX_SSID_LEN + 8 + 16];
+      snprintf(line, sizeof(line), "%s hunter2hunter2", big);
+      expect("an over-long name is accepted by the SPLITTER (validation rejects it later)",
+             ap_creds_splitArgs(line, ssid, sizeof(ssid), pass, sizeof(pass)), true);
+      expectReason("...and truncated to the buffer, not overflowed",
+                   strlen(ssid) == AP_MAX_SSID_LEN ? NULL : "not truncated", NULL);
+      expect("...which means the validator then refuses it",
+             ap_creds_validate(ssid, pass, NULL), false);
+    }
+  }
+
   printf("\n%d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;
 }
