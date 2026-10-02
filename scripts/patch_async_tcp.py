@@ -2,8 +2,8 @@
 """
 scripts/patch_async_tcp.py — apply the AsyncTCP 1.1.4 patches this project needs.
 
-AsyncTCP 1.1.4 is incompatible with Arduino-ESP32 3.x in two ways. Both patches
-are LOST every time the library is reinstalled or upgraded
+AsyncTCP 1.1.4 is incompatible with Arduino-ESP32 3.x in three ways. All three
+patches are LOST every time the library is reinstalled or upgraded
 (`arduino-cli lib install/upgrade AsyncTCP`, or the Arduino IDE Library Manager),
 so run this again afterwards. It is idempotent: re-running is a no-op.
 
