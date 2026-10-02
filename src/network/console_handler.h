@@ -53,6 +53,16 @@ public:
   // Returns and clears accumulated deferred output (for WS/FB response).
   String takePendingOutput();
 
+  // Asks for a restart without blocking the caller. `reason` (may be NULL) is
+  // printed just before the reboot runs, so the last thing on the serial log is
+  // why the board went down - which for set_ap / reset_ap is the one thing the
+  // user needs to know when the phone drops off the network.
+  //
+  // Deferred rather than immediate on purpose: the command that asks for this
+  // usually just changed the SSID, and rebooting inside the WebSocket handler
+  // would kill the connection before the acknowledgement is written.
+  void requestReboot(const char *reason = nullptr);
+
   // Hard cap on a single response so a runaway command can't blow up the
   // WebSocket frame / RTDB write.
   static const size_t MAX_OUTPUT = 3072;
