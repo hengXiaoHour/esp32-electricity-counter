@@ -213,6 +213,7 @@ static void _tcp_set_listen_callbacks(tcp_pcb * pcb, void * arg,
     msg.err_cb = NULL;
     msg.poll_cb = NULL;
     msg.accept_cb = accept_cb;
+    msg.err = ERR_OK;
     tcpip_api_call(_tcp_set_callbacks_api, (struct tcpip_api_call_data*)&msg);
 }
 
