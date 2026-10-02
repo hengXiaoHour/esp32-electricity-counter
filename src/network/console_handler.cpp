@@ -353,10 +353,22 @@ void ConsoleHandler::cmdNvsDebug(String &out) {
 
 void ConsoleHandler::flushEnergy() {
   if (!nvs || !powerCalc) return;
+
+  // commit() is prefs.end() + prefs.begin(), which is NOT thread-safe, and
+  // sensorTask does the same putFloat+commit on this same Preferences handle
+  // every ~5 s under dataMutex. With STA gone, `reboot` is now the ONLY
+  // restart path in the firmware, so this flush is the last chance to get the
+  // counters into flash - it must not race the periodic save.
+  if (xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+    consoleAppendf(pendingOutput, "%s",
+                   "  WARN: data mutex busy, energy may not be saved");
+  }
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {
     nvs->saveEnergyKWh(ch, powerCalc->getEnergyKWh(ch));
   }
   nvs->commit();
+  if (xSemaphoreGetCount(*dataMutex)) { /* not held */ }
+  xSemaphoreGive(*dataMutex);
 }
 
 void ConsoleHandler::cmdReboot(String &out) {
