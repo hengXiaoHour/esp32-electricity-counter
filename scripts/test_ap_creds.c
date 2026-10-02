@@ -218,13 +218,11 @@ int main(void) {
                               pass, sizeof(pass)), true);
     expectReason("...name still parsed", ssid, "Meter");
 
-    /* A password containing a quote or a backslash is legal; the console does
-     * NOT unescape, so what was typed is what gets stored. */
-    expect("quoted password containing a quote is rejected as unterminated",
+    /* A quote inside a quoted field is genuinely ambiguous with no escape
+     * syntax, and guessing would store a password nobody typed. Refused. */
+    expect("a quote inside a quoted password is refused as ambiguous",
            ap_creds_splitArgs("Meter \"he said \"hi\"\"", ssid, sizeof(ssid),
-                              pass, sizeof(pass)), true);
-    expectReason("...and stores what was inside the first pair of quotes",
-                 pass, "he said ");
+                              pass, sizeof(pass)), false);
 
     printf("  -- malformed input must be refused, not guessed at --\n");
     expect("no separator", ap_creds_splitArgs("Meter", ssid, sizeof(ssid),
