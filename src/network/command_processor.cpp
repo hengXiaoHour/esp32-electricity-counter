@@ -47,8 +47,8 @@ static bool extractJsonString(const String &s, const char *key, String &outVal) 
 // Mirrors the command vocabulary of the frontend dashboard:
 // set_name, reset_counter, test_inject, set_voltage_cal, set_current_cal,
 // set_monthly_kwh, set_noise_floor, set_lpf, set_rms_samples, reset_ch_cal,
-// reset_ch_to_default, reset_nvs_defaults, test_force_rollover, set_time,
-// verify_pin, set_pin.
+// reset_channel_names, reset_nvs_defaults, test_force_rollover, set_time,
+// verify_pin, set_pin, set_ap, reset_ap.
 //
 // The two ntfy verbs are GONE rather than left as accepted no-ops: ntfy.sh
 // needs the internet this board does not have, and keeping a setting that
