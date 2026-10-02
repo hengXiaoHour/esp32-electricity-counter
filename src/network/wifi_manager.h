@@ -3,68 +3,52 @@
 #include <WiFi.h>
 #include <DNSServer.h>
 #include "../config.h"
-#include "../utils/nvs_manager.h"
 
+// The board is AP-only. There is no station interface, no upstream network,
+// and no cloud: the ESP32 publishes a WiFi network of its own, serves the
+// whole dashboard from it, and the phone's browser talks to
+// ws://192.168.4.1/ws.
+//
+// That single decision removed, from this class: the STA connect path, the
+// retry ladder, the connect-timeout reboot failsafe, the RTC boot-failure
+// counter, link-flap detection, RSSI sampling, and modem-sleep eco mode. An AP
+// must keep beaconing, so there was never an eco case to preserve.
+//
+// WiFi credentials may still sit in NVS from an older firmware. They are
+// deliberately left untouched (see `clearwifi`) so downgrading to an older
+// build still finds them - but nothing reads them any more.
 enum WifiState : uint8_t {
   WIFI_INIT = 0,
-  WIFI_CONNECTING,
-  WIFI_CONNECTED,
   WIFI_AP_MODE,
-  WIFI_FAILED
 };
 
 class WiFiManager {
 public:
-  void begin(NVSManager &nvs);
+  void begin();
   void loop();
 
-  WifiState getState() const        { return state; }
-  bool isConnected() const          { return state == WIFI_CONNECTED; }
-  bool isApMode() const             { return state == WIFI_AP_MODE; }
-  int8_t getRSSI() const            { return rssi; }
-  const char *getSSID() const;
+  // True once softAP() has returned and the dashboard server may be started.
+  // Replaces the old `isConnected() || isApMode()` pair: there is only one
+  // state, so a two-way test would be a lie waiting to happen.
+  bool isReady() const { return state == WIFI_AP_MODE; }
 
-  // Eco mode: enable/disable modem sleep to save power when nobody is
-  // watching. Only acts while STA-connected (an AP must keep beaconing).
-  // Redundant calls are cheap no-ops.
-  void setEcoSleep(bool eco);
+  const char *getSSID() const { return AP_SSID; }
 
-  // Store STA credentials from the AP portal (served by WebSocketServer on
-  // the shared AsyncWebServer) and switch to STA connect. Returns false
-  // when the SSID is empty.
-  bool saveCredentialsAndConnect(const String &ssid, const String &pass);
+  // Phones/laptops currently associated with the AP. The AP-mode analogue of
+  // the old STA RSSI + WS client count, and the only "is anyone watching"
+  // signal that still exists.
+  uint8_t clientCount() const;
 
-  // Runs before ESP.restart() in the STA connect-timeout path so counter
-  // data survives the reboot. Set by the sketch (WiFiManager can't see the
-  // power calculator); may be null.
-  void setPreRestartFlush(void (*cb)()) { preRestartFlush = cb; }
-
-  // AP credentials for fallback mode
   static const char *AP_SSID;
   static const char *AP_PASS;
 
 private:
   WifiState state;
-  NVSManager *nvs;
-  String configuredSSID;
-  String configuredPass;
-  int retryCount;
-  uint32_t lastRetry;
-  uint32_t connectStart;
-  int8_t rssi;
-
   DNSServer dnsServer;
 
-  void (*preRestartFlush)() = nullptr;
-  bool ecoSleep = false;
-
-  void connectToWiFi();
   void startAPMode();
-  void stopAPMode();
-  void checkConnection();
-  void handleConnectTimeout();
 };
 
-// AP credentials
+// AP credentials - printed on the serial banner and shown in the dashboard.
 constexpr const char *AP_SSID_DEFAULT = "ESP32-Elec-Counter";
 constexpr const char *AP_PASS_DEFAULT = "configure123";
