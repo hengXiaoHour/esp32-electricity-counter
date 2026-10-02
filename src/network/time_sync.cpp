@@ -1,0 +1,85 @@
+#include "time_sync.h"
+#include "../utils/log_gate.h"
+
+#include <sys/time.h>
+#include <time.h>
+
+RTC_DATA_ATTR int64_t TimeSync::rtcLastEpoch = 0;
+RTC_DATA_ATTR uint32_t TimeSync::rtcLastMillis = 0;
+RTC_DATA_ATTR uint8_t TimeSync::rtcValid = 0;
+
+// Reject a browser clock that is wildly different from what we already believe.
+// 180 days of drift is far beyond any real clock error (a phone is within
+// seconds) but well under the ~monthly billing cycle, so a bad frame can never
+// roll the billing month forwards or backwards by accident.
+static constexpr int64_t MAX_JUMP_SECONDS = 15552000LL;  // 180 days
+
+void TimeSync::begin() {
+  // RTC memory holds the epoch captured at the last sync plus the millis()
+  // reading at that instant. millis() is not preserved across a deep sleep or
+  // a power cut, so rtcValid guards against combining a fresh millis() with a
+  // stale epoch - that would produce a wildly wrong time.
+  if (rtcValid && rtcLastEpoch >= PLAUSIBLE_MIN_EPOCH &&
+      rtcLastEpoch <= PLAUSIBLE_MAX_EPOCH) {
+    uint32_t elapsedMs = millis() - rtcLastMillis;   // wrap-safe
+    struct timeval tv;
+    tv.tv_sec = (time_t)(rtcLastEpoch + elapsedMs / 1000);
+    tv.tv_usec = (suseconds_t)((elapsedMs % 1000) * 1000);
+    settimeofday(&tv, nullptr);
+    synced = true;
+    lastSyncEpoch = tv.tv_sec;
+    lastSyncMillis = millis();
+    STATUS_LOG("  [TIME] restored from RTC: epoch %ld (synced %us ago)\n",
+               (long)tv.tv_sec, (unsigned)(elapsedMs / 1000));
+  } else {
+    synced = false;
+    STATUS_LOG("  [TIME] no saved clock - waiting for a dashboard to connect\n");
+  }
+}
+
+bool TimeSync::setTimeFromBrowser(int64_t epochSeconds) {
+  if (epochSeconds < PLAUSIBLE_MIN_EPOCH || epochSeconds > PLAUSIBLE_MAX_EPOCH) {
+    DEBUG_LOG("  [TIME] rejected implausible browser clock: %lld\n",
+              (long long)epochSeconds);
+    return false;
+  }
+
+  // Anti-jitter: a phone's clock is within seconds of ours. A frame that
+  // disagrees by more than MAX_JUMP_SECONDS is a bug or an attack, and
+  // accepting it could move the billing month.
+  if (synced) {
+    int64_t drift = epochSeconds - (lastSyncEpoch + (millis() - lastSyncMillis) / 1000);
+    if (drift > MAX_JUMP_SECONDS || drift < -MAX_JUMP_SECONDS) {
+      DEBUG_LOG("  [TIME] rejected browser clock %llds away from ours\n",
+                (long long)(drift < 0 ? -drift : drift));
+      return false;
+    }
+  }
+
+  struct timeval tv;
+  tv.tv_sec = (time_t)epochSeconds;
+  tv.tv_usec = 0;
+  if (settimeofday(&tv, nullptr) != 0) {
+    DEBUG_LOG("  [TIME] settimeofday failed\n");
+    return false;
+  }
+
+  bool moved = (time(nullptr) != (time_t)epochSeconds);
+  lastSyncEpoch = epochSeconds;
+  lastSyncMillis = millis();
+  synced = true;
+
+  // Persist for the next boot. RTC memory, so this survives ESP.restart().
+  rtcLastEpoch = epochSeconds;
+  rtcLastMillis = lastSyncMillis;
+  rtcValid = 1;
+
+  STATUS_LOG("  [TIME] clock set from dashboard: epoch %ld (%s)\n",
+             (long)epochSeconds, moved ? "adjusted" : "already correct");
+  return true;
+}
+
+uint32_t TimeSync::secondsSinceSync() const {
+  if (!synced) return 0xFFFFFFFF;  // never synced
+  return (millis() - lastSyncMillis) / 1000;
+}
