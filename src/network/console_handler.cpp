@@ -468,6 +468,86 @@ void ConsoleHandler::cmdClearWifi(String &out) {
   consoleAppendf(out, "%s", "  (the board is AP-only and never joins a network)");
 }
 
+// Splits `set_ap` arguments into the two fields. Either may be wrapped in double
+// quotes; quoting exists for the SSID, which is the field most likely to contain
+// a space ("Living Room Meter"). An UNQUOTED password takes the rest of the line
+// verbatim, so a password with an internal or trailing space survives.
+static bool splitApArgs(const String &args, String &ssid, String &pass) {
+  String s = args;
+  s.trim();
+  if (s.length() == 0) return false;
+
+  String rest;
+  if (s[0] == '"') {
+    int close = s.indexOf('"', 1);
+    if (close < 0) return false;
+    ssid = s.substring(1, close);
+    rest = s.substring(close + 1);
+  } else {
+    int sp = s.indexOf(' ');
+    if (sp <= 0) return false;
+    ssid = s.substring(0, sp);
+    rest = s.substring(sp + 1);
+  }
+
+  rest.trim();
+  if (rest.length() == 0) return false;
+  if (rest[0] == '"') {
+    // A quoted password must actually be closed. `"abc` would otherwise store
+    // the literal character `"` and lose the rest of what was typed.
+    if (rest.length() < 2 || rest[rest.length() - 1] != '"') return false;
+    pass = rest.substring(1, rest.length() - 1);
+  } else {
+    pass = rest;
+  }
+  return ssid.length() > 0;
+}
+
+void ConsoleHandler::cmdSetAp(const String &args, String &out) {
+  String ssid, pass;
+  if (!splitApArgs(args, ssid, pass)) {
+    consoleAppendf(out, "%s", "  Usage: set_ap <name> <password>");
+    consoleAppendf(out, "%s", "         quote a name that contains spaces:");
+    consoleAppendf(out, "%s", "         set_ap \"Living Room Meter\" mypass123");
+    return;
+  }
+
+  // The one rule that matters: nothing reaches flash until it is a pair the
+  // radio can actually broadcast. A short PSK makes softAP() fail, and the board
+  // would come back with no network at all - recoverable only over serial.
+  const char *reason = nullptr;
+  if (!ap_creds_validate(ssid.c_str(), pass.c_str(), &reason)) {
+    consoleAppendf(out, "  Not saved: %s", reason ? reason : "invalid credentials");
+    consoleAppendf(out, "%s", "  Name 1-32 chars; password 8-63 chars.");
+    return;
+  }
+
+  // dataMutex: commit() is prefs.end()+prefs.begin() and is not thread-safe
+  // against sensorTask's 5 s energy save, which takes the same handle under
+  // this same mutex.
+  bool locked = (xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE);
+  nvs->saveApCredentials(ssid, pass);
+  nvs->commit();
+  if (locked) xSemaphoreGive(*dataMutex);
+
+  consoleAppendf(out, "  Saved. New network name: \"%s\"", ssid.c_str());
+  consoleAppendf(out, "%s",
+                 "  The board reboots now - join that network and reopen the page.");
+  requestReboot("  (AP credentials changed - restarting)");
+}
+
+void ConsoleHandler::cmdResetAp(String &out) {
+  bool locked = (xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE);
+  nvs->clearApCredentials();
+  nvs->commit();
+  if (locked) xSemaphoreGive(*dataMutex);
+
+  consoleAppendf(out, "  AP name and password reset to \"%s\" / \"%s\"",
+                 AP_SSID_DEFAULT, AP_PASS_DEFAULT);
+  consoleAppendf(out, "%s", "  The board reboots now - rejoin that network.");
+  requestReboot("  (AP credentials reset - restarting)");
+}
+
 void ConsoleHandler::cmdStatus(String &out) {
   uint32_t up = millis() / 1000;
   consoleAppendf(out, "  %-16s%02lu:%02lu:%02lu", "Uptime:",
