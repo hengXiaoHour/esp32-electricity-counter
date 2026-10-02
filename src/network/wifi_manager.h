@@ -68,7 +68,3 @@ private:
   void loadCredentials(NVSManager *nvsRef);
   void startAPMode();
 };
-
-// AP credentials - printed on the serial banner and shown in the dashboard.
-constexpr const char *AP_SSID_DEFAULT = "ESP32-Elec-Counter";
-constexpr const char *AP_PASS_DEFAULT = "configure123";
