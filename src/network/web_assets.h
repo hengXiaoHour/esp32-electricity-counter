@@ -1,7 +1,7 @@
 // GENERATED FILE - DO NOT EDIT BY HAND.
 // Source:    frontend/ (run: python3 scripts/embed_web.py)
-// Content:   sha256:46636823812546bc
-// Assets:    10 files, 101932 bytes
+// Content:   sha256:45473df7d39ca13e
+// Assets:    10 files, 100919 bytes
 //
 // Text assets are PROGMEM raw string literals; binary assets are byte
 // arrays. Both sizes come from sizeof() at the point of use, so the
@@ -18,7 +18,7 @@ struct WebAsset {
   uint32_t size;
 };
 
-// ---- /index.html  (index.html, 17516 bytes) ----
+// ---- /index.html  (index.html, 17110 bytes) ----
 static const char WEB_ASSET_0_INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -105,15 +105,10 @@ static const char WEB_ASSET_0_INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html
       </button>
     </nav>
     <div class="side-footer">
-      <div id="authBox" class="auth-box">
-        <div id="authUserRow" class="auth-user-row hidden">
-          <span id="authEmail" class="auth-email mono" title="Admin PIN unlocked">Admin</span>
-        </div>
-        <button id="authBtnSide" class="nav-item auth-btn" onclick="showPage('settings')">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
-          <span class="nav-label">Admin PIN</span>
-        </button>
-      </div>
+      <button class="nav-item" onclick="showPage('settings')">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+        <span class="nav-label">Admin PIN</span>
+      </button>
       <button class="nav-item" onclick="handleDisconnect()">
         <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
         <span class="nav-label">Sign Out</span>
@@ -194,9 +189,6 @@ static const char WEB_ASSET_0_INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html
           <div class="panel-header"><h3>Admin PIN</h3></div>
           <div class="cal-row-single" style="display:block;margin-bottom:4px;">
             <div id="roleBadge" class="role-badge role-guest">Viewer &mdash; read-only</div>
-          </div>
-          <div class="cal-row-single" style="display:block;">
-            <span id="acctEmail" class="mono conn-ip">Locked</span>
           </div>
           <div id="pinRow" style="margin-top:12px;">
             <div class="cal-row-single">
@@ -355,7 +347,7 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
 )rawliteral";
 
 
-// ---- /style.css  (style.css, 23418 bytes) ----
+// ---- /style.css  (style.css, 23094 bytes) ----
 static const char WEB_ASSET_1_STYLE_CSS[] PROGMEM = R"rawliteral(:root {
   --bg: #111213;
   --bg-side: #1a1b1d;
@@ -420,7 +412,6 @@ html.has-session #app { display: grid !important; }
   background-repeat: no-repeat; background-position: right 12px center;
 }
 .connect-row select:focus { border-color: var(--trip); }
-.connect-pick-label { font-size: 0.72rem; color: var(--text-2); font-family: var(--font-mono); margin-bottom: -8px; }
 .btn-primary { padding: 11px 18px; border: none; border-radius: 6px; background: var(--trip); color: #fff;
   font-weight: 700; font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase;
   cursor: pointer; transition: background 0.15s, transform 0.1s;
@@ -430,7 +421,6 @@ html.has-session #app { display: grid !important; }
 .btn-primary:active { transform: scale(0.98); }
 .btn-primary.btn-inline { padding: 8px 14px; font-size: 0.72rem; }
 .connect-status { font-size: 0.78rem; padding: 8px 12px; border-radius: 5px; margin-bottom: 12px; font-family: var(--font-mono); background: rgba(255, 255, 255, 0.03); }
-.connect-status.connecting { color: var(--warn); }
 .connect-status.connected { color: var(--ok); }
 .connect-status.disconnected { color: var(--trip); }
 .install-row { margin-top: 14px; display: flex; justify-content: center; }
@@ -476,11 +466,6 @@ html.has-session #app { display: grid !important; }
 .side-footer { border-top: 1px solid var(--border); padding: 8px 0; }
 
 /* Auth */
-.auth-box { padding: 8px 8px 4px; }
-.auth-user-row { padding: 4px 8px 6px; }
-.auth-email { display: block; font-size: 0.68rem; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; }
-.auth-btn { justify-content: flex-start; }
-.auth-btn.active { color: var(--ok); }
 .role-badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 0.66rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
 .role-badge.role-admin { background: rgba(95, 180, 130, 0.16); color: var(--ok); border: 1px solid rgba(95, 180, 130, 0.4); }
 .role-badge.role-guest { background: rgba(139, 142, 155, 0.14); color: var(--text-3); border: 1px solid var(--border-2); }
@@ -513,10 +498,10 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
 .conn-txt { font-size: 0.72rem; color: var(--ok); }
 .wifi { width: 18px; height: 18px; color: var(--ok); }
 .wifi .bar { opacity: 0.18; }
-.wifi.lv1 .bar:nth-child(-n+1),
-.wifi.lv2 .bar:nth-child(-n+2),
-.wifi.lv3 .bar:nth-child(-n+3),
-.wifi.lv4 .bar:nth-child(-n+4) { opacity: 1; }
+/* Only two levels exist now. rssiLevel() and its lv1/lv3/lv4 rules went with
+   the STA interface: an access point has no RSSI to report, so updateWifiIcon()
+   emits lv2 when the AP is up and lv0 when it is not. */
+.wifi.lv2 .bar:nth-child(-n+2) { opacity: 1; }
 .wifi.lv0 { color: var(--text-3); }
 .wifi.disconnected { color: var(--text-3); }
 .wifi .bar { transition: opacity 0.3s ease; }
@@ -747,7 +732,7 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
 )rawliteral";
 
 
-// ---- /script.js  (script.js, 47469 bytes) ----
+// ---- /script.js  (script.js, 47186 bytes) ----
 static const char WEB_ASSET_2_SCRIPT_JS[] PROGMEM = R"rawliteral(let ws = null;
 let userDisconnect = false;
 let activeEditChIdx = null;
@@ -1599,16 +1584,6 @@ function openEditModal(idx) {
   sel.value = idx;
   onModalChannelChange();
   setModalMode('edit');
-  document.getElementById('editModal').classList.remove('hidden');
-}
-
-function openResetModal(idx) {
-  if (!requirePin()) return;
-  populateChannelSelect();
-  const sel = document.getElementById('modalChSelect');
-  sel.value = idx;
-  onModalChannelChange();
-  setModalMode('reset');
   document.getElementById('editModal').classList.remove('hidden');
 }
 

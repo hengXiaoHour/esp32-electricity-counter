@@ -3,19 +3,17 @@ tests/
 *.pyc
 __pycache__/
 
-# Firebase credentials + local config (never commit)
-src/network/firebase_config.h
-*firebase-adminsdk*.json
-frontend/config.js
-.firebase/
-
-# Build artifacts
+# Build artifacts. NOTE: arduino-cli's default build dir IS ./build, so a plain
+# `arduino-cli compile` recreates a 4 MB directory of binaries next to the
+# sources. It is always stale-able and is NOT what gets flashed unless you copy
+# it by hand - prefer an explicit --output-dir.
 build/
 *.bin
 *.elf
 
-# Firebase CLI debug logs
-firebase-debug.log
+# Local agent scratch
+.workflow/*.md
+.workflow/active.json
 
 # Playwright MCP artifacts
 .playwright-mcp/

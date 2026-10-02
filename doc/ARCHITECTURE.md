@@ -37,10 +37,9 @@ esp32-electricity-counter/
 │   ├── ARCHITECTURE.md              # THIS FILE
 │   ├── .architecture.lock.json      # Machine-readable lock (do not edit)
 │   ├── esp32s3-electricity-counter-prompt.md  # Original build prompt
-│   └── opencode_agent/              # Agent context (auto-managed)
-│       ├── AGENTS.md
-│       ├── lessons.md
-│       └── memories.json
+│   └── opencode_agent/              # Agent context (hand-maintained)
+│       ├── AGENTS.md               # traps + traps-not-in-the-code; points here
+│       └── lessons.md               # hard-won knowledge not derivable from code
 │
 ├── src/
 │   ├── config.h                     # Pins, #define constants, shared structs/enums
@@ -78,20 +77,19 @@ esp32-electricity-counter/
 │   ├── mock_device.py               # Mock board: serves frontend/, speaks /ws
 │   ├── e2e_aponly.js                # Playwright run of the real page
 │   ├── verify_all.sh                # Every gate, one command
-│   ├── patch_async_tcp.py           # AsyncTCP 1.1.4 patches (see README)
-│   └── setup.py
+│   └── patch_async_tcp.py           # AsyncTCP 1.1.4 patches (see README)
 │
 │ x firebase.json / database.rules.json / .firebaserc  -- deleted, no cloud
 │ x tools/                            -- deleted, held the RTDB + hosting helpers
 │ x frontend/config.js                -- deleted, held the Firebase web config
 │ x src/utils/device_id.*             -- deleted, only ever keyed RTDB paths
 │ x src/sensor/*                      -- deleted, dead since PowerCalculator
+│ x scripts/setup.py                  -- deleted, a Firebase config wizard
+│ x .workflow/{active,PLAN,RESEARCH}  -- deleted, completed 2026-08 tasks
 
-└── .workflow/                       # Agent workflow state
-    ├── active.json
-    ├── RESEARCH.md
-    ├── PLAN.md
-    └── VERIFICATION.log
+└── .workflow/                       # VERIFICATION.log is the durable changelog.
+    └── VERIFICATION.log               # Per-task scratch files are gitignored and
+                                       # deleted when the task completes.
 ```
 
 ## Conventions
