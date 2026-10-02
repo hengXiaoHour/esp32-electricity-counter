@@ -38,37 +38,16 @@ void WebSocketServer::startServer() {
   server = new AsyncWebServer(80);
   server->addHandler(ws);
 
-  // AP portal on the SAME :80 server (fixes the old WebServer/AsyncWebServer
-  // double-bind). Only live while the board is actually in AP mode — the
-  // guards re-check at request time so a later STA transition 404s cleanly.
-  if (wifiMgr && wifiMgr->isApMode()) {
-    server->on("/", HTTP_GET, [this](AsyncWebServerRequest *request) {
-      if (!wifiMgr || !wifiMgr->isApMode()) {
-        request->send(404, "text/plain", "Not found");
-        return;
-      }
-      request->send_P(200, "text/html", AP_PAGE_HTML, [this](const String &var) -> String {
-        if (var == "APSSID" && wifiMgr) return String(wifiMgr->getSSID());
-        return String();
-      });
-    });
-    server->on("/save", HTTP_POST, [this](AsyncWebServerRequest *request) {
-      if (!wifiMgr || !wifiMgr->isApMode()) {
-        request->send(404, "text/plain", "Not found");
-        return;
-      }
-      String ssid, pass;
-      if (request->hasParam("ssid", true)) ssid = request->getParam("ssid", true)->value();
-      if (request->hasParam("pass", true)) pass = request->getParam("pass", true)->value();
-      if (!wifiMgr->saveCredentialsAndConnect(ssid, pass)) {
-        request->send(400, "text/plain", "SSID required");
-        return;
-      }
-      request->send_P(200, "text/html", AP_SAVED_HTML);
-    });
-  }
-
+  // Everything that is not /ws is an embedded dashboard asset. Registered as
+  // the catch-all rather than one on() per file so adding an asset to
+  // scripts/embed_web.py is all it takes to publish it.
+  //
+  // The old build served a WiFi-credentials form at "/" from ap_portal.h.
+  // That form is gone: the board is AP-only, so there is no network to join,
+  // and the captive-portal DNS wildcard already sends every URL to 192.168.4.1
+  // where this dashboard is.
   server->onNotFound([](AsyncWebServerRequest *request) {
+    if (WebSocketServer::serveAsset(request)) return;
     request->send(404, "text/plain", "Not found");
   });
 
@@ -76,6 +55,37 @@ void WebSocketServer::startServer() {
   // We call it directly here — it works after WiFi connects from networkTask.
   server->begin();
   started = true;
+}
+
+const WebAsset *WebSocketServer::findAsset(const String &path) {
+  String want = path;
+  int q = want.indexOf('?');
+  if (q >= 0) want = want.substring(0, q);
+  if (want.length() == 0 || want == "/") want = "/index.html";
+
+  // Only exact matches. No prefix or directory walking: this is a fixed set of
+  // 11 files, and "serve whatever the path walks to" is how a device turns
+  // into an open file server.
+  for (uint32_t i = 0; i < WEB_ASSET_COUNT; i++) {
+    if (want == WEB_ASSETS[i].path) return &WEB_ASSETS[i];
+  }
+  return nullptr;
+}
+
+bool WebSocketServer::serveAsset(AsyncWebServerRequest *request) {
+  const WebAsset *asset = findAsset(request->url());
+  if (!asset) return false;
+
+  // Explicit-length PROGMEM response. The uint8_t overload is required: the
+  // PGM_P overload measures with strlen(), which would truncate every PNG at
+  // its first 0x00 byte.
+  AsyncWebServerResponse *res = request->beginResponse_P(
+      200, asset->mime, (const uint8_t *)asset->data, asset->size);
+  // The device is the only origin and the assets live in flash, so there is
+  // nothing to revalidate against - force the browser to ask every time.
+  res->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  request->send(res);
+  return true;
 }
 
 void WebSocketServer::stopServer() {
