@@ -47,3 +47,24 @@ bool ap_creds_validatePass(const char *pass, const char **reason);
 // Both fields, SSID first. Returns the first failure's reason, so a user who got
 // both wrong is told about the network name before the password.
 bool ap_creds_validate(const char *ssid, const char *pass, const char **reason);
+
+// Splits the argument string of a serial-console `set_ap` into its two fields.
+//
+//   set_ap Meter hunter2hunter2
+//   set_ap "Living Room Meter" hunter2hunter2
+//   set_ap Meter "pass with spaces"
+//
+// Either field may be wrapped in double quotes. Quoting exists for the SSID,
+// which is the field most likely to contain a space; an UNQUOTED password takes
+// the rest of the line verbatim so an internal or trailing space survives.
+//
+// Lives here, not in console_handler.cpp, purely so it can be tested: this is
+// fiddly index arithmetic whose only real test would otherwise be typing it on
+// a serial port.
+//
+// Returns false and leaves the buffers empty when the line cannot be parsed:
+// no separator at all, or a quote that is opened and never closed. Both write
+// through snprintf, so an over-long field is truncated to fit rather than
+// overflowing.
+bool ap_creds_splitArgs(const char *args, char *ssid, size_t ssidLen,
+                        char *pass, size_t passLen);
