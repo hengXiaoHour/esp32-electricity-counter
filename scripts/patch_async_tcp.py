@@ -682,6 +682,23 @@ def main():
 
     info(f"library: {src}")
 
+    # AsyncTCP 3.x (ESP32Async) fixes the Arduino-ESP32 3.x core-locking problem
+    # upstream: tcp_alloc/tcp_arg and friends are already marshalled through
+    # tcpip_api_call, and status() is already const. On that line these patches
+    # are not merely unnecessary, they cannot apply - every anchor is gone. A
+    # check gate that kept demanding them would fail every build forever, which
+    # trains people to ignore the gate. So: detect the line and stand down.
+    lib_name, lib_version = library_version(src)
+    major = version_major(lib_version)
+    if major is not None and major >= 3:
+        print()
+        ok(f"AsyncTCP {lib_version} ({lib_name}) handles Arduino-ESP32 3.x core "
+           f"locking upstream")
+        dim("all three patches are obsolete — nothing to apply, nothing to check")
+        if args.check:
+            dim("check mode — nothing was written")
+        return 0
+
     if args.revert:
         revert(src)
     else:
