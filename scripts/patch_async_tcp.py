@@ -189,7 +189,17 @@ def backup(path: Path) -> None:
 
 
 def apply_patches(src: Path, check_only: bool) -> int:
-    """Returns number of problems (0 = success)."""
+    """Returns number of problems (0 = success).
+
+    In check_only mode, a patch that is NOT yet applied counts as a problem.
+    That is the whole point of the mode: "--check" asks "is this library in the
+    required state?", so "no" has to be a non-zero exit. It previously returned
+    0 for both a fully patched and a fully unpatched library, which made it
+    useless as a build gate - and a missing patch #2 (the tcp_new_ip_type
+    tcpip_api_call wrapper) does not fail the build at all. It ships firmware
+    that compiles cleanly and then reboot-loops at runtime on
+    server->begin() with LWIP_ASSERT_CORE_LOCKED.
+    """
     problems = 0
     by_file = {}
     for name, fname, subs in PATCHES:
@@ -228,6 +238,9 @@ def apply_patches(src: Path, check_only: bool) -> int:
                     original = text
                 else:
                     dim("(check mode — not written)")
+                    # The library is NOT in the required state. In check mode
+                    # that is a failure, not an informational note.
+                    problems += 1
             elif not changed:
                 continue
     return problems
