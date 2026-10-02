@@ -515,9 +515,20 @@ def verify(src: Path) -> int:
         # the _tcp_* wrappers spell the same name).
         n = len(re.findall(r"(?<![_A-Za-z])" + fn + r"\s*\(", code))
         expect(n == want, f"patch 3: {want} {fn}() call sites expected, got {n}")
-    # The helpers must actually marshal, both of them.
+    # The helpers must actually marshal, BOTH of them, and nothing may call the
+    # _tcp_set_callbacks_api() wrapper directly instead — a direct call runs the
+    # lwIP work on the CALLER's thread, which is the exact bug this patch exists
+    # to remove, and a count on the name alone could not tell the two apart.
+    helpers = _function_bodies(c, ("_tcp_set_data_callbacks", "_tcp_set_listen_callbacks"))
+    expect(len(helpers) == 2,
+           f"patch 3: both helper definitions found, got {len(helpers)}")
+    for fname, body in helpers:
+        expect("tcpip_api_call(_tcp_set_callbacks_api," in body,
+               f"patch 3: {fname}() marshals via tcpip_api_call()")
+        expect("_tcp_set_callbacks_api((struct" not in body,
+               f"patch 3: {fname}() does not call the wrapper directly")
     expect(code.count("tcpip_api_call(_tcp_set_callbacks_api,") == 2,
-           "patch 3: both helpers marshal via tcpip_api_call()")
+           "patch 3: exactly two tcpip_api_call sites, one per helper")
     return bad
 
 
