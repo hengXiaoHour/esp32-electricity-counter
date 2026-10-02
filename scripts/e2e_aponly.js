@@ -307,6 +307,13 @@ function check(name, cond, detail) {
   check('no frame was corrupted in transit',
         !boardAp.some(m => m.type === 'CORRUPT'),
         JSON.stringify(boardAp.filter(m => m.type === 'CORRUPT').slice(0, 2)));
+  // A snapshot-only log means the device never answered, which is a different
+  // bug from "answered with the wrong text". Report which so a failure says so.
+  check('the device answered the raw frames at all',
+        boardAp.some(m => m.type === 'console' || m.type === 'auth'),
+        'message types: ' + JSON.stringify(boardAp.reduce((a, m) => {
+          a[m.type || 'snapshot'] = (a[m.type || 'snapshot'] || 0) + 1; return a;
+        }, {})));
 
   const apTexts = boardAp.filter(m => m.type === 'console').map(m => m.out || '');
   check('BOARD refuses a 7-character password',
