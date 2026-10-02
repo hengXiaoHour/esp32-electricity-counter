@@ -183,6 +183,39 @@ function check(name, cond, detail) {
   const lastFrame = await page.evaluate(() => window.__wsSent[window.__wsSent.length - 1]);
   check('the frame CARRIES the PIN', /"pin":"1234"/.test(lastFrame), lastFrame);
 
+  console.log('\n== the BOARD can revoke a live session ==');
+  // Scenario the suite used to miss entirely: the PIN is changed on the device
+  // while this tab still believes it is admin. The next command is refused by
+  // the ESP32, which answers {type:'auth',ok:false} - and the UI has to fall
+  // back to read-only. Removing that handler makes every other check in this
+  // file still pass, which is exactly why this block exists.
+  // page.evaluate runs in the BROWSER, so Node-side constants are not in
+  // scope there - anything the page needs has to be passed in as an argument.
+  await page.evaluate((p) => window.unlockWithPin(p), PIN);
+  await page.waitForTimeout(400);
+  // `adminPin` / `pinOk` are declared with `let`, so they are SCRIPT-SCOPE
+  // LEXICAL BINDINGS, not properties of `window`. Assigning window.adminPin
+  // creates a separate property that sendCommand never reads, and reading
+  // window.pinOk returns undefined. Both identifiers must be used bare.
+  await page.evaluate(async () => {
+    adminPin = '0000';               // device-side PIN has moved on
+    try { await sendCommand({ cmd: 'set_monthly_kwh', ch: 2, val: 5 }); }
+    catch (e) { /* expected: the UI-side gate still thinks we are admin */ }
+  });
+  // Wait for the board's reply BEFORE reading the flags: sendCommand resolves
+  // as soon as the frame is written, so reading pinOk immediately after it
+  // returns the pre-rejection value and the assertion fails for the wrong
+  // reason (which is exactly what happened on the first run of this block).
+  await page.waitForTimeout(900);
+  const staleOutcome = await page.evaluate(() => ({ pinOk: pinOk, adminPin: adminPin }));
+  const badgeStale = await page.locator('#roleBadge').textContent();
+  check('board auth rejection clears the local admin flag',
+        staleOutcome.pinOk === false, 'pinOk = ' + staleOutcome.pinOk);
+  check('UI drops to viewer after a board-side auth rejection',
+        /Viewer/.test(badgeStale), 'badge = ' + badgeStale);
+  check('the stale PIN was cleared from the session',
+        await page.evaluate(() => (sessionStorage.getItem('esp32counter_pin') || '') === ''));
+
   console.log('\n== wrong PIN is refused ==');
   const wrong = await page.evaluate(() => window.unlockWithPin('9999'));
   await page.waitForTimeout(400);

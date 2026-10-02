@@ -33,7 +33,10 @@ import time
 from http.server import BaseHTTPRequestHandler
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FRONTEND = os.path.join(ROOT, "frontend")
+# Overridable so the frontend can be pointed at a MUTATED COPY. Mutation
+# testing is the only way to know an E2E suite is not a tautology: a suite that
+# has only ever printed PASS has proved nothing.
+FRONTEND = os.environ.get("MOCK_FRONTEND", os.path.join(ROOT, "frontend"))
 
 # Same table as scripts/embed_web.py. config.js is gone: it held the Firebase
 # web config and the board no longer talks to Firebase.
@@ -60,6 +63,31 @@ DEFAULTS = {
     "lpf_alpha": [0.2] * 6,
     "rms_samples": 1000,
 }
+
+
+def json_number(frame, key):
+    """Value of a numeric JSON field, e.g. json_number(f, "ch") -> 0.
+
+    Stops at the first character that is not part of the number. Reading the
+    rest of the frame and keeping every digit is wrong: in
+    {"cmd":"set_name","ch":0,"pin":"1234"} that yields 01234.
+    """
+    i = frame.find('"%s":' % key)
+    if i < 0:
+        return None
+    i += len(key) + 3
+    num = ""
+    for ch in frame[i:]:
+        if ch.isdigit() or ch in "-.":
+            num += ch
+        else:
+            break
+    if not num or num in ("-", "."):
+        return None
+    try:
+        return float(num) if "." in num else int(num)
+    except ValueError:
+        return None
 
 
 def extract_verb(frame):
@@ -184,7 +212,13 @@ class State:
                 return False, "  Admin PIN required (Settings -> Admin PIN)", True
 
             if verb == "verify_pin":
-                return True, "  PIN OK", False
+                # Must actually compare, exactly like the firmware does. This
+                # was a stub returning "PIN OK" unconditionally, which made a
+                # CORRECT board look like it accepted any PIN - the mock
+                # disagreed with the code it stands in for.
+                given = extract_pin(frame)
+                ok = bool(given) and given == self.pin
+                return True, ("  PIN OK" if ok else "  PIN incorrect"), False
 
             if verb == "set_pin":
                 # set_pin carries the CURRENT pin in "pin" (already validated by
@@ -203,17 +237,9 @@ class State:
                 return True, "  PIN must be 4-16 characters", False
 
             if verb == "set_time":
-                ti = frame.find('"t":')
-                if ti < 0:
+                epoch = json_number(frame, "t")
+                if epoch is None:
                     return False, None, False
-                val = frame[ti + 4:]
-                num = ""
-                for chx in val:
-                    if chx.isdigit():
-                        num += chx
-                    else:
-                        break
-                epoch = int(num) if num else 0
                 if 1609459200 <= epoch <= 4102444800:
                     self.epoch = epoch
                     self.time_synced = True
@@ -223,11 +249,10 @@ class State:
                 return False, None, False
 
             if verb == "set_name":
-                ci = frame.find('"ch":')
+                ch = json_number(frame, "ch")
                 ni = frame.find('"name":"')
-                if ci < 0 or ni < 0:
+                if ch is None or ni < 0:
                     return False, None, False
-                ch = int("".join(c for c in frame[ci + 5:] if c.isdigit()) or -1)
                 nj = frame.find('"', ni + 8)
                 if 0 <= ch < 6 and nj > ni + 8:
                     self.names[ch] = frame[ni + 8:nj]
@@ -235,31 +260,22 @@ class State:
                     return True, None, False
 
             if verb == "set_monthly_kwh":
-                ci = frame.find('"ch":')
-                vi = frame.find('"val":')
-                if ci < 0 or vi < 0:
+                ch = json_number(frame, "ch")
+                val = json_number(frame, "val")
+                if ch is None or val is None:
                     return False, None, False
-                ch = int("".join(c for c in frame[ci + 5:] if c.isdigit()) or -1)
-                num = ""
-                for chx in frame[vi + 6:]:
-                    if chx.isdigit() or chx == ".":
-                        num += chx
-                    else:
-                        break
-                if 0 <= ch < 6 and num:
-                    self.limits[ch] = float(num)
-                    self.applied.append(("set_monthly_kwh", ch, float(num)))
+                if 0 <= ch < 6 and val > 0:
+                    self.limits[ch] = float(val)
+                    self.applied.append(("set_monthly_kwh", ch, float(val)))
                     return True, None, False
 
             if verb == "reset_counter":
-                ci = frame.find('"ch":')
-                if ci < 0:
+                ch = json_number(frame, "ch")
+                if ch is None or not (0 <= ch < 6):
                     return False, None, False
-                ch = int("".join(c for c in frame[ci + 5:] if c.isdigit()) or -1)
-                if 0 <= ch < 6:
-                    self.kwh[ch] = 0.0
-                    self.applied.append(("reset_counter", ch))
-                    return True, None, False
+                self.kwh[ch] = 0.0
+                self.applied.append(("reset_counter", ch))
+                return True, None, False
 
             if verb == "console":
                 return True, "  Unknown command. Type 'help'.", False

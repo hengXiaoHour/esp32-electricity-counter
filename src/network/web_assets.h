@@ -1,7 +1,7 @@
 // GENERATED FILE - DO NOT EDIT BY HAND.
 // Source:    frontend/ (run: python3 scripts/embed_web.py)
-// Content:   sha256:5afc142be0d7366b
-// Assets:    10 files, 101167 bytes
+// Content:   sha256:1ca6f05c03983e01
+// Assets:    10 files, 101861 bytes
 //
 // Text assets are PROGMEM raw string literals; binary assets are byte
 // arrays. Both sizes come from sizeof() at the point of use, so the
@@ -747,7 +747,7 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
 )rawliteral";
 
 
-// ---- /script.js  (script.js, 46704 bytes) ----
+// ---- /script.js  (script.js, 47398 bytes) ----
 static const char WEB_ASSET_2_SCRIPT_JS[] PROGMEM = R"rawliteral(let ws = null;
 let userDisconnect = false;
 let activeEditChIdx = null;
@@ -762,6 +762,14 @@ let chartBuf = {};
 let connMode = 'local';            // 'local' | 'demo'
 let timeSyncTimer = null;         // re-lend the clock to the board periodically
 let lastDataTs = 0;
+// Admin-PIN state. Declared HERE, at the top of the state block, even though
+// the functions that use it live further down: init() is an IIFE that runs
+// while this file is still being evaluated, and a `let` declared below it is
+// still in its temporal dead zone when init() touches it - which threw
+// "Cannot access 'adminPin' before initialization" and killed the whole
+// script, leaving a page that loaded but rendered nothing.
+let adminPin = '';
+let pinOk = false;
 let consoleHistory = [];
 let consoleHistIdx = -1;
 const CONSOLE_MAX_LINES = 400;
@@ -821,7 +829,6 @@ function promptInstall() {
   if (h) h.classList.toggle('hidden');
 }
 
-// Initial Setup
 // Initial Setup
 (function init() {
   // ?demo=1 renders the UI with mocked data and opens no socket. The only
@@ -907,9 +914,8 @@ function handleDisconnect() {
 // The ESP32 enforces the PIN (see src/network/auth_gate.cpp); this side only
 // decides what the UI is allowed to show. Unlocking is explicit: a viewer gets
 // read-only until they enter the PIN in Settings.
-let adminPin = '';
-let pinOk = false;
-
+// (adminPin / pinOk are declared in the top state block - see the
+// temporal-dead-zone note there.)
 function pinCached() {
   try { return sessionStorage.getItem('esp32counter_pin') || ''; } catch (e) { return ''; }
 }
@@ -949,10 +955,6 @@ function applyPinState() {
 function verifyPin(pin) {
   return new Promise((resolve) => {
     if (!ws || ws.readyState !== WebSocket.OPEN) return resolve(false);
-    const done = (e) => {
-      if (e.data && e.data.indexOf('PIN OK') >= 0) resolve(true);
-    };
-    const raw = ws.onmessage;
     ws.addEventListener('message', function h(e) {
       try {
         const d = JSON.parse(e.data);
@@ -971,7 +973,11 @@ function verifyPin(pin) {
       } catch (x) { /* keep waiting */ }
     });
     ws.send(JSON.stringify({ cmd: 'verify_pin', pin: pin }));
-    setTimeout(() => resolve(pinOk), 3000);
+    // No answer from the board means the PIN is UNVERIFIED, which is not the
+    // same as verified. This used to resolve with the current pinOk, so a
+    // previously-unlocked session that then tried a wrong PIN was reported as
+    // a successful unlock - the stale value leaked straight through.
+    setTimeout(() => resolve(false), 3000);
   });
 }
 
