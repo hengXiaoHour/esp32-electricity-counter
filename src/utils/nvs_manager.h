@@ -25,16 +25,11 @@ public:
   void savePin(const String &pin);
   static const char *defaultPin();
 
-  // WiFi credentials
+  // WiFi credentials. READ-ONLY in practice: nothing writes them any more
+  // (the board is AP-only). loadWiFi() exists so `wifi` can report a stale SSID
+  // left by older firmware; clearWiFi() erases it.
   bool loadWiFi(String &ssid, String &password);
-  void saveWiFi(const String &ssid, const String &password);
-  void saveWiFiSSID(const String &ssid);
-  void saveWiFiPass(const String &pass);
   void clearWiFi();
-
-  // WiFi mode: 0=AUTO (STA fallback AP), 1=STA only, 2=AP only
-  void saveWiFiMode(uint8_t mode);
-  uint8_t loadWiFiMode();
 
   // Per-channel name
   bool loadChannelName(uint8_t channel, char *name, size_t nameLen);
@@ -49,7 +44,6 @@ public:
   float loadVoltageCalibration();
   void saveVoltageCalibration(float value);
   float loadCurrentCalibration();       // Legacy: single shared value
-  void saveCurrentCalibration(float value); // Legacy
   float loadChannelCurrentCal(uint8_t channel);  // Per-channel
   void saveChannelCurrentCal(uint8_t channel, float value);
 
@@ -91,7 +85,6 @@ public:
   static const char *defaultChannelName(uint8_t channel);
 
   // Factory reset: clear all NVS keys
-  void clearAll();
 
 private:
   Preferences prefs;

@@ -39,37 +39,13 @@ bool NVSManager::loadWiFi(String &ssid, String &password) {
   return ssid.length() > 0;
 }
 
-void NVSManager::saveWiFi(const String &ssid, const String &password) {
-  prefs.putString("wifi_ssid", ssid);
-  prefs.putString("wifi_pass", password);
-  DEBUG_LOG("  [NVS] saved WiFi: ssid=\"%s\" pass=%d chars\n", ssid.c_str(), password.length());
-}
-
-void NVSManager::saveWiFiSSID(const String &ssid) {
-  prefs.putString("wifi_ssid", ssid);
-  DEBUG_LOG("  [NVS] saved WiFi SSID: \"%s\"\n", ssid.c_str());
-}
-
-void NVSManager::saveWiFiPass(const String &pass) {
-  prefs.putString("wifi_pass", pass);
-  DEBUG_LOG("  [NVS] saved WiFi pass: %d chars\n", pass.length());
-}
-
 void NVSManager::clearWiFi() {
   prefs.remove("wifi_ssid");
   prefs.remove("wifi_pass");
-  DEBUG_LOG("  [NVS] cleared WiFi credentials\n");
-}
-
-void NVSManager::saveWiFiMode(uint8_t mode) {
-  prefs.putUChar("wifi_mode", mode);
-  const char *modeStr[] = {"AUTO", "STA", "AP"};
-  DEBUG_LOG("  [NVS] saved WiFi mode: %s (%d)\n",
-    mode <= 2 ? modeStr[mode] : "?", mode);
-}
-
-uint8_t NVSManager::loadWiFiMode() {
-  return prefs.getUChar("wifi_mode", 0);
+  // wifi_mode was written by pre-AP-only firmware and has been read by nothing
+  // since. Erase it too, so `clearwifi` really does leave no WiFi state behind.
+  prefs.remove("wifi_mode");
+  DEBUG_LOG("  [NVS] cleared WiFi credentials + mode\n");
 }
 
 // --- Channel Config ---
@@ -128,11 +104,6 @@ void NVSManager::saveVoltageCalibration(float value) {
 
 float NVSManager::loadCurrentCalibration() {
   return prefs.getFloat("curr_cal", DEFAULT_CURRENT_CALIBRATION);
-}
-
-void NVSManager::saveCurrentCalibration(float value) {
-  prefs.putFloat("curr_cal", value);
-  DEBUG_LOG("  [NVS] saved current calibration: %.1f\n", value);
 }
 
 float NVSManager::loadChannelCurrentCal(uint8_t channel) {
@@ -260,11 +231,4 @@ uint8_t NVSManager::loadForensicEvents(Event *out, uint8_t maxCount) {
   uint8_t keep = (blob.count < maxCount) ? blob.count : maxCount;
   memcpy(out, blob.slots, keep * sizeof(Event));
   return keep;
-}
-
-// --- Factory Reset ---
-
-void NVSManager::clearAll() {
-  prefs.clear();
-  DEBUG_LOG("  [NVS] ALL keys cleared — defaults will load on next boot\n");
 }
