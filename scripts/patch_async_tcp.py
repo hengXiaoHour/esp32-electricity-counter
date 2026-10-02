@@ -435,30 +435,47 @@ def revert(src: Path) -> int:
     return problems
 
 
+def _brace_body(src: str, from_index: int) -> str:
+    """Return the brace-matched block starting at/after from_index."""
+    start = src.index("{", from_index)
+    depth, i = 0, start
+    while i < len(src):
+        if src[i] == "{":
+            depth += 1
+        elif src[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return src[start:i + 1]
+        i += 1
+    return src[start:]
+
+
+def _function_body(src: str, qualified_name: str) -> str:
+    """Body of `Type::method`, without the static/return-type prefix assumptions.
+
+    Needed because the constructor and operator= contained a byte-identical
+    block of lwIP calls, so only a name-scoped lookup can say WHICH one was
+    rewritten.
+    """
+    m = re.search(re.escape(qualified_name) + r"\s*\(", src)
+    if not m:
+        return ""
+    return _brace_body(src, m.end())
+
+
 def _function_bodies(src: str, names) -> dict:
-    """Map each named function to its body, brace-matched.
+    """Map each named static function to its body, brace-matched.
 
     Written because a substring count cannot distinguish "calls the wrapper
     through tcpip_api_call" from "calls it directly", and the difference
     between those two is the entire bug.
     """
-    import re
     out = {}
     for name in names:
         m = re.search(r"^static\s+\w[\w \*]*\b" + re.escape(name) + r"\s*\(", src, re.M)
         if not m:
             continue
-        start = src.index("{", m.end())
-        depth, i = 0, start
-        while i < len(src):
-            if src[i] == "{":
-                depth += 1
-            elif src[i] == "}":
-                depth -= 1
-                if depth == 0:
-                    break
-            i += 1
-        out[name] = src[start:i + 1]
+        out[name] = _brace_body(src, m.end())
     return out
 
 
