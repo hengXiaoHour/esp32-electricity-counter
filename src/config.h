@@ -55,6 +55,21 @@
 #define DEFAULT_VOLTAGE_CALIBRATION   260.0f
 
 // ==============================
+// Access Point
+// ==============================
+// The board IS the network, so these are its factory identity - the name and
+// password it broadcasts on a fresh board, or after `reset_ap`. Both are
+// overridable at runtime and stored in NVS under ap_ssid / ap_pass (see
+// NVSManager); these constants are the fallback when flash holds nothing usable,
+// which is also what keeps a corrupt value from taking the radio down.
+//
+// They live here rather than in wifi_manager.h because NVSManager needs them as
+// its default and it has no business including <WiFi.h> for two string literals.
+// (Previously both the README and check_docs.py pointed at wifi_manager.h.)
+constexpr const char *AP_SSID_DEFAULT = "ESP32-Elec-Counter";
+constexpr const char *AP_PASS_DEFAULT = "configure123";
+
+// ==============================
 // Channel Configuration
 // ==============================
 #define NUM_CHANNELS         6
