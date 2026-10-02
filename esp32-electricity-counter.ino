@@ -57,7 +57,7 @@ static void updateLED() {
     return;
   }
 
-  if (!wifiMgr.isConnected()) {
+  if (!wifiMgr.isReady()) {
     statusLED.setMode(LED_SOLID_RED);
     statusLED.loop();
     return;
@@ -75,9 +75,12 @@ static void updateSharedData() {
     systemData.currentCalibration[ch] = powerCalc.currentCal[ch];
   }
   systemData.uptime = millis() / 1000;
-  systemData.wifiConnected = wifiMgr.isConnected();
-  systemData.wifiRSSI = wifiMgr.isConnected() ? wifiMgr.getRSSI() : 0;
-  systemData.apMode = wifiMgr.isApMode();
+  // AP-only: the board is never a station client, so there is no link to
+  // report. apMode carries the single meaningful bit; the wifi fields stay in
+  // SystemData so the snapshot shape does not change under the dashboard.
+  systemData.wifiConnected = false;
+  systemData.wifiRSSI = 0;
+  systemData.apMode = wifiMgr.isReady();
   systemData.otaInProgress = otaHandler.isInProgress();
   systemData.otaProgress = otaHandler.getProgress();
 
