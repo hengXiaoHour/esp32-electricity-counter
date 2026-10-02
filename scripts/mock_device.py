@@ -187,9 +187,8 @@ class State:
                 return True, "  PIN OK", False
 
             if verb == "set_pin":
-                new = extract_pin(frame.replace('"pin":"', '"pinx":"'))
-                # set_pin carries the CURRENT pin in "pin" and the new one in
-                # "pin_new"; the gate already validated "pin".
+                # set_pin carries the CURRENT pin in "pin" (already validated by
+                # the gate above) and the new one in "pin_new".
                 ni = frame.find('"pin_new":"')
                 new = None
                 if ni >= 0:
