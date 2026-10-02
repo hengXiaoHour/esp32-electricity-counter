@@ -275,6 +275,13 @@ String ConsoleHandler::takePendingOutput() {
   return s;
 }
 
+void ConsoleHandler::requestReboot(const char *reason) {
+  pendingRebootNote = reason ? String(reason) : "";
+  pendingCmd = "reboot";
+  pendingOutput = "";
+  pendingDefer = true;
+}
+
 void ConsoleHandler::ledTestStep(ConsoleHandler *self) {
   self->ledTestPhase++;
   const int totalPhases = 11;
