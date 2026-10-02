@@ -93,22 +93,13 @@ static void updateSharedData() {
   }
 }
 
-// Push RAM energy counters to NVS + commit. Registered as WiFiManager's
-// pre-restart hook so the STA connect-timeout reboot never loses counter
-// data (the 5 s sensorTask save alone can lag behind by a full interval).
-static void flushEnergyToNvs() {
-  // Runs from networkTask (WiFiManager pre-restart hook) with NO mutex held,
-  // while sensorTask's 5s save does the same putFloat+commit() on the same
-  // Preferences handle under the mutex. NVSManager::commit() is
-  // prefs.end()+prefs.begin(), which is not thread-safe — without this the two
-  // cores can interleave and silently drop counter writes. Serialize here too.
-  if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) != pdTRUE) return;
-  for (int ch = 0; ch < NUM_CHANNELS; ch++) {
-    nvs.saveEnergyKWh(ch, powerCalc.getEnergyKWh(ch));
-  }
-  nvs.commit();
-  xSemaphoreGive(dataMutex);
-}
+// Push RAM energy counters to NVS + commit before a restart.
+// Was duplicated here as WiFiManager's pre-restart hook for the STA
+// connect-timeout reboot. That reboot path is gone in AP-only mode, so the
+// single remaining flush lives in ConsoleHandler::flushEnergy(), which the
+// `reboot` verb calls - and which now takes dataMutex for the same reason
+// this one did (NVSManager::commit() is prefs.end()+prefs.begin(), which is
+// not thread-safe against sensorTask's 5 s save).
 
 // ==============================
 // FreeRTOS Tasks
