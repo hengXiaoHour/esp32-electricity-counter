@@ -442,10 +442,17 @@ commits immediately, and `flushEnergyToNvs()` runs as a pre-restart hook.
 
 | Group | Keys |
 |---|---|
+| Access point | `ap_ssid`, `ap_pass` — the network this board publishes; defaults live in `config.h` |
 | Legacy (written by older firmware, now unread) | `wifi_ssid`, `wifi_pass`, `wifi_mode` — erase with `clearwifi` |
 | Auth | `admin_pin` (default `1234`, plaintext) |
 | Per channel | name, monthly kWh limit, current cal, noise floor, LPF alpha, energy kWh |
 | Global | voltage cal, rms samples, last billing month, forensic events |
+
+`ap_ssid` / `ap_pass` are deliberately **not** stored in the old `wifi_ssid` /
+`wifi_pass` keys. Those hold the station credentials of a firmware that joined
+somebody else's router, nothing reads them, and `clearwifi` scrubs them — so
+reusing them would let a stale router SSID silently become the network the board
+broadcasts.
 
 `ntfy_topic` / `ntfy_enable` may still be present from older firmware and are now
 ignored.
