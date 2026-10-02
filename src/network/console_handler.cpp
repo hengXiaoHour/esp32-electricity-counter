@@ -205,8 +205,10 @@ void ConsoleHandler::exec(const String &line, String &out) {
   } else if (cmd.startsWith("volt_cal ")) {
     cmdVoltCal(cmd.substring(9), out);
 
-  } else if (cmd.startsWith("setwifi ")) {
-    cmdSetWifi(cmd.substring(8), out);
+  } else if (cmd.startsWith("setwifi")) {
+    consoleAppendf(out, "%s", "  setwifi is gone: this board is AP-only.");
+    consoleAppendf(out, "%s", "  It never joins a network. Join \"" AP_SSID_DEFAULT
+                     "\" from your phone instead.");
 
   } else if (cmd == "clearwifi") {
     cmdClearWifi(out);
@@ -443,53 +445,15 @@ void ConsoleHandler::cmdVoltCal(const String &args, String &out) {
   }
 }
 
-void ConsoleHandler::cmdSetWifi(const String &args, String &out) {
-  if (args == "sta") {
-    nvs->saveWiFiMode(1);
-    consoleAppendf(out, "%s", "  WiFi mode: STA -- will connect on next boot");
-  } else if (args == "ap") {
-    nvs->saveWiFiMode(2);
-    consoleAppendf(out, "%s", "  WiFi mode: AP -- board will start as access point");
-  } else if (args == "auto") {
-    nvs->saveWiFiMode(0);
-    consoleAppendf(out, "%s", "  WiFi mode: AUTO -- try STA first, fallback to AP");
-  } else if (args.startsWith("ssid ")) {
-    String ssid = args.substring(5);
-    ssid.trim();
-    if (ssid.length() > 0) {
-      nvs->saveWiFiSSID(ssid);
-      consoleAppendf(out, "  WiFi SSID saved: \"%s\"", ssid.c_str());
-    } else {
-      consoleAppendf(out, "%s", "  Usage: setwifi ssid <network name>");
-    }
-  } else if (args.startsWith("pass ")) {
-    String pass = args.substring(5);
-    pass.trim();
-    nvs->saveWiFiPass(pass);
-    consoleAppendf(out, "  WiFi password saved (%d chars)", pass.length());
-  } else if (args == "connect" || args == "save") {
-    String ssid, pass;
-    nvs->loadWiFi(ssid, pass);
-    if (ssid.length() > 0) {
-      nvs->saveWiFiMode(1);
-      consoleAppendf(out, "  Connecting to \"%s\"... rebooting", ssid.c_str());
-      flushEnergy();
-      nvs->commit();
-      delay(100);
-      ESP.restart();
-    } else {
-      consoleAppendf(out, "%s", "  No SSID set. Use 'setwifi ssid <name>' first");
-    }
-  } else {
-    consoleAppendf(out, "%s", "  Usage: setwifi sta|ap|auto|ssid|pass|connect|save");
-  }
-}
-
 void ConsoleHandler::cmdClearWifi(String &out) {
+  // Nothing reads WiFi credentials any more, so this only scrubs leftovers
+  // from an older firmware in NVS. It is kept deliberately: it is the one way
+  // to make sure an old SSID/password is not still sitting in flash.
   nvs->clearWiFi();
   nvs->saveWiFiMode(0);
-  consoleAppendf(out, "%s", "  WiFi credentials + mode cleared");
-  consoleAppendf(out, "%s", "  Type 'reboot' to restart in AP mode");
+  nvs->commit();
+  consoleAppendf(out, "%s", "  Stored WiFi credentials cleared");
+  consoleAppendf(out, "%s", "  (the board is AP-only and never joins a network)");
 }
 
 void ConsoleHandler::cmdStatus(String &out) {
