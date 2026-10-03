@@ -48,14 +48,18 @@ void onWiFiEvent(WiFiEvent_t event, arduino_event_info_t info) {
 static void handleSerialCommand(const String &cmd);
 
 static void updateLED() {
+  // Simple logic, both LED types:
+  //   OTA running        -> blink every 0.5 s
+  //   AP client connected -> solid on
+  //   otherwise (idle)    -> off
   if (otaHandler.isInProgress()) {
-    statusLED.setMode(LED_SOLID_BLUE);
+    statusLED.setMode(LED_BLINK_YELLOW);
     statusLED.loop();
     return;
   }
 
-  if (!wifiMgr.isReady()) {
-    statusLED.setMode(LED_SOLID_RED);
+  if (wifiMgr.clientCount() == 0) {
+    statusLED.setMode(LED_OFF);
     statusLED.loop();
     return;
   }
@@ -307,7 +311,10 @@ void setup() {
   }
 
   // === Phase 2: Init hardware with defaults first ===
-  DEBUG_LOG("  %-19s%s\n", "Status LED", "OK"); statusLED.begin();
+  DEBUG_LOG("  %-19s%s (%s)\n", "Status LED", "OK",
+            nvs.loadLedType() ? "rgb" : "normal");
+  statusLED.setType(nvs.loadLedType());
+  statusLED.begin();
   DEBUG_LOG("  %-19s%s\n", "Power Calculator", "OK"); powerCalc.begin();
   DEBUG_LOG("  %-19s%s\n", "Buzzer", "OK"); buzzer.begin(PIN_BUZZER);
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {
@@ -361,7 +368,7 @@ void setup() {
   // defaults), which is why this needs the NVS handle the AP-only migration
   // removed. begin() has returned before anything else reads them.
   wifiMgr.begin(&nvs);
-  statusLED.setMode(LED_SOLID_RED);
+  statusLED.setMode(LED_OFF);
   DEBUG_LOG("  %-19sAP @ %s (always)\n", "WiFi", WiFi.softAPIP().toString().c_str());
   DEBUG_LOG("  %-19s\"%s\" / \"%s\"\n", "Network", wifiMgr.getSSID(), wifiMgr.getPass());
 

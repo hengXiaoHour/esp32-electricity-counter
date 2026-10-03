@@ -395,11 +395,12 @@ one of them**:
 | Condition | Mode |
 |---|---|
 | OTA in progress | solid blue |
-| WiFi not connected | solid red |
-| otherwise | solid green |
+| AP not up yet | solid red |
+| AP up, 0 clients | blinking yellow |
+| AP up, ≥1 client | solid green |
 
-`LED_BLINK_RED` / `LED_BLINK_YELLOW` exist but are only reachable from the
-`test led` console command; `status_led.h` documents this explicitly. The
+`LED_BLINK_RED` is only reachable from the `test led` console command;
+`status_led.h` documents this explicitly. The
 README's "RED LED blink on trip" is therefore stale (Part C.2).
 
 ### Monthly rollover
@@ -815,8 +816,9 @@ the rest describe files that no longer exist.
 
 ### C.2 README: trip LED behaviour — **still true, still wrong**
 
-`updateLED()` only ever selects blue (OTA), red (AP not ready) or green. Blink
-modes are reachable solely from `test led`, as `status_led.h` itself notes.
+`updateLED()` selects blue (OTA), red (AP not ready), blinking yellow (no
+clients) or green (a client is connected). `LED_BLINK_RED` is reachable solely
+from `test led`, as `status_led.h` itself notes.
 Trips are signalled by the **buzzer**, the channel `status` field, the event
 log, and the dashboard notification — not the LED.
 

@@ -3,12 +3,14 @@
 #include <Adafruit_NeoPixel.h>
 #include "../config.h"
 
-// LED State Machine
-//   Solid GREEN  – WiFi connected, all channels OK
-//   Solid RED    – WiFi disconnected / AP fallback mode
-//   Solid BLUE   – OTA update in progress / booting
-//   OFF          – System off / deep sleep
-//   Blink YELLOW / Blink RED – serial `ledtest` only, not used by firmware logic
+// LED State Machine (firmware logic uses only OFF / SOLID_GREEN / BLINK_YELLOW)
+//   OFF          – idle: AP up, no client
+//   SOLID_GREEN  – an AP client is connected
+//   BLINK_YELLOW – OTA in progress (toggles every 500 ms)
+//
+// Two physical driver types, same GPIO48:
+//   normal – plain on/off LED on GPIO48 (factory default)
+//   rgb    – WS2812 on GPIO48 (R/G swapped on this PCB, compensated below)
 
 enum LedMode : uint8_t {
   LED_OFF = 0,
@@ -27,11 +29,18 @@ public:
   LedMode getMode() const { return currentMode; }
   void loop();
 
+  // Select the physical LED type. Default (constructor + fresh NVS) is the
+  // plain, non-RGB LED. Takes effect immediately; call before begin() at boot,
+  // or any time to switch live.
+  void setType(bool rgb);
+  bool isRgb() const { return rgbMode; }
+
 private:
   Adafruit_NeoPixel strip;
   LedMode currentMode;
   bool blinkState;
   uint32_t lastToggle;
+  bool rgbMode;
 
   // R/G channel swap wrapper:
   // Hardware has physical R and G swapped.

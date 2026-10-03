@@ -105,6 +105,7 @@ private:
   void cmdClearWifi(String &out);
   void cmdSetAp(const String &args, String &out);
   void cmdResetAp(String &out);
+  void cmdLed(const String &args, String &out);
 
   // Push RAM energy counters to NVS + commit. Called before every
   // deliberate restart (reboot, setwifi connect) so counter data survives.

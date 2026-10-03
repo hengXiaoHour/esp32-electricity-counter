@@ -67,6 +67,11 @@ public:
   float loadNoiseFloor(uint8_t channel);
   void saveNoiseFloor(uint8_t channel, float value);
 
+  // LED driver type: false = plain non-RGB LED (factory default),
+  // true = WS2812 RGB LED. Both share GPIO48.
+  bool loadLedType();
+  void saveLedType(bool rgb);
+
   // LPF alpha per channel — 1.0 = no filtering
   float loadLpfAlpha(uint8_t channel);
   void saveLpfAlpha(uint8_t channel, float value);

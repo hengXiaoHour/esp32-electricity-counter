@@ -167,6 +167,18 @@ void NVSManager::saveNoiseFloor(uint8_t channel, float value) {
   DEBUG_LOG("  [NVS] ch%d noise floor: %.3f A\n", channel + 1, value);
 }
 
+// --- LED type ---
+
+bool NVSManager::loadLedType() {
+  // Default normal (non-RGB) LED; key absent on a fresh board.
+  return prefs.getBool("led_rgb", false);
+}
+
+void NVSManager::saveLedType(bool rgb) {
+  prefs.putBool("led_rgb", rgb);
+  DEBUG_LOG("  [NVS] LED type staged: %s\n", rgb ? "rgb" : "normal");
+}
+
 // --- LPF Alpha ---
 
 float NVSManager::loadLpfAlpha(uint8_t channel) {

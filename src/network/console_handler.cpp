@@ -220,6 +220,9 @@ void ConsoleHandler::exec(const String &line, String &out) {
   } else if (cmd == "clearwifi") {
     cmdClearWifi(out);
 
+  } else if (cmd == "led" || cmd.startsWith("led ")) {
+    cmdLed(cmd.length() > 3 ? cmd.substring(4) : "", out);
+
   } else if (cmd == "nvs_debug") {
     if (!nvs) {
       consoleAppendf(out, "%s", "  NVS not available");
@@ -458,6 +461,39 @@ void ConsoleHandler::cmdVoltCal(const String &args, String &out) {
   }
 }
 
+void ConsoleHandler::cmdLed(const String &args, String &out) {
+  String a = args;
+  a.trim();
+  a.toLowerCase();
+
+  if (a.length() == 0 || a == "status") {
+    consoleAppendf(out, "  LED type: %s",
+                   statusLed ? (statusLed->isRgb() ? "rgb" : "normal") : "n/a");
+    consoleAppendf(out, "%s", "  Change: led <normal|rgb>   (saved, no reboot)");
+    return;
+  }
+
+  bool wantRgb;
+  if (a == "normal" || a == "plain") {
+    wantRgb = false;
+  } else if (a == "rgb" || a == "ws2812" || a == "neopixel") {
+    wantRgb = true;
+  } else {
+    consoleAppendf(out, "%s", "  Usage: led <normal|rgb>");
+    return;
+  }
+
+  bool locked = (xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE);
+  nvs->saveLedType(wantRgb);
+  nvs->commit();
+  if (locked) xSemaphoreGive(*dataMutex);
+
+  statusLed->setType(wantRgb);
+  statusLed->loop();  // apply the new driver to the current mode immediately
+  consoleAppendf(out, "  LED type set to \"%s\" (saved to NVS, no reboot)",
+                 wantRgb ? "rgb" : "normal");
+}
+
 void ConsoleHandler::cmdClearWifi(String &out) {
   // Nothing reads WiFi credentials any more, so this only scrubs leftovers
   // from an older firmware in NVS. It is kept deliberately: it is the one way
@@ -621,6 +657,7 @@ void ConsoleHandler::cmdHelp(String &out) {
   consoleAppendf(out, "%s", "    reset_name [N]      Reset channel name(s) to default");
   consoleAppendf(out, "%s", "    ---");
   consoleAppendf(out, "%s", "    test led            LED color sequence test (non-blocking)");
+  consoleAppendf(out, "%s", "    led <normal|rgb>    LED driver type (default: normal, no reboot)");
   consoleAppendf(out, "%s", "    rms_samples <N>     Set RMS samples (100-MAX)");
   consoleAppendf(out, "%s", "    curr_cal <ch> <val> Set current calibration for channel");
   consoleAppendf(out, "%s", "    auto_zero <ch>      Auto-zero noise floor for channel");

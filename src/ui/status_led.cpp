@@ -4,12 +4,24 @@ StatusLED::StatusLED()
   : strip(1, PIN_RGB_LED, NEO_GRB + NEO_KHZ800),
     currentMode(LED_OFF),
     blinkState(false),
-    lastToggle(0) {}
+    lastToggle(0),
+    rgbMode(false) {}  // factory default: plain, non-RGB LED
+
+void StatusLED::setType(bool rgb) {
+  rgbMode = rgb;
+  // Either way the pin starts dark; begin()/loop() take it from there.
+  if (rgb) {
+    strip.begin();
+    strip.setBrightness(50);
+    strip.show();
+  } else {
+    pinMode(PIN_RGB_LED, OUTPUT);
+    digitalWrite(PIN_RGB_LED, LOW);
+  }
+}
 
 void StatusLED::begin() {
-  strip.begin();
-  strip.setBrightness(50);
-  strip.show(); // off initially
+  setType(rgbMode);
 }
 
 void StatusLED::setMode(LedMode mode) {
@@ -21,6 +33,36 @@ void StatusLED::setMode(LedMode mode) {
 }
 
 void StatusLED::loop() {
+  if (!rgbMode) {
+    // Plain LED has exactly two states; every solid maps to on, every blink
+    // toggles on its own interval.
+    switch (currentMode) {
+      case LED_OFF:
+        digitalWrite(PIN_RGB_LED, LOW);
+        break;
+      case LED_SOLID_GREEN:
+      case LED_SOLID_RED:
+      case LED_SOLID_BLUE:
+        digitalWrite(PIN_RGB_LED, HIGH);
+        break;
+      case LED_BLINK_YELLOW:
+        if (millisSinceLastToggle() >= 500) {
+          blinkState = !blinkState;
+          lastToggle = millis();
+        }
+        digitalWrite(PIN_RGB_LED, blinkState ? HIGH : LOW);
+        break;
+      case LED_BLINK_RED:
+        if (millisSinceLastToggle() >= 300) {
+          blinkState = !blinkState;
+          lastToggle = millis();
+        }
+        digitalWrite(PIN_RGB_LED, blinkState ? HIGH : LOW);
+        break;
+    }
+    return;
+  }
+
   switch (currentMode) {
     case LED_OFF:
       setPixelColor(0, 0, 0);
