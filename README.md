@@ -74,8 +74,9 @@ From a browser: Settings → Access Point. Or over serial: `set_ap` /
 
 ### Limits
 
-No access from outside your own WiFi, no true PWA install on desktop, and the
-board never sleeps.
+- No access from outside your own WiFi
+- No true PWA install on desktop browsers
+- The board never sleeps
 
 Serial console (`help` for the list): `status`, `wifi`, `set_ap`, `led
 normal|rgb`, `test led`, `cal`, `inject`, `reboot`, …
