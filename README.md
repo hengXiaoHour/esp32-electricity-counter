@@ -47,8 +47,13 @@ WebSocket means live updates with zero config, and the service worker makes it
 installable on a phone.
 
 **Security model** — viewing is open; anything that changes the board
-(names, limits, calibration, counters, reboot, PIN) needs the admin PIN,
-checked on the ESP32, not in the browser.
+(names, limits, calibration, counters, reboot, PIN) needs the admin PIN
+(default `1234`, change it in Settings → Admin PIN). It is checked **on the
+ESP32**, not in the browser.
+
+Heads-up: the ESP32 network has no upstream internet, so phones show "no
+internet" when joined — expected. Forgot the AP password? `reset_ap` over the
+serial console restores the factory network.
 
 ![Settings](docs/screenshots/settings.png)
 
@@ -56,8 +61,21 @@ checked on the ESP32, not in the browser.
 
 ```bash
 arduino-cli compile --fqbn esp32:esp32:esp32s3:FlashSize=4M,PartitionScheme=no_fs,CDCOnBoot=cdc .
+scripts/patch_async_tcp.py --apply   # if AsyncTCP lacks the lwIP core-lock patches
 esptool --port /dev/ttyACM0 --chip esp32s3 write-flash 0x10000 <sketch>.ino.bin
 ```
+
+Rename/recover the network over serial: `set_ap <name> <pass>` / `reset_ap`.
+
+### Changing the network name and password
+
+From a browser: Settings → Access Point. Or over serial: `set_ap` /
+`reset_ap`. Default is `ESP32-Elec-Counter` / `configure123`.
+
+### Limits
+
+No access from outside your own WiFi, no true PWA install on every browser,
+and the board never sleeps.
 
 Serial console (`help` for the list): `status`, `wifi`, `set_ap`, `led
 normal|rgb`, `test led`, `cal`, `inject`, `reboot`, …
