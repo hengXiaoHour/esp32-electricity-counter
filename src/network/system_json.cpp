@@ -5,6 +5,30 @@
 
 #include <time.h>
 
+// Appends `s` as a JSON string BODY (no surrounding quotes), escaping the
+// characters that would otherwise end the string or escape a quote.
+//
+// Not theoretical: ap_creds_validateSsid rejects control bytes, length and
+// surrounding spaces, but it accepts `"` and `\`. A name like
+// Ben "the meter"\ Lab is legal for the radio and would have produced invalid
+// JSON that JSON.parse() throws away - taking the whole broadcast, every live
+// reading included, with it.
+static void appendJsonEscaped(String &json, const String &s) {
+  for (size_t i = 0; i < s.length(); i++) {
+    char c = s.charAt(i);
+    if (c == '"' || c == '\\') {
+      json += '\\';
+      json += c;
+    } else if ((unsigned char)c < 0x20) {
+      // Unreachable for a validated SSID, but an unescaped control byte would
+      // make the frame unparseable, so never emit one.
+      json += ' ';
+    } else {
+      json += c;
+    }
+  }
+}
+
 // Serialises SystemData + the live calibration/auto-zero fields held by
 // PowerCalculator into the dashboard's wire format.
 //
@@ -71,6 +95,22 @@ void buildSystemJson(const SystemData &data, PowerCalculator *powerCalc,
   json += (long)time(nullptr);
   json += ",\"lastMonth\":";
   json += nvs->loadLastMonth();
+  // The AP identity actually in effect, so the dashboard can show the user what
+  // to edit instead of a placeholder. Without this the Access Point panel always
+  // looked like a fresh board, whatever was stored - you could rename the
+  // network, come back, and have no way to tell what it was called now.
+  //
+  // The SSID is not a secret (a WiFi scan reads it off the air). The PASSWORD is
+  // never sent: `apIsDefault` says only whether both values still match the
+  // factory ones, which is what the UI needs to word its placeholder.
+  {
+    String ssid = nvs->loadApSsid();
+    String pass = nvs->loadApPass();
+    json += ",\"apSsid\":\"";
+    appendJsonEscaped(json, ssid);
+    json += "\",\"apIsDefault\":";
+    json += (ssid == AP_SSID_DEFAULT && pass == AP_PASS_DEFAULT) ? "true" : "false";
+  }
   // Clock health. Read straight from TimeSync rather than through SystemData:
   // it is owned by the network layer, needs no mutex, and must be visible even
   // when it has never been set (which is the case worth showing).

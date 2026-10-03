@@ -4,8 +4,8 @@
 const CACHE_NAME = 'esp32-counter-v14';
 const SHELL = [
   './index.html',
-  './style.css?v=20261002b',
-  './script.js?v=20261002b',
+  './style.css?v=20261003b',
+  './script.js?v=20261003b',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png'

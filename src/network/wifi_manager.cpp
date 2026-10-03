@@ -3,10 +3,10 @@
 #include "../utils/log_gate.h"
 #include "../utils/nvs_manager.h"
 
-const char *WiFiManager::AP_SSID = AP_SSID_DEFAULT;
-const char *WiFiManager::AP_PASS = AP_PASS_DEFAULT;
-
 // Sized from the 802.11 limits; see the comment on the declarations.
+// AP_SSID_DEFAULT is a `constexpr const char *`, not a string literal, so it
+// cannot be a static initialiser here - loadCredentials() copies it in as its
+// very first statement, before anything can read these.
 char WiFiManager::apSsid_[AP_MAX_SSID_LEN + 1] = "";
 char WiFiManager::apPass_[AP_MAX_PASS_LEN + 1] = "";
 
@@ -62,7 +62,10 @@ void WiFiManager::startAPMode() {
   state = WIFI_AP_MODE;
 
   WiFi.mode(WIFI_AP);
-  WiFi.softAP(AP_SSID, AP_PASS);
+  // apSsid_/apPass_, NOT the compiled defaults. Passing the defaults here is
+  // what made a saved AP name look like it had worked while the board kept
+  // beaconing the factory name after every reboot.
+  WiFi.softAP(apSsid_, apPass_);
   WiFi.setTxPower(WIFI_POWER_21dBm);  // S3 max - longest range, more heat
   WiFi.setSleep(false);               // an AP must keep beaconing
 

@@ -14,7 +14,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="style.css?v=20261002a">
+<link rel="stylesheet" href="style.css?v=20261003b">
 <script>
 // The board is always on location.host, so there is no session to restore and
 // nothing to decide before the first paint. This only hides the connect panel
@@ -166,23 +166,23 @@
       <section id="page-settings" class="page">
         <div class="panel-box">
           <div class="panel-header"><h3>Admin PIN</h3></div>
-          <div class="cal-row-single" style="display:block;margin-bottom:4px;">
-            <div id="roleBadge" class="role-badge role-guest">Viewer &mdash; read-only</div>
+          <div class="pin-badge-row">
+            <span id="roleBadge" class="role-badge role-guest">Viewer &mdash; read-only</span>
           </div>
-          <div id="pinRow" style="margin-top:12px;">
+          <div id="pinRow" class="pin-rows">
             <div class="cal-row-single">
-              <label>PIN:</label>
+              <label for="pinInput">PIN:</label>
               <input type="password" id="pinInput" inputmode="numeric" autocomplete="off"
-                     placeholder="1234" onkeydown="if(event.key==='Enter') unlockWithPin(this.value).then(function(ok){ if(ok) showToast('Admin unlocked'); else showToast('Incorrect PIN'); })">
+                     placeholder="4-16 characters" onkeydown="if(event.key==='Enter') unlockWithPin(this.value).then(function(ok){ if(ok) showToast('Admin unlocked'); else showToast('Incorrect PIN'); })">
               <button class="btn-sm" onclick="unlockWithPin(document.getElementById('pinInput').value).then(function(ok){ showToast(ok ? 'Admin unlocked' : 'Incorrect PIN'); })">Unlock</button>
             </div>
-            <div style="margin-top:8px;">
-              <label class="hint-inline">Change PIN:</label>
+            <div class="cal-row-single">
+              <label for="pinNew">New PIN:</label>
               <input type="password" id="pinNew" autocomplete="off" placeholder="4-16 characters">
               <button class="btn-sm" onclick="changePin()">Set</button>
             </div>
           </div>
-          <span id="guestHint" class="hint-inline dim">Live readings are always visible. Changing limits, calibration, counters or the console needs the PIN &mdash; the board checks every command itself, so hiding a button here is not what protects them.</span>
+          <p id="guestHint" class="hint">Live readings are always visible. Changing limits, calibration, counters or the console needs the PIN &mdash; the board checks every command itself, so hiding a button here is not what protects them.</p>
         </div>
 
         <div class="panel-box">
@@ -191,11 +191,11 @@
             <label>Board:</label>
             <span id="connectedIp" class="mono conn-ip">--</span>
           </div>
-          <div class="cal-row-single" style="margin-top:8px;">
+          <div class="cal-row-single">
             <label>Status:</label>
             <span id="connStatus2" class="mono conn-txt">Connected</span>
           </div>
-          <div class="cal-row-single" style="margin-top:8px;">
+          <div class="cal-row-single">
             <label>Clock:</label>
             <span id="timeStatus" class="mono conn-txt">--</span>
             <button class="btn-sm" onclick="sendTime()">Sync now</button>
@@ -208,15 +208,21 @@
         <div class="panel-box admin-only">
           <div class="panel-header"><h3>Access Point</h3></div>
           <div class="cal-row-single">
-            <label>Network name:</label>
-            <input type="text" id="apSsid" placeholder="ESP32-Elec-Counter" autocomplete="off" spellcheck="false">
-            <button class="btn-sm" onclick="saveApSettings()">Save</button>
+            <label for="apSsid">Network name:</label>
+            <div class="cal-field">
+              <input type="text" id="apSsid" placeholder="Loading…" autocomplete="off" spellcheck="false" oninput="this.dataset.userSet='true'">
+            </div>
           </div>
-          <div class="cal-row-single" style="margin-top:8px;">
-            <label>Password:</label>
-            <input type="password" id="apPass" placeholder="8-63 characters" autocomplete="off">
-            <button class="btn-sm" onclick="resetApSettings()">Defaults</button>
-            <span class="hint-inline">(8-63)</span>
+          <div class="cal-row-single">
+            <label for="apPass">Password:</label>
+            <div class="cal-field">
+              <input type="password" id="apPass" placeholder="Loading…" autocomplete="off" oninput="this.dataset.userSet='true'">
+              <span class="hint-inline">(8-63)</span>
+            </div>
+          </div>
+          <div class="cal-actions">
+            <button class="btn-sm" id="apSaveBtn" onclick="saveApSettings()">Save</button>
+            <button class="btn-sm" id="apResetBtn" onclick="resetApSettings()">Defaults</button>
           </div>
           <div class="hint" id="apHint">Renames the WiFi network this board publishes and saves both to its flash. <strong>The board reboots to apply it</strong>, so your phone drops off &mdash; join the new network and reopen the dashboard. Forgot the password? <strong>Defaults</strong> puts the board back on the name and password printed in the README.</div>
         </div>
@@ -224,15 +230,19 @@
         <div class="panel-box admin-only">
           <div class="panel-header"><h3>System Calibration</h3></div>
           <div class="cal-row-single">
-            <label>Voltage Cal:</label>
-            <input type="number" id="voltCal" step="0.1" value="260" oninput="this.dataset.userSet='true'">
+            <label for="voltCal">Voltage Cal:</label>
+            <div class="cal-field">
+              <input type="number" id="voltCal" step="0.1" value="260" oninput="this.dataset.userSet='true'">
+            </div>
             <button class="btn-sm" onclick="sendVoltageCal()">Set</button>
           </div>
-          <div class="cal-row-single" style="margin-top:8px;">
-            <label>RMS Samples:</label>
-            <input type="number" id="rmsSamples" step="50" min="100" max="2000" value="1000" oninput="this.dataset.userSet='true'">
+          <div class="cal-row-single">
+            <label for="rmsSamples">RMS Samples:</label>
+            <div class="cal-field">
+              <input type="number" id="rmsSamples" step="50" min="100" max="2000" value="1000" placeholder="100-2000" oninput="this.dataset.userSet='true'">
+              <span class="hint-inline">(100-2000)</span>
+            </div>
             <button class="btn-sm" onclick="setRmsSamples()">Set</button>
-            <span class="hint-inline">(100-2000)</span>
           </div>
           <div class="cal-section-title">Channel Calibration</div>
           <div id="azStatus" class="az-status hidden"></div>
@@ -264,7 +274,7 @@
             <label>Firmware:</label>
             <span id="fwVersion2" class="mono conn-ip">--</span>
           </div>
-          <div class="cal-row-single" style="margin-top:8px;">
+          <div class="cal-row-single">
             <label>Month:</label>
             <span id="lastMonth" class="mono conn-ip">--</span>
           </div>
@@ -327,7 +337,7 @@
   </div>
 </div>
 
-<script src="script.js?v=20261002b"></script>
+<script src="script.js?v=20261003b"></script>
 <script>
 if ('serviceWorker' in navigator && window.isSecureContext) {
   window.addEventListener('load', function () {

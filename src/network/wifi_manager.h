@@ -42,18 +42,17 @@ public:
   bool isReady() const { return state == WIFI_AP_MODE; }
 
   // The LIVE identity the radio is broadcasting, which is what the serial
-  // banner, `wifi` and the dashboard must show. These point into WiFiManager's
-  // own buffers once begin() has run, and at the compiled defaults before it.
-  const char *getSSID() const { return AP_SSID; }
-  const char *getPass() const { return AP_PASS; }
+  // banner, `wifi` and the dashboard must show. These read the buffers
+  // loadCredentials() fills, NOT the compiled defaults - the defaults are only
+  // the fallback that function starts from. Returning AP_SSID/AP_PASS here is
+  // exactly what made set_ap report success and then reboot into the old name.
+  const char *getSSID() const { return apSsid_; }
+  const char *getPass() const { return apPass_; }
 
   // Phones/laptops currently associated with the AP. The AP-mode analogue of
   // the old STA RSSI + WS client count, and the only "is anyone watching"
   // signal that still exists.
   uint8_t clientCount() const;
-
-  static const char *AP_SSID;
-  static const char *AP_PASS;
 
 private:
   WifiState state;

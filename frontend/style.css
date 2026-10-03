@@ -19,6 +19,10 @@
   --fill: #5a8aa0;
   --info: #3b82f6;
   --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+  /* Every inline field and the button beside it share one height. Previously
+     each sized itself from its own padding, so an input sat 4px shorter than
+     the button next to it and the row never looked like one control. */
+  --field-h: 28px;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html { font-size: 15px; }
@@ -69,7 +73,10 @@ html.has-session #app { display: grid !important; }
 .btn-primary.btn-launch { width: 100%; font-size: 0.82rem; }
 .btn-primary:hover { background: #c83b2e; }
 .btn-primary:active { transform: scale(0.98); }
-.btn-primary.btn-inline { padding: 8px 14px; font-size: 0.72rem; }
+.btn-primary.btn-inline {
+  display: inline-flex; align-items: center; justify-content: center; white-space: nowrap;
+  height: var(--field-h); padding: 0 14px; font-size: 0.72rem; border-radius: 5px;
+}
 .connect-status { font-size: 0.78rem; padding: 8px 12px; border-radius: 5px; margin-bottom: 12px; font-family: var(--font-mono); background: rgba(255, 255, 255, 0.03); }
 .connect-status.connected { color: var(--ok); }
 .connect-status.disconnected { color: var(--trip); }
@@ -119,7 +126,9 @@ html.has-session #app { display: grid !important; }
 .role-badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 0.66rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
 .role-badge.role-admin { background: rgba(95, 180, 130, 0.16); color: var(--ok); border: 1px solid rgba(95, 180, 130, 0.4); }
 .role-badge.role-guest { background: rgba(139, 142, 155, 0.14); color: var(--text-3); border: 1px solid var(--border-2); }
-.hint-inline { font-size: 0.7rem; color: var(--text-3); margin-left: 10px; }
+/* .hint-inline is defined once, with the Settings forms block below. It used to
+   be declared here too with different values; the later rule silently won, so
+   the copy up here only ever confused anyone reading the sheet. */
 
 /* Guests may observe live data but never mutate. Demo mode stays fully open. */
 body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
@@ -209,9 +218,13 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
 /* Secondary metrics + actions */
 .ch-submetrics { display: flex; justify-content: space-between; padding: 4px 16px 8px; font-size: 0.7rem; color: var(--text-3); border-top: 1px solid rgba(255, 255, 255, 0.04); }
 .card-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 8px 16px 12px; }
+/* height (not padding) so a .btn-sm lines up exactly with the field beside it,
+   and inline-flex so its label stays optically centred at that height. */
 .btn-sm {
-  padding: 5px 11px; border-radius: 4px; font-size: 0.68rem; font-weight: 700; cursor: pointer;
-  border: 1px solid var(--border-2); background: transparent; color: var(--text-2);
+  display: inline-flex; align-items: center; justify-content: center; white-space: nowrap;
+  height: var(--field-h); padding: 0 11px; border-radius: 5px; font-size: 0.68rem;
+  font-weight: 700; cursor: pointer; border: 1px solid var(--border-2);
+  background: transparent; color: var(--text-2);
   transition: all 0.15s; text-transform: uppercase; letter-spacing: 0.04em;
 }
 .btn-sm:hover { border-color: var(--text-3); color: var(--text); }
@@ -222,7 +235,9 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
 .btn-sm.btn-danger:hover { background: var(--trip); color: #fff; }
 .btn-sm.btn-danger.confirming { background: var(--trip); color: #fff; animation: pulse 0.5s infinite alternate; }
 .btn-outline {
-  padding: 9px 18px; border-radius: 6px; font-size: 0.72rem; font-weight: 700; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; white-space: nowrap;
+  height: var(--field-h); padding: 0 18px; border-radius: 5px; font-size: 0.72rem;
+  font-weight: 700; cursor: pointer;
   border: 1px solid rgba(226, 74, 59, 0.45); background: transparent; color: var(--trip);
   transition: all 0.15s; text-transform: uppercase; letter-spacing: 0.06em;
 }
@@ -246,16 +261,64 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
 
 /* Settings forms */
 .cal-row-single { display: flex; align-items: center; gap: 8px; }
-.cal-row-single label { font-size: 0.74rem; color: var(--text-2); font-family: var(--font-mono); white-space: nowrap; min-width: 110px; }
-.cal-row-single label input[type="checkbox"] { margin-right: 6px; accent-color: var(--ok); }
-.cal-row-single input[type="text"], .cal-row-single input[type="number"] {
-  flex: 1; min-width: 0; max-width: 240px; padding: 6px 9px; background: var(--bg-input);
-  border: 1px solid var(--border); color: var(--text); border-radius: 5px; font-family: var(--font-mono);
-  outline: none; transition: border-color 0.15s;
+.cal-row-single + .cal-row-single { margin-top: 8px; }
+/* flex: 0 0 110px (not min-width) so every row's field starts at exactly the
+   same x. min-width let a long label push its field right by a few pixels,
+   which is what made the two PIN rows look staggered. */
+.cal-row-single label {
+  flex: 0 0 110px; font-size: 0.74rem; color: var(--text-2); font-family: var(--font-mono);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.cal-row-single input:focus { border-color: var(--trip); }
-.hint { margin-top: 10px; font-size: 0.7rem; color: var(--text-3); }
+.cal-row-single label input[type="checkbox"] { margin-right: 6px; accent-color: var(--ok); }
+/* Every input type, not just text and number. The old selector skipped
+   type="password", so the PIN and AP-password fields fell through to the
+   browser default: white background, black text, system font. */
+.cal-row-single input:not([type="checkbox"]) {
+  flex: 1; min-width: 0; max-width: 240px; height: var(--field-h); padding: 0 9px;
+  background: var(--bg-input); border: 1px solid var(--border-2); color: var(--text);
+  border-radius: 5px; font-family: var(--font-mono); font-size: 0.85rem;
+  outline: none; transition: border-color 0.15s, box-shadow 0.15s;
+}
+.cal-row-single input:not([type="checkbox"]):focus {
+  border-color: var(--trip); box-shadow: 0 0 0 3px var(--trip-dim);
+}
+/* A fixed button column, not a min-width. The labels in a column vary from
+   "Save" to "Sync now", so with only a minimum the wider one pushed its field
+   left and every row in the panel was off by a few pixels. The widths below
+   are the widest button actually used in each context (88 >= "Sync now",
+   104 >= "Reset Cal"), so nothing is ever squeezed. */
+.cal-row-single .btn-sm { flex: 0 0 88px; }
+.cal-param-row .btn-sm { flex: 0 0 104px; }
+/* A trailing hint belongs to the field, not to the row. Left in the row it
+   competed for the free space and dragged the button out of its column.
+   The cell has a fixed basis (not flex:1) so every field cell in a panel is
+   the same width: the buttons stay beside their fields instead of being
+   pushed out to the far edge of the panel, and still share one column. */
+.cal-field {
+  flex: 1 1 240px; max-width: 240px; min-width: 0;
+  display: flex; align-items: center; gap: 8px;
+}
+.cal-field .hint-inline { flex: 0 1 auto; min-width: 0; }
+.cal-param-row .cal-field { flex: 1 1 220px; max-width: 220px; }
+/* A panel whose actions apply to every field above them puts them on their own
+   row, indented to the field column so they read as belonging to those inputs
+   above rather than to the label. The fixed width keeps Save and Defaults the
+   same size, which is what the rest of the settings form does everywhere. */
+.cal-actions {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  margin-top: 12px; padding-left: 118px;
+}
+.cal-actions .btn-sm { flex: 0 0 104px; }
+@media (max-width: 480px) {
+  .cal-actions { padding-left: 0; }
+}
+.cal-row-single input::placeholder { color: var(--text-3); opacity: 1; }
+.hint { margin-top: 10px; font-size: 0.7rem; color: var(--text-3); line-height: 1.55; }
 .hint-inline { font-size: 0.66rem; color: var(--text-3); }
+/* Admin PIN panel: the badge is a block of its own, and both PIN rows share the
+   same label column so their fields start at exactly the same x. */
+.pin-badge-row { margin-bottom: 12px; }
+.pin-rows { display: flex; flex-direction: column; }
 .cal-section-title { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 0.7rem; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.08em; }
 .cal-grid { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
 .cal-collapse-header { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; padding: 4px 2px; font-size: 0.78rem; font-family: var(--font-mono); }
@@ -265,8 +328,13 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
 .cal-collapse-body.open { display: flex; }
 .cal-param-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .cal-param-row label { font-size: 0.72rem; color: var(--text-2); min-width: 85px; font-family: var(--font-mono); white-space: nowrap; }
-.cal-param-row input { flex: 0 0 auto; width: 88px; padding: 4px 6px; background: var(--bg-input); border: 1px solid var(--border); color: var(--text); border-radius: 4px; font-family: var(--font-mono); font-size: 0.8rem; outline: none; }
-.cal-param-row input:focus { border-color: var(--trip); }
+.cal-param-row input {
+  flex: 0 0 auto; width: 88px; height: var(--field-h); padding: 0 6px; background: var(--bg-input);
+  border: 1px solid var(--border-2); color: var(--text); border-radius: 5px;
+  font-family: var(--font-mono); font-size: 0.8rem; outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.cal-param-row input:focus { border-color: var(--trip); box-shadow: 0 0 0 3px var(--trip-dim); }
 .cal-param-row input.calibrating { border-color: var(--trip); background: var(--bg-input); animation: pulse-border 1.2s ease-in-out infinite; }
 @keyframes pulse-border { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 .az-status { margin: 6px 0 10px; font-family: var(--font-mono); font-size: 0.7rem; color: var(--trip); }
@@ -290,11 +358,11 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
 .console-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .console-prompt { color: var(--ok); font-weight: 700; font-size: 0.85rem; }
 .console-input {
-  flex: 1; min-width: 0; padding: 7px 10px; background: var(--bg-input);
-  border: 1px solid var(--border); border-radius: 5px; color: var(--text);
-  font-size: 0.8rem; outline: none; transition: border-color 0.15s;
+  flex: 1; min-width: 0; height: var(--field-h); padding: 0 10px; background: var(--bg-input);
+  border: 1px solid var(--border-2); border-radius: 5px; color: var(--text);
+  font-size: 0.8rem; outline: none; transition: border-color 0.15s, box-shadow 0.15s;
 }
-.console-input:focus { border-color: var(--ok); }
+.console-input:focus { border-color: var(--ok); box-shadow: 0 0 0 3px var(--ok-dim); }
 
 /* ============ Charts ============ */
 .chart-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; }
@@ -321,10 +389,14 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
 .form-group { display: flex; flex-direction: column; gap: 6px; }
 .form-group label { font-size: 0.68rem; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.06em; font-family: var(--font-mono); }
 .form-group input, .form-group select {
-  padding: 9px 10px; background: var(--bg-input); border: 1px solid var(--border);
-  border-radius: 5px; color: var(--text); font-family: var(--font-mono); font-size: 0.85rem; outline: none; transition: border-color 0.15s;
+  height: var(--field-h); padding: 0 10px; background: var(--bg-input); border: 1px solid var(--border-2);
+  border-radius: 5px; color: var(--text); font-family: var(--font-mono); font-size: 0.85rem;
+  outline: none; transition: border-color 0.15s, box-shadow 0.15s;
 }
-.form-group input:focus, .form-group select:focus { border-color: var(--trip); }
+.form-group input:focus, .form-group select:focus {
+  border-color: var(--trip); box-shadow: 0 0 0 3px var(--trip-dim);
+}
+.form-group input::placeholder { color: var(--text-3); opacity: 1; }
 .modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 12px 18px; border-top: 1px solid var(--border); background: rgba(0, 0, 0, 0.25); }
 
 /* ============ Toast ============ */

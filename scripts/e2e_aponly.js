@@ -48,6 +48,9 @@ function check(name, cond, detail) {
   }
 }
 
+// The AP actions are addressed by id (#apSaveBtn / #apResetBtn) because they
+// sit in a .cal-actions row of their own, not beside the fields they apply to.
+
 (async () => {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
@@ -69,12 +72,22 @@ function check(name, cond, detail) {
   // just on what the UI decided to render.
   await page.addInitScript(() => {
     window.__wsSent = [];
+    window.__lastData = null;
     const Orig = window.WebSocket;
     window.WebSocket = function (url, protocols) {
       const s = protocols ? new Orig(url, protocols) : new Orig(url);
       window.__wsUrl = url;
       const origSend = s.send.bind(s);
       s.send = function (d) { try { window.__wsSent.push(d); } catch (e) {} return origSend(d); };
+      // The last snapshot the board actually pushed. Asserting the UI against
+      // the wire rather than against a hardcoded literal is what makes a test
+      // like "the panel shows the stored name" meaningful.
+      s.addEventListener('message', function (e) {
+        try {
+          const d = JSON.parse(e.data);
+          if (d && typeof d === 'object' && 'v' in d) window.__lastData = d;
+        } catch (x) { /* not the system frame */ }
+      });
       return s;
     };
     window.WebSocket.prototype = Orig.prototype;
@@ -268,11 +281,31 @@ function check(name, cond, detail) {
   await page.locator('#apSsid').scrollIntoViewIfNeeded();
   await page.screenshot({ path: '/tmp/opencode/e2e-ap-panel.png' });
 
+  // The panel must show what the board is actually broadcasting. It used to
+  // carry a static placeholder, so a renamed board still looked factory-fresh
+  // and the user had no way to see the value they were about to overwrite.
+  const shownSsid = await page.inputValue('#apSsid');
+  const mockSsid = await page.evaluate(() => window.__lastData && window.__lastData.apSsid);
+  check('the AP panel shows the stored network name, not a placeholder',
+        shownSsid === mockSsid && shownSsid.length > 0,
+        'field="' + shownSsid + '" board="' + mockSsid + '"');
+  const passPlaceholder = await page.getAttribute('#apPass', 'placeholder');
+  check('the password box says it is unchanged and never reveals it',
+        /unchanged/i.test(passPlaceholder) && !(await page.inputValue('#apPass')),
+        'placeholder="' + passPlaceholder + '" value="' + await page.inputValue('#apPass') + '"');
+
+  // A half-typed name must survive the 6-7 Hz push, or the panel is unusable.
+  await page.fill('#apSsid', 'Half Typed');
+  await page.waitForTimeout(700);
+  check('the board push does not overwrite a field being typed into',
+        (await page.inputValue('#apSsid')) === 'Half Typed',
+        'value="' + await page.inputValue('#apSsid') + '"');
+
   // --- negative control, client side: an impossible password never leaves ---
   const beforeBad = await page.evaluate(() => window.__wsSent.length);
   await page.fill('#apSsid', 'Meter AP');
   await page.fill('#apPass', 'short7c');           // 7 characters
-  await page.click('#apSsid ~ button.btn-sm');
+  await page.click('#apSaveBtn');
   await page.waitForTimeout(400);
   const afterBad = await page.evaluate(() => window.__wsSent.length);
   check('a 7-character password is refused before it is sent',
@@ -286,7 +319,7 @@ function check(name, cond, detail) {
   // and this test could not fail; now the check has to be able to fire.
   await page.fill('#apPass', 'goodpass1');
   await page.fill('#apSsid', 'Meter AP ');
-  await page.click('#apSsid ~ button.btn-sm');
+  await page.click('#apSaveBtn');
   await page.waitForTimeout(400);
   const spaceToast = await page.locator('#toast').textContent();
   check('a trailing space in the name is refused client-side',
@@ -366,7 +399,7 @@ function check(name, cond, detail) {
   const beforeSave = await page.evaluate(() => window.__wsSent.length);
   await page.fill('#apSsid', 'Meter AP');
   await page.fill('#apPass', 'goodpass1');
-  await page.click('#apSsid ~ button.btn-sm');
+  await page.click('#apSaveBtn');
   await page.waitForTimeout(600);
 
   const sentAp = await page.evaluate(() => window.__wsSent.slice());

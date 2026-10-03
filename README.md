@@ -149,6 +149,29 @@ compiled firmware image.
 
 The RGB LED turns blue during OTA and the dashboard shows progress.
 
+### Flashing over USB
+
+The app lives at `0x10000`. Flash **only the app**:
+
+```bash
+esptool --port /dev/ttyACM0 --chip esp32s3 --baud 460800 \
+        write-flash 0x10000 .build-out/esp32-electricity-counter.ino.bin
+```
+
+That leaves the bootloader, the partition table and **NVS** alone, so the energy
+counters, the admin PIN and the saved access-point name all survive.
+
+Two ways to get this wrong, both of which have happened here:
+
+- **Do not flash the `.merged.bin` for a routine update.** It is padded to the
+  full 4 MB, so it also overwrites the NVS partition at `0x9000` and wipes the
+  counters, the PIN and the AP credentials.
+- **Do not write the `.ino.bin` at `0x0`.** That is where the *bootloader*
+  lives; the app belongs at `0x10000`.
+
+Only flash the bootloader (`0x0`) and the partition table (`0x8000`) when those
+actually changed.
+
 ## Architecture
 
 Two FreeRTOS tasks on two cores:
@@ -231,6 +254,20 @@ reset_ap
   `ESP32-Elec-Counter` / `configure123` and reboots.
 - The stored values are also what `wifi` prints, and the boot banner shows them
   — that banner is how you tell which network to join after a rename.
+- **Verify a rename from a machine that is not on the board's network.** A WiFi
+  scan is the only check that cannot lie, because it reads the air rather than
+  the board's own idea of what it is doing:
+
+  ```bash
+  nmcli device wifi rescan ifname wlp0s20f3
+  nmcli -t -f SSID,BSSID,SIGNAL dev wifi list ifname wlp0s20f3 --rescan yes \
+    | grep -i '<name>'
+  ```
+
+  The BSSID has to be the board's. NetworkManager caches scan results, so a
+  plain `nmcli dev wifi list` can still show the old SSID alongside the new one
+  for a while — force `--rescan yes`, and give it a few seconds, before
+  believing either answer.
 
 ## Limitations
 

@@ -78,6 +78,21 @@ else
   record $? "$(tail -1 /tmp/opencode/verify_apcreds.log)"
 fi
 
+# --- 2c. JSON string escaping (host build, no hardware) -------------------
+# One unescaped quote in the network name would corrupt EVERY system broadcast,
+# not just the Access Point panel, because the frame is rebuilt ~7x a second.
+stage "JSON escaping"
+gcc -std=c11 -Wall -Wextra -x c \
+    scripts/test_json_escape.c -o /tmp/opencode/json_escape_test \
+    2>/tmp/opencode/verify_jsonesc_build.log
+if [ $? -ne 0 ]; then
+  record 1 "test_json_escape.c compiles"
+else
+  record 0 "test_json_escape.c compiles"
+  /tmp/opencode/json_escape_test >/tmp/opencode/verify_jsonesc.log 2>&1
+  record $? "$(tail -1 /tmp/opencode/verify_jsonesc.log)"
+fi
+
 # --- 3. Frontend syntax + no cloud code survives ------------------------
 stage "Frontend"
 node --check frontend/script.js 2>/tmp/opencode/verify_js.log
@@ -140,6 +155,31 @@ if ! kill -0 "$MOCK_PID" 2>/dev/null; then
 elif curl -sf -o /dev/null "http://127.0.0.1:$PORT/"; then
   node scripts/e2e_aponly.js "http://127.0.0.1:$PORT" >/tmp/opencode/verify_e2e.log 2>&1
   record $? "$(tail -1 /tmp/opencode/verify_e2e.log)"
+
+  # --- 4b. The UI actually lines up and is themed ------------------------
+  # The Admin PIN inputs once rendered as white browser-default boxes: the
+  # stylesheet selected inputs by TYPE and both PIN fields are type="password".
+  # No E2E assertion can see that - the DOM is correct either way - so it needs
+  # a real layout, measured. Four widths, because a column that lines up at
+  # 1280 can still drift at 360.
+  # Skips loudly rather than silently when Playwright is absent: a stage that
+  # quietly does nothing is how the broken UI shipped in the first place.
+  if node -e "require(require('child_process').execSync('npm root -g',{encoding:'utf8'}).trim()+'/playwright')" 2>/dev/null; then
+    mkdir -p /tmp/opencode/ui
+    UI_OK=0
+    UI_W=360
+    for UI_W in 360 480 692 1280; do
+      node scripts/ui_shot.js "http://127.0.0.1:$PORT" /tmp/opencode/ui "$UI_W" 900 \
+        >"/tmp/opencode/verify_ui_$UI_W.log" 2>&1 || { UI_OK=1; break; }
+    done
+    record "$UI_OK" "settings form is themed and its columns line up at 360/480/692/1280px"
+    if [ "$UI_OK" -ne 0 ]; then
+      grep -E 'FAILED|misaligned|browser-default' "/tmp/opencode/verify_ui_$UI_W.log" \
+        | head -6 | sed 's/^/      /'
+    fi
+  else
+    printf '  \033[33mSKIP\033[0m UI layout check (playwright not installed globally)\n'
+  fi
 else
   record 1 "mock board did not come up on port $PORT"
 fi

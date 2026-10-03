@@ -140,8 +140,8 @@ void networkTask(void *pvParameters) {
       if (!wifiPrinted && wifiMgr.isReady()) {
         wifiPrinted = true;
         Serial.printf("\n  %-19s%s\n", "WiFi", "AP MODE (always)");
-        Serial.printf("  %-19s\"%s\"\n", "Network:", WiFiManager::AP_SSID);
-        Serial.printf("  %-19s%s\n", "Password:", WiFiManager::AP_PASS);
+        Serial.printf("  %-19s\"%s\"\n", "Network:", wifiMgr.getSSID());
+        Serial.printf("  %-19s%s\n", "Password:", wifiMgr.getPass());
         Serial.printf("  %-19shttp://%s/\n", "Dashboard:", WiFi.softAPIP().toString().c_str());
       }
     }
@@ -359,11 +359,11 @@ void setup() {
 
   // The AP's name and password come from NVS (falling back to the compiled
   // defaults), which is why this needs the NVS handle the AP-only migration
-  // removed. begin() has returned before anything else reads AP_SSID/AP_PASS.
+  // removed. begin() has returned before anything else reads them.
   wifiMgr.begin(&nvs);
   statusLED.setMode(LED_SOLID_RED);
   DEBUG_LOG("  %-19sAP @ %s (always)\n", "WiFi", WiFi.softAPIP().toString().c_str());
-  DEBUG_LOG("  %-19s\"%s\" / \"%s\"\n", "Network", WiFiManager::AP_SSID, WiFiManager::AP_PASS);
+  DEBUG_LOG("  %-19s\"%s\" / \"%s\"\n", "Network", wifiMgr.getSSID(), wifiMgr.getPass());
 
   // otaHandler.begin() runs from networkTask once the AP has an IP
   // (ArduinoOTA started pre-IP never listens). See the isReady() gate there.

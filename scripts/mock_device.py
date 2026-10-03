@@ -283,6 +283,9 @@ class State:
                 "firmwareVersion": "3.0.0",
                 "epoch": self.epoch,
                 "lastMonth": 202610,
+                "apSsid": self.ap_ssid,
+                "apIsDefault": (self.ap_ssid == AP_SSID_DEFAULT
+                                and self.ap_pass == AP_PASS_DEFAULT),
                 "time": {"ok": self.time_synced, "age": 0 if self.time_synced else 4294967295},
                 "ch": ch,
                 "events": [

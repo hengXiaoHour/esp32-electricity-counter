@@ -90,5 +90,16 @@ fi
 step "Built"
 ls -1 "$OUTDIR"/*.bin 2>/dev/null || true
 echo
-echo "Flash it with:"
-echo "  esptool --port /dev/ttyACM0 --chip esp32s3 --baud 460800 write-flash 0x0 $OUTDIR/esp32-electricity-counter.ino.bin"
+echo "Flash it with (app only - this keeps the NVS partition, and with it your"
+echo "counters, the admin PIN and any access-point name you have set):"
+echo "  esptool --port /dev/ttyACM0 --chip esp32s3 --baud 460800 \\"
+echo "          write-flash 0x10000 $OUTDIR/esp32-electricity-counter.ino.bin"
+echo
+echo "Only when the bootloader or the partition table changed, flash those too:"
+echo "  esptool --port /dev/ttyACM0 --chip esp32s3 --baud 460800 write-flash \\"
+echo "          0x0 $OUTDIR/esp32-electricity-counter.ino.bootloader.bin \\"
+echo "          0x8000 $OUTDIR/esp32-electricity-counter.ino.partitions.bin"
+echo
+echo "Do NOT flash the .merged.bin for a normal firmware update. It is padded to"
+echo "the full 4 MB, so it also overwrites the NVS partition at 0x9000 and wipes"
+echo "the energy counters, the admin PIN and the saved access-point credentials."

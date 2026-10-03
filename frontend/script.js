@@ -279,7 +279,9 @@ function applyPinState() {
     badge.className = 'role-badge ' + (pinOk ? 'role-admin' : 'role-guest');
   }
   const hint = document.getElementById('guestHint');
-  if (hint) hint.style.display = pinOk ? 'none' : 'inline';
+  // '' rather than 'inline': the hint is a block-level <p class="hint"> now, and
+  // forcing it inline used to squeeze its margin away.
+  if (hint) hint.style.display = pinOk ? 'none' : '';
   // Losing admin while a modal is open must close it, or a viewer would be
   // left staring at controls that no longer do anything.
   if (!pinOk && activeEditChIdx !== null) closeEditModal();
@@ -627,6 +629,26 @@ function updateDashboard(data) {
     }
   }
 
+  // Access Point panel: show the identity the board is actually broadcasting, so
+  // the user edits the stored value instead of a placeholder that looks like a
+  // fresh board. The password is deliberately never sent - the board reports
+  // only whether both still match the factory ones, which is all the wording
+  // needs.
+  //
+  // dataset.userSet is the same guard the calibration fields use: this message
+  // arrives 6-7 times a second, and without it the board would overwrite a
+  // half-typed network name on every push.
+  const apSsidEl = document.getElementById('apSsid');
+  if (apSsidEl && !apSsidEl.dataset.userSet && typeof data.apSsid === 'string') {
+    apSsidEl.value = data.apSsid;
+  }
+  const apPassEl = document.getElementById('apPass');
+  if (apPassEl && !apPassEl.dataset.userSet && typeof data.apIsDefault === 'boolean') {
+    apPassEl.placeholder = data.apIsDefault
+      ? 'unchanged (factory default)'
+      : 'unchanged (custom — type to replace)';
+  }
+
   // System status LED
   const led = document.getElementById('sysLed');
   if (led) {
@@ -759,20 +781,26 @@ function updateDashboard(data) {
       body.innerHTML = `
         <div class="cal-param-row">
           <label>Current Cal:</label>
-          <input type="number" id="currCal_${idx}" step="0.1" value="${currCal}" oninput="this.dataset.userSet='true'">
+          <div class="cal-field">
+            <input type="number" id="currCal_${idx}" step="0.1" value="${currCal}" oninput="this.dataset.userSet='true'">
+          </div>
           <button class="btn-sm" onclick="sendCurrentCal(${idx})">Set</button>
         </div>
         <div class="cal-param-row">
           <label>Noise Floor:</label>
-          <input type="number" id="nf_${idx}" step="0.001" value="${nf}" oninput="this.dataset.userSet='true'">
+          <div class="cal-field">
+            <input type="number" id="nf_${idx}" step="0.001" value="${nf}" oninput="this.dataset.userSet='true'">
+            <span class="az-chip" id="azChip_${idx}"></span>
+          </div>
           <button class="btn-sm" onclick="autoZeroChannel(${idx})" style="color:#e67e22;">Auto-Zero</button>
-          <span class="az-chip" id="azChip_${idx}"></span>
         </div>
         <div class="cal-param-row">
           <label>LPF Alpha:</label>
-          <input type="number" id="lpf_${idx}" step="0.01" min="0.01" max="1" value="${lpf}" oninput="this.dataset.userSet='true'">
+          <div class="cal-field">
+            <input type="number" id="lpf_${idx}" step="0.01" min="0.01" max="1" value="${lpf}" oninput="this.dataset.userSet='true'">
+            <span class="hint-inline">(0.01-1, 1=none)</span>
+          </div>
           <button class="btn-sm" onclick="sendLpfAlpha(${idx})">Set</button>
-          <span class="hint-inline">(0.01-1, 1=none)</span>
         </div>
         <div class="cal-param-row">
           <button class="btn-sm btn-danger btn-reset-cal" data-ch="${idx}" onclick="handleResetChannelCal(${idx})">&#8634; Reset Cal</button>

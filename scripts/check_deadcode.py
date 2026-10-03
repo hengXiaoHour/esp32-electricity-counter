@@ -143,6 +143,66 @@ def main():
     r.add("no CSS class is defined but never used", not dead_css,
           "unused: " + ", ".join(".%s" % c for c in dead_css))
 
+    # --- 3b. no form control falls through to the browser default ---------
+    # The Admin PIN inputs rendered as white boxes on the dark theme because
+    # the stylesheet selected `input[type="text"], input[type="number"]` and
+    # both PIN fields are type="password". Selecting by type is the bug: the
+    # next new field is another type, or the same one in a row that was not
+    # wrapped in a .cal-row-single. So every control must either carry a
+    # themed class of its own or sit inside a themed row, and the stylesheet
+    # must style inputs by ELEMENT (.cal-row-single input), never by type.
+    THEMED_ROWS = ("cal-row-single", "cal-param-row", "form-group", "console-row",
+                   "cal-field")
+    THEMED_CLASSES = ("console-input",)
+    unthemed = []
+    for m in re.finditer(r"<(input|select)\b([^>]*)>", html, re.S):
+        tag, attrs = m.group(1), m.group(2)
+        ident = re.search(r'id="([^"]+)"', attrs)
+        cls = re.search(r'class="([^"]*)"', attrs)
+        cls_tokens = set(cls.group(1).split()) if cls else set()
+        # The parent is the tag before this one that is not self-closed.
+        start = html.rfind("<", 0, m.start())
+        parent_tag = re.match(r"<([a-zA-Z][\w-]*)", html[start:start + 40])
+        parent = parent_tag.group(1) if parent_tag else ""
+        # Walk up two levels of closing/opening tags is overkill; the themed
+        # rows all put the control directly inside the row element, so the
+        # nearest enclosing element name is enough when it is one of them.
+        near = html[max(0, m.start() - 400):m.start()]
+        parent_cls = ""
+        last = None
+        for om in re.finditer(r'<div\b([^>]*)>', near):
+            last = om
+        if last:
+            c = re.search(r'class="([^"]*)"', last.group(1))
+            parent_cls = c.group(1) if c else ""
+        if tag == "input" and 'type="checkbox"' in attrs:
+            continue
+        ok = (cls_tokens & set(THEMED_CLASSES)) or (parent in THEMED_ROWS) \
+            or (parent_cls in THEMED_ROWS)
+        if not ok:
+            unthemed.append(tag + "#" + (ident.group(1) if ident else "(no id)"))
+    r.add("every input/select is inside a themed form row", not unthemed,
+          "browser-default styling: " + ", ".join(unthemed))
+
+    # Guard the fix rather than the symptom: an input rule written by type is
+    # what let password fields slip through in the first place. Checkboxes are
+    # the one legitimate exception - they are a genuinely different control.
+    typed_input_rules = [m.group(0) for m in
+                         re.finditer(r"input\s*\[\s*type\s*[~^|$*]?=([^\]]*)\]", css_body)
+                         if "checkbox" not in m.group(1)]
+    r.add("no input CSS rule filters on type= (checkboxes excepted)",
+          not typed_input_rules,
+          "found %d: %s" % (len(typed_input_rules), ", ".join(typed_input_rules)))
+
+    # --- 3c. index.html and sw.js must agree on the asset version ---------
+    # They drifted to style.css?v=...a vs ?v=...b, which silently pre-cached a
+    # URL the page never requests, so the offline fallback could never hit.
+    html_ver = dict(re.findall(r'(style\.css|script\.js)\?v=([\w.]+)', html))
+    sw_ver = dict(re.findall(r"'\./(style\.css|script\.js)\?v=([\w.]+)'", sw))
+    r.add("index.html and sw.js request the same asset versions",
+          html_ver and html_ver == sw_ver,
+          "index.html=%s sw.js=%s" % (html_ver, sw_ver))
+
     # --- 4. dead JS functions --------------------------------------------
     js_body = strip_js(js)
     # HTML ONLY. Including js_body here double-counts each function's own
@@ -191,6 +251,60 @@ def main():
     # to be kept deleted would just make the gate noisy. Pass --output-dir.
     back = [g for g in gone if (ROOT / g).exists()]
     r.add("the cleanup deletions stay deleted", not back, "reappeared: " + ", ".join(back))
+
+    # --- 6b. the AP identity the radio broadcasts is the one loaded from NVS
+    # `set_ap` saved the new name, the board rebooted, and it came back up
+    # beaconing the factory name anyway. The cause: loadCredentials() wrote
+    # apSsid_/apPass_, and softAP() / getSSID() / getPass() all read the
+    # separate AP_SSID/AP_PASS default pointers instead, so the loaded value
+    # was written and never used.
+    #
+    # Nothing caught that for weeks: the save worked, the console said
+    # "Saved", and only rebooting the board and watching an actual WiFi scan
+    # showed the truth. So the check is on the SHAPE of the read, not on a log
+    # line. Scoped to the right functions: a bare "apSsid_ appears in
+    # wifi_manager.cpp" would also have passed against the broken code, which is
+    # precisely the mistake that let it ship.
+    def body_of(text, sig):
+        """Brace-matched body of `sig` in `text`, or '' if not found.
+
+        A substring assertion is not enough here: wifi_manager.cpp contains
+        several softAP-looking fragments, only one of which is the real call.
+        """
+        m = re.search(re.escape(sig) + r"[^\{;]*\{", text)
+        if not m:
+            return ""
+        i = m.end() - 1
+        depth = 0
+        for j in range(i, len(text)):
+            if text[j] == "{":
+                depth += 1
+            elif text[j] == "}":
+                depth -= 1
+                if depth == 0:
+                    return text[i:j + 1]
+        return ""
+
+    wcpp = strip_cpp(read("src/network/wifi_manager.cpp"))
+    wch = strip_cpp(read("src/network/wifi_manager.h"))
+    ap_body = body_of(wcpp, "void WiFiManager::startAPMode")
+    reads_buffer = bool(ap_body) and "apSsid_" in ap_body
+    getter_ssid = body_of(wch, "getSSID")
+    getter_pass = body_of(wch, "getPass")
+    r.add("softAP() broadcasts the credentials loaded from NVS, not the defaults",
+          reads_buffer and "softAP(" in ap_body,
+          "startAPMode does not use apSsid_" if not reads_buffer else "startAPMode not found")
+    r.add("getSSID()/getPass() return the live buffers",
+          "apSsid_" in getter_ssid and "apPass_" in getter_pass,
+          "getSSID->%r getPass->%r" % (getter_ssid.strip(), getter_pass.strip()))
+    # The two default pointers must stay gone: leaving them declared invites
+    # the same read-by-accident, and nothing else references them now.
+    stale_ptr = [sym for sym in ("AP_SSID", "AP_PASS")
+                 if re.search(r"(?<![\w_])WiFiManager::" + sym + r"(?![\w_])",
+                              read("src/network/wifi_manager.cpp"))
+                 or re.search(r"static\s+const\s+char\s*\*\s*" + sym + r"\s*;", wch)]
+    r.add("the dead AP_SSID/AP_PASS default pointers stay deleted", not stale_ptr,
+          "reappeared: " + ", ".join(stale_ptr))
 
     # --- 7. the generated header must stay out of git -------------------
     # src/network/web_assets.h is 151 KB derived from frontend/. Committing it

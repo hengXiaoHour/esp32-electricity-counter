@@ -78,6 +78,8 @@ def main():
     js = read("frontend/script.js")
     html = read("frontend/index.html")
     sw = read("frontend/sw.js")
+    sysjson = read("src/network/system_json.cpp")
+    json_test = read("scripts/test_json_escape.c")
 
     # --- task layout ---------------------------------------------------
     task_calls = ino.count("xTaskCreatePinnedToCore")
@@ -236,6 +238,62 @@ def main():
           "esp32-counter-v14" in sw)
     c.add("demo mode is reachable without a board",
           "?demo=1" in js)
+
+    # --- the Access Point panel shows the stored identity ---------------
+    # It used to carry a static placeholder, so a renamed board still looked
+    # factory-fresh and the user had nothing telling them what to edit.
+    # The key is written with escaped quotes in the C++ literal, so match on the
+    # key name rather than on the exact source text.
+    c.add("the board reports its live AP name on every broadcast",
+          re.search(r'\\"apSsid\\"', sysjson) is not None
+          and re.search(r'\\"apIsDefault\\"', sysjson) is not None,
+          "buildSystemJson no longer publishes the AP identity")
+    c.add("the AP password is never sent to the browser",
+          # Match the KEY, escaped or not: the firmware writes
+          # json += ",\"apPass\":\"" , so a plain '"apPass"' substring test sails
+          # straight past the exact leak it exists to catch. loadApPass() is
+          # legitimately called here to compare against the default, which is
+          # why this keys on the JSON name and not on the word.
+          re.search(r'\\?"apPass\\?"', sysjson) is None,
+          "system_json.cpp publishes a JSON key called apPass")
+    c.add("the dashboard fills the AP fields from the board",
+          "apSsidEl.value = data.apSsid;" in js
+          and "data.apIsDefault" in js
+          and "apPassEl.value" not in js,
+          "script.js does not write the wire identity into the AP fields")
+    c.add("a half-typed AP name survives the 7 Hz push",
+          "apSsidEl.dataset.userSet" in js and "apPassEl.dataset.userSet" in js,
+          "the broadcast would overwrite the field being typed into")
+    c.add("the AP actions are Save then Defaults, in their own row below the fields",
+          re.search(r'id="apSaveBtn"[^>]*>\s*Save\s*</button>\s*<button[^>]*id="apResetBtn"[^>]*>\s*Defaults\s*</button>', html) is not None,
+          "expected <button id=apSaveBtn>Save</button> then id=apResetBtn Defaults")
+
+    # The host test re-declares appendJsonEscaped because system_json.cpp needs
+    # Arduino.h, so the two copies cannot be textually identical: types and the
+    # append function differ by necessity. What must NOT differ is the decision
+    # structure - the branch conditions and the fallback. Comparing those is the
+    # only comparison that means something, and it is what the check asserts.
+    fw_body = re.search(r"static void appendJsonEscaped.*?\n\}", sysjson, re.S)
+    tst_body = re.search(r"static void appendJsonEscaped.*?\n\}", json_test, re.S)
+    if not (fw_body and tst_body):
+        c.add("the host test's copy of appendJsonEscaped matches the firmware's",
+              False, "could not find appendJsonEscaped in both files")
+    else:
+        def branches(text):
+            return [re.sub(r"\s+", " ", ln.strip())
+                    for ln in text.splitlines()
+                    if re.match(r"\s*(}\s*else\s+)?if\s*\(", ln)]
+
+        def fallback_count(text):
+            return sum(1 for ln in text.splitlines()
+                       if re.search(r"json\s*\+?=?.*'\s'|=.*'\s'\)", ln))
+
+        fw_b, tst_b = branches(fw_body.group(0)), branches(tst_body.group(0))
+        ok = (fw_b == tst_b
+              and len(fw_b) == 2                      # quote/backslash, then < 0x20
+              and fallback_count(fw_body.group(0)) == fallback_count(tst_body.group(0)))
+        c.add("the host test's copy of appendJsonEscaped matches the firmware's",
+              ok, "firmware branches=%s test branches=%s" % (fw_b, tst_b))
 
     # --- README claims about the tree ----------------------------------
     c.add("README documents the AsyncTCP patch step that patch_async_tcp.py exists for",
