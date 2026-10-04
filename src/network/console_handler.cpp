@@ -7,6 +7,7 @@
 #include "../network/ota_handler.h"
 #include "../network/wifi_manager.h"
 #include "../network/ap_creds.h"
+#include "../network/cloud_cfg.h"
 #include "../ui/buzzer.h"
 #include "../ui/status_led.h"
 #include "../utils/nvs_manager.h"
@@ -224,6 +225,16 @@ void ConsoleHandler::exec(const String &line, String &out) {
 
   } else if (cmd == "clearwifi") {
     cmdClearWifi(out);
+
+  } else if (cmd.startsWith("setcloud ")) {
+    cmdSetCloud(cmd.substring(9), out);
+
+  } else if (cmd.startsWith("setcloud")) {
+    consoleAppendf(out, "%s", "  Usage: setcloud <db-host> <auth-token>");
+    consoleAppendf(out, "%s", "  STA-only remote monitoring; reboots to apply.");
+
+  } else if (cmd == "clearcloud") {
+    cmdClearCloud(out);
 
   } else if (cmd == "led" || cmd.startsWith("led ")) {
     cmdLed(cmd.length() > 3 ? cmd.substring(4) : "", out);
@@ -553,6 +564,48 @@ void ConsoleHandler::cmdSetWifi(const String &args, String &out) {
   requestReboot("  (station WiFi changed - restarting)");
 }
 
+void ConsoleHandler::cmdClearCloud(String &out) {
+  bool locked = (xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE);
+  nvs->clearFb();
+  nvs->commit();
+  if (locked) xSemaphoreGive(*dataMutex);
+  consoleAppendf(out, "%s", "  Remote monitoring stopped (cleared, no reboot)");
+}
+
+void ConsoleHandler::cmdSetCloud(const String &args, String &out) {
+  // Same splitter as set_ap/setwifi (overflow refused, quoting supported);
+  // the SHAPE rules are cloud_validateHost/Auth, host-tested on the PC.
+  char hostBuf[CLOUD_MAX_HOST_LEN + 1];
+  char authBuf[CLOUD_MAX_AUTH_LEN + 1];
+  if (!ap_creds_splitArgs(args.c_str(), hostBuf, sizeof(hostBuf),
+                          authBuf, sizeof(authBuf))) {
+    consoleAppendf(out, "%s", "  Usage: setcloud <db-host> <auth-token>");
+    consoleAppendf(out, "%s", "         host only, no https://, no path - e.g.");
+    consoleAppendf(out, "%s", "         setcloud my-proj.firebaseio.com SECRET");
+    return;
+  }
+
+  if (!cloud_validateHost(hostBuf)) {
+    consoleAppendf(out, "%s", "  Not saved: bad database host (host only, no https://, no path).");
+    return;
+  }
+  if (!cloud_validateAuth(authBuf)) {
+    consoleAppendf(out, "%s", "  Not saved: bad auth token (check for a pasted newline).");
+    return;
+  }
+
+  // dataMutex for the same reason setwifi takes it: commit() is
+  // prefs.end()+prefs.begin() and is not thread-safe against sensorTask.
+  bool locked = (xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE);
+  nvs->saveFb(hostBuf, authBuf);
+  nvs->commit();
+  if (locked) xSemaphoreGive(*dataMutex);
+
+  consoleAppendf(out, "  Saved. Pushing to \"%s\" on boot (STA only).", hostBuf);
+  consoleAppendf(out, "%s", "  The token is never shown back - not here, not on the dashboard.");
+  requestReboot("  (cloud monitoring changed - restarting)");
+}
+
 void ConsoleHandler::cmdSetAp(const String &args, String &out) {
   // Parsing (including the quoted "name with spaces" form) lives in ap_creds so
   // it can be unit-tested on the host; see ap_creds_splitArgs().
@@ -724,6 +777,8 @@ void ConsoleHandler::cmdHelp(String &out) {
   consoleAppendf(out, "%s", "    volt_cal <val>      Set voltage calibration");
   consoleAppendf(out, "%s", "    setwifi <ssid> <pw> Home network to join on boot (reboots)");
   consoleAppendf(out, "%s", "    clearwifi           Erase the saved home-network creds");
+  consoleAppendf(out, "%s", "    setcloud <host> <token> Remote monitoring via realtime DB (reboots)");
+  consoleAppendf(out, "%s", "    clearcloud          Stop remote monitoring (no reboot)");
   consoleAppendf(out, "%s", "    set_ap <name> <pw>  Rename the network + set password (reboots)");
   consoleAppendf(out, "%s", "    reset_ap            Restore the default network name (reboots)");
   consoleAppendf(out, "%s", "    nvs_debug           Test NVS write/read cycle");

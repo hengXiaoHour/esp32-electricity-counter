@@ -73,6 +73,7 @@ function check(name, cond, detail) {
   // just on what the UI decided to render.
   await page.addInitScript(() => {
     window.__wsSent = [];
+    window.__wsSeen = [];
     window.__lastData = null;
     const Orig = window.WebSocket;
     window.WebSocket = function (url, protocols) {
@@ -84,6 +85,7 @@ function check(name, cond, detail) {
       // the wire rather than against a hardcoded literal is what makes a test
       // like "the panel shows the stored name" meaningful.
       s.addEventListener('message', function (e) {
+        try { window.__wsSeen.push(JSON.parse(e.data)); } catch (x) { /* raw text */ }
         try {
           const d = JSON.parse(e.data);
           if (d && typeof d === 'object' && 'v' in d) window.__lastData = d;
@@ -582,6 +584,76 @@ function check(name, cond, detail) {
   check('the STA hint says the board restarts with the AP staying off',
         /restart/i.test(staHint) && /AP stays OFF|fallback AP/i.test(staHint),
         'hint = "' + (staHint || '').slice(0, 90) + '"');
+
+  // ---------------------------------------------------------------------
+  // Remote Monitoring (cloud) panel.
+  //
+  // Push-only realtime-DB mirror: the panel sends host+token, the snapshot
+  // sends back everything EXCEPT the token. The token must never appear in
+  // any board frame - that is the property this block guards.
+  console.log('\n== Remote Monitoring (cloud) ==');
+  check('the cloud panel exists', await page.locator('#cloudSaveBtn').count() === 1);
+  const beforeCloud = await page.evaluate(() => window.__wsSent.length);
+  await page.fill('#cloudHost', '');
+  await page.click('#cloudSaveBtn');
+  await page.waitForTimeout(300);
+  check('the UI refuses an empty database host without sending it',
+        (await page.evaluate(() => window.__wsSent.length)) === beforeCloud);
+
+  await page.fill('#cloudHost', 'demo-project.firebaseio.com');
+  await page.fill('#cloudAuth', 'SECRET-TOKEN-123');
+  await page.click('#cloudSaveBtn');
+  await page.waitForTimeout(600);
+  const cloudFrames = (await page.evaluate((n) => window.__wsSent.slice(n), beforeCloud))
+    .filter(f => f.indexOf('"setcloud"') >= 0);
+  check('the panel puts a setcloud frame on the wire', cloudFrames.length >= 1);
+  const cloudFrame = cloudFrames[cloudFrames.length - 1] || '';
+  check('...carrying host and token',
+        cloudFrame.indexOf('"host":"demo-project.firebaseio.com"') >= 0 &&
+        cloudFrame.indexOf('"auth":"SECRET-TOKEN-123"') >= 0, cloudFrame);
+  check('...and the admin PIN', /"pin":"1234"/.test(cloudFrame), cloudFrame);
+  check('the token box is cleared afterwards (write-only)',
+        (await page.inputValue('#cloudAuth')) === '');
+
+  // The board applied it: the snapshot now reports pushing under the MAC id,
+  // and NO board frame anywhere carries the token back.
+  await page.waitForTimeout(1200);
+  const cloudStatus = await page.locator('#cloudStatus').textContent();
+  check('the status line reports pushing with the device id',
+        /pushing/i.test(cloudStatus) && /A1B2C3D4E5F6/.test(cloudStatus),
+        'status = "' + cloudStatus + '"');
+  const boardSoFar = await page.evaluate(() => window.__wsSeen.slice());
+  const tokenLeaks = boardSoFar.filter(m => JSON.stringify(m).indexOf('SECRET-TOKEN-123') >= 0);
+  check('the token never comes back in any board frame', tokenLeaks.length === 0,
+        'leaking frames: ' + tokenLeaks.length);
+  const cloudSnap = boardSoFar.filter(m => m.type !== 'console' && m.type !== 'auth' && 'cloud' in m).pop();
+  check('the board publishes the database host for the panel',
+        cloudSnap && cloudSnap.cloud && cloudSnap.cloud.host === 'demo-project.firebaseio.com',
+        'host=' + (cloudSnap && cloudSnap.cloud ? JSON.stringify(cloudSnap.cloud.host) : 'none'));
+
+  // PIN gate holds for the new verbs too: without a PIN the board refuses.
+  // The refusal shape is {"type":"auth","ok":false} - see mock_device.py's
+  // send path (mirrors the firmware's authRejected reply), not prose. The
+  // socket also receives routine snapshots, so wait for the auth frame
+  // rather than reading the first message (which is just telemetry).
+  const noPinCloud = await page.evaluate(() => new Promise((resolve) => {
+    const s = new WebSocket('ws://' + location.host + '/ws');
+    const timer = setTimeout(() => { try { s.close(); } catch (x) {} resolve('TIMEOUT'); }, 3000);
+    s.onopen = () => s.send(JSON.stringify({ cmd: 'setcloud', host: 'x.firebaseio.com', auth: 'y' }));
+    s.onmessage = (ev) => {
+      try {
+        const d = JSON.parse(ev.data);
+        if (d && d.type === 'auth') {
+          clearTimeout(timer);
+          resolve(d);
+          s.close();
+        }
+      } catch (x) { /* telemetry snapshot, keep waiting */ }
+    };
+  })).catch(() => 'TIMEOUT');
+  check('setcloud without a PIN is refused by the board',
+        noPinCloud && noPinCloud.type === 'auth' && noPinCloud.ok === false,
+        JSON.stringify(noPinCloud).slice(0, 60));
 
   // ---------------------------------------------------------------------
   // Header icon + Connection-panel rows follow the snapshot.

@@ -132,6 +132,28 @@ void buildSystemJson(const SystemData &data, PowerCalculator *powerCalc,
     json += "\",\"staIsDefault\":";
     json += stored ? "false" : "true";
   }
+  // Remote-monitoring status. The token is NEVER here - only on/off, last-push
+  // health, and the MAC device id (which doubles as the database path, so the
+  // user knows where to look). A check_docs rule asserts no "auth" key exists
+  // anywhere in this file; keep it that way.
+  json += ",\"cloud\":{\"en\":";
+  json += data.cloudEnabled ? "true" : "false";
+  json += ",\"ok\":";
+  json += data.cloudOk ? "true" : "false";
+  json += ",\"age\":";
+  json += (long)data.cloudAgeS;
+  json += ",\"dev\":\"";
+  json += data.cloudDev;
+  // The host is NOT a secret (it rides in the TLS handshake anyway), so the
+  // panel can show what is configured - same rationale as apSsid above. The
+  // token stays out, always.
+  {
+    String host, auth;
+    nvs->loadFb(host, auth);
+    json += "\",\"host\":\"";
+    appendJsonEscaped(json, host);
+  }
+  json += "\"}";
   // Clock health. Read straight from TimeSync rather than through SystemData:
   // it is owned by the network layer, needs no mutex, and must be visible even
   // when it has never been set (which is the case worth showing).

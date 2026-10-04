@@ -106,6 +106,8 @@ private:
   void cmdVoltCal(const String &args, String &out);
   void cmdClearWifi(String &out);
   void cmdSetWifi(const String &args, String &out);
+  void cmdSetCloud(const String &args, String &out);
+  void cmdClearCloud(String &out);
   void cmdSetAp(const String &args, String &out);
   void cmdResetAp(String &out);
   void cmdLed(const String &args, String &out);

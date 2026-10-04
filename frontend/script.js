@@ -293,6 +293,46 @@ function clearStaSettings() {
   }).catch(() => false);
 }
 
+// ============ Remote Monitoring (cloud) ============
+// Push-only realtime-database mirror, home WiFi only. The page is about to
+// lose its socket on save, so the disconnect hint applies. The token field is
+// write-only by design: it is cleared after every save and never filled from
+// the snapshot (the board never sends it back).
+function saveCloudSettings() {
+  const hostInput = document.getElementById('cloudHost');
+  const authInput = document.getElementById('cloudAuth');
+  const host = ((hostInput.value || '').trim()).replace(/^https?:\/\//i, '').split('/')[0];
+  const auth = (authInput.value || '').trim();
+
+  if (!host || host.indexOf('.') < 0) return showToast('Enter the database host (no https://, no path)');
+  if (!auth) return showToast('Paste the database token');
+  if (isDemo) return showToast('Not available in demo mode');
+
+  return sendCommand({ cmd: 'setcloud', host: host, auth: auth }).then(() => {
+    authInput.value = '';
+    showToast(`Saved — pushing to "${host}" after restart (home WiFi only)`, 6000);
+    const hint = document.getElementById('cloudHint');
+    if (hint) {
+      hint.innerHTML = '<strong>The board is restarting.</strong> Pushes land at ' +
+        '<span class="mono">/devices/&lt;MAC&gt;/latest</span> every 10 s while home WiFi is up.';
+    }
+    setTimeout(() => handleDisconnect(), 1500);
+    return true;
+  }).catch(() => false);
+}
+
+function clearCloudSettings() {
+  if (isDemo) return showToast('Not available in demo mode');
+  return sendCommand({ cmd: 'clearcloud' }).then(() => {
+    showToast('Remote monitoring stopped', 6000);
+    const hostInput = document.getElementById('cloudHost');
+    if (hostInput) { hostInput.value = ''; delete hostInput.dataset.userSet; }
+    const authInput = document.getElementById('cloudAuth');
+    if (authInput) { authInput.value = ''; delete authInput.dataset.userSet; }
+    return true;
+  }).catch(() => false);
+}
+
 // ============ Admin PIN ============
 // The ESP32 enforces the PIN (see src/network/auth_gate.cpp); this side only
 // decides what the UI is allowed to show. Unlocking is explicit: a viewer gets
@@ -735,6 +775,38 @@ function updateDashboard(data) {
     staPassEl.placeholder = data.staIsDefault
       ? 'your home WiFi password'
       : 'unchanged (saved — type to replace)';
+  }
+
+  // Remote-monitoring panel. The snapshot carries on/off, last-push health and
+  // the MAC device id - never the token, so the token field stays write-only:
+  // cleared on save, placeholder-only otherwise, never filled from data.
+  const cloudStatusEl = document.getElementById('cloudStatus');
+  if (cloudStatusEl && data.cloud && typeof data.cloud.en === 'boolean') {
+    const c = data.cloud;
+    let txt, col;
+    if (!c.en) {
+      txt = 'off';
+      col = 'var(--muted, #8a8a8a)';
+    } else if (typeof c.age === 'number' && c.age >= 0) {
+      txt = 'pushing — last ok ' + c.age + 's ago' + (c.dev ? ' · ' + c.dev : '');
+      col = c.ok ? 'var(--ok, #4ade80)' : 'var(--warn, #f59e0b)';
+      if (!c.ok) txt = 'enabled, last push FAILED' + (c.dev ? ' · ' + c.dev : '');
+    } else {
+      txt = 'enabled — no push yet' + (c.dev ? ' · ' + c.dev : '');
+      col = 'var(--warn, #f59e0b)';
+    }
+    cloudStatusEl.textContent = txt;
+    cloudStatusEl.style.color = col;
+  }
+  const cloudAuthEl = document.getElementById('cloudAuth');
+  if (cloudAuthEl && data.cloud && typeof data.cloud.en === 'boolean') {
+    cloudAuthEl.placeholder = data.cloud.en
+      ? 'unchanged (saved — type to replace)'
+      : 'Paste database token';
+  }
+  const cloudHostEl = document.getElementById('cloudHost');
+  if (cloudHostEl && !cloudHostEl.dataset.userSet && data.cloud && typeof data.cloud.host === 'string' && data.cloud.host) {
+    cloudHostEl.value = data.cloud.host;
   }
 
   // MCU temperature + power state (Connection panel). Null means this chip has

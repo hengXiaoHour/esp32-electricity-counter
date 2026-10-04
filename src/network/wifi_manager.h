@@ -21,8 +21,9 @@
 // because an unusable PSK makes softAP() fail and takes the fallback with it.
 //
 // What this file still does not want back: the STA retry ladder, the
-// connect-timeout reboot failsafe, the RTC boot-failure counter, link-flap
-// detection, and modem-sleep eco mode.
+// connect-timeout reboot failsafe, the RTC boot-failure counter, and link-flap
+// detection. (Modem-sleep eco used to be on this list - it is back now, but
+// STA-only: an access point still has to keep beaconing.)
 enum WifiState : uint8_t {
   WIFI_INIT = 0,
   // Home network joined, AP off. The normal running state.

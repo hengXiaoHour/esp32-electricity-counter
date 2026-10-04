@@ -3,6 +3,7 @@
 #include "console_handler.h"
 #include "auth_gate.h"
 #include "ap_creds.h"
+#include "cloud_cfg.h"
 #include "time_sync.h"
 #include "../utils/log_gate.h"
 
@@ -49,7 +50,8 @@ static bool extractJsonString(const String &s, const char *key, String &outVal) 
 // set_name, reset_counter, test_inject, set_voltage_cal, set_current_cal,
 // set_monthly_kwh, set_noise_floor, set_lpf, set_rms_samples, reset_ch_cal,
 // reset_channel_names, reset_nvs_defaults, test_force_rollover, set_time,
-// verify_pin, set_pin, set_ap, reset_ap, setwifi, clearwifi.
+// verify_pin, set_pin, set_ap, reset_ap, setwifi, clearwifi, setcloud,
+// clearcloud.
 //
 // The two ntfy verbs are GONE rather than left as accepted no-ops: ntfy.sh
 // needs the internet this board does not have, and keeping a setting that
@@ -434,6 +436,41 @@ bool processCommand(NVSManager *nvs, SystemData *sysData,
 
     handled = true;
     if (responseOut) *responseOut = "  Stored WiFi credentials cleared";
+
+  } else if (s.indexOf("\"cmd\":\"setcloud\"") >= 0) {
+    // Remote monitoring via realtime DB. PIN-gated by the central gate above
+    // like every other mutating verb - no separate account, no Google sign-in,
+    // same as STA mode. Shape-checked by cloud_validateHost/Auth (host-tested);
+    // the token is stored to NVS and never rendered anywhere.
+    String host, auth;
+    if (!extractJsonString(s, "host", host) || !cloud_validateHost(host.c_str())) {
+      if (responseOut) *responseOut = "  Not saved: bad database host.";
+    } else if (!extractJsonString(s, "auth", auth) || !cloud_validateAuth(auth.c_str())) {
+      if (responseOut) *responseOut = "  Not saved: bad auth token.";
+    } else {
+      bool locked = (dataMutex &&
+                     xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE);
+      nvs->saveFb(host, auth);
+      nvs->commit();   // inside the mutex, same reason as setwifi
+      if (locked) xSemaphoreGive(*dataMutex);
+
+      handled = true;
+      if (responseOut) {
+        *responseOut = String("  Saved. Pushing to \"") + host +
+                       "\" on boot (STA only).";
+      }
+      consoleHandler.requestReboot("  (cloud monitoring changed - restarting)");
+    }
+
+  } else if (s.indexOf("\"cmd\":\"clearcloud\"") >= 0) {
+    bool locked = (dataMutex &&
+                   xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE);
+    nvs->clearFb();
+    nvs->commit();
+    if (locked) xSemaphoreGive(*dataMutex);
+
+    handled = true;
+    if (responseOut) *responseOut = "  Remote monitoring stopped";
 
   } else if (s.indexOf("\"cmd\":\"set_time\"") >= 0) {
     // The browser lends us its clock. Sent automatically on WebSocket open, so

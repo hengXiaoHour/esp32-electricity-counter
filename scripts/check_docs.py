@@ -95,6 +95,12 @@ def main():
     lm_h = read("src/core/limit_manager.h")
     buzz_h = read("src/ui/buzzer.h")
     buzz_cpp = read("src/ui/buzzer.cpp")
+    cl_cfg_h = read("src/network/cloud_cfg.h")
+    cl_cfg_cpp = read("src/network/cloud_cfg.cpp")
+    cl_h = read("src/network/cloud_push.h")
+    cl_cpp = read("src/network/cloud_push.cpp")
+    cl_test = read("scripts/test_cloud_cfg.c")
+    verify_sh = read("scripts/verify_all.sh")
 
     # --- task layout ---------------------------------------------------
     task_calls = ino.count("xTaskCreatePinnedToCore")
@@ -242,6 +248,71 @@ def main():
           _pause is not None and int(_pause.group(1)) == 1000 and
           "state = END_PAUSE" in buzz_cpp and "case END_PAUSE:" in buzz_cpp,
           "the end-pause state is gone - patterns blur together")
+
+    # --- remote monitoring: push-only, STA-only, MAC identity -----------------
+    # The return of the cloud, minus everything that got it removed. Each rule
+    # below is one archived lesson (doc/opencode_agent/lessons.md); the
+    # mutation suite proves each one can fail.
+    # Comments may NAME the removed SDK (repo convention: strip comments first,
+    # like verify_all.sh does) - the rule is about code, not prose.
+    c.add("the pusher uses raw REST PATCH, no SDK include",
+          "PATCH /devices/" in cl_cpp and
+          "firebase" not in strip_comments(cl_cpp).lower() and
+          "firebase" not in strip_comments(cl_h).lower(),
+          "an SDK crept back into the pusher")
+    c.add("the pusher never reads: no GET anywhere in it",
+          "GET " not in strip_comments(cl_cpp) and
+          ".get(" not in strip_comments(cl_cpp),
+          "a read path shares the push connection again")
+    # Scoped to loop()'s body, not the file: WL_CONNECTED also appears in
+    # wantsRadio(), so a file-wide substring rule passes after the loop's own
+    # gate is deleted (proven by mutation, not by reading).
+    _loop = re.search(r"void CloudPush::loop\([^)]*\) \{([\s\S]*?)\n\}\n", cl_cpp)
+    c.add("pushes are STA-gated (fallback AP has no internet)",
+          _loop is not None and "WL_CONNECTED" in _loop.group(1),
+          "loop() can fire without a station link")
+    _push_iv = re.search(r"PUSH_INTERVAL_MS\s*=\s*(\d+)", cl_h)
+    c.add("the push cadence is 10 s, not the old 1 s hot path",
+          _push_iv is not None and int(_push_iv.group(1)) == 10000,
+          "interval moved off 10 s")
+    c.add("the device id comes from the radio MAC, formatted by the helper",
+          "macAddress()" in cl_cpp and "cloud_formatDeviceId" in cl_cpp,
+          "identity no longer tracks the silicon")
+    c.add("there is no settable board id anywhere (no verb, no NVS key)",
+          "setdevice" not in strip_comments(cmd).lower() and
+          "device_id" not in strip_comments(nvs).lower() and
+          "setdevice" not in js.lower(),
+          "a hand-typed id is back")
+    c.add("the token never reaches the dashboard snapshot",
+          '\\"auth\\"' not in sysjson,
+          "auth material in the wire format")
+    c.add("the host IS published (not secret) so the panel shows it",
+          '\\"host\\"' in sysjson and "appendJsonEscaped(json, host)" in sysjson,
+          "panel cannot show what is configured")
+    c.add("both input verbs validate shape through the host-tested helpers",
+          "cloud_validateHost" in ch and "cloud_validateAuth" in ch and
+          "cloud_validateHost" in cmd and "cloud_validateAuth" in cmd,
+          "a verb trusts raw input")
+    c.add("the shape helpers are unit-tested and the suite runs in verify_all",
+          "test_cloud_cfg" in verify_sh and "CLOUD_DEVICE_ID_LEN" in cl_test,
+          "validation without a runner")
+    c.add("cloud counts as watched, so cloud-on means eco-off",
+          "cloudPush.wantsRadio()" in ino,
+          "eco can nap a radio that must push")
+    # The TLS stack put classic at 103% of the default 1.2 MB app slot;
+    # min_spiffs (1.9 MB, OTA kept) is the documented scheme. Reverting the
+    # README line to the bare FQBN silently unbuilds the classic board.
+    c.add("README pins min_spiffs for the classic ESP32 build",
+          "esp32:esp32:esp32:PartitionScheme=min_spiffs" in rdme,
+          "classic line reverted to the default scheme (103% overflow)")
+    # The token must never be logged: pull every DEBUG_LOG/STATUS_LOG call out
+    # of the pusher and assert none of them formats auth_. A substring rule on
+    # the whole file cannot say this - auth_ legitimately EXISTS in the file
+    # (it is stored and sent inside TLS), just never in a log line.
+    _log_calls = re.findall(r"(?:DEBUG_LOG|STATUS_LOG)\(([\s\S]*?)\);", cl_cpp)
+    c.add("the token is never logged (only host/status lines)",
+          _log_calls and all("auth_" not in call for call in _log_calls),
+          "a log line formats the token")
 
     # --- eco mode: quiet radio when nobody watches -------------------------
     c.add("presence is WebSocket viewers (OTA counts - flashing needs link)",

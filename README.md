@@ -10,14 +10,20 @@ the ESP32 **is** the WiFi network and the web server.
 Join `ESP32-Elec-Counter` (password `configure123`), open
 `http://192.168.4.1/`, done.
 
+Optional: give it your home WiFi plus a realtime-database host + token
+(Settings → Remote Monitoring) and it mirrors readings to
+`/devices/<MAC>/latest` every 10 s for checking from anywhere. The token
+never leaves the board except inside that connection; the dashboard shows
+push health but never the token.
+
 ## 2. Why?
 
 - Know which circuit actually eats the power bill — per-channel W and kWh,
   not one meter for the whole house.
 - Get warned before the bill gets big — each channel has a monthly limit; on
   trip the buzzer rings and the channel is flagged.
-- Own your data — readings stay on your LAN, counters survive power loss in
-  flash, browser works offline as an installed app.
+- Own your data — readings stay on your LAN by default, counters survive power loss in
+  flash, browser works offline as an installed app. Cloud mirror is opt-in, push-only.
 - No monthly subscription, no phone-home telemetry, no app store.
 
 ## 3. How?
@@ -63,7 +69,11 @@ scripts/patch_async_tcp.py --apply   # if AsyncTCP lacks the lwIP core-lock patc
 esptool --port /dev/ttyACM0 --chip esp32s3 write-flash 0x10000 <sketch>.ino.bin
 
 # ESP32 (classic):
-arduino-cli compile --fqbn esp32:esp32:esp32 .
+# min_spiffs, not default: the TLS stack for cloud push put the firmware at
+# 103% of the default 1.2 MB app slot. min_spiffs gives 1.9 MB AND keeps OTA
+# (two OTA slots + otadata); NVS stays at 0x9000, so settings survive the
+# switch - but the partition table itself must be flashed once (0x8000).
+arduino-cli compile --fqbn esp32:esp32:esp32:PartitionScheme=min_spiffs .
 esptool --port /dev/ttyUSB0 --chip esp32 write-flash 0x10000 <sketch>.ino.bin
 ```
 
@@ -94,6 +104,37 @@ while the SSID is the placeholder the board skips straight to the fallback AP.
 If it cannot join within ~10s, the fallback AP comes up instead so the board is
 never headless — and if a working link later drops for 30s, the AP comes up
 then too.
+
+### Remote monitoring (optional, home WiFi only)
+
+Needs a Firebase Realtime Database (any project — the free tier is plenty).
+In the Firebase console: create a Realtime Database, copy its host
+(`<project>-default-rtdb.<region>.firebasedatabase.app`), and generate a
+database secret (Project settings → Service accounts → Database secrets).
+Suggested rules — the board only ever writes its own node, your phone reads:
+
+```json
+{
+  "rules": {
+    "devices": {
+      "$dev": {
+        ".write": "true",
+        ".read": "auth != null"
+      }
+    }
+  }
+}
+```
+
+(With a database secret the board authenticates via `?auth=`; tighten `.write`
+with `auth.uid` rules if other writers share the project.)
+
+From a browser: Settings → Remote Monitoring (host + token, PIN-gated).
+Or over serial: `setcloud <host> <token>` / `clearcloud`. Saving reboots;
+pushes land at `/devices/<MAC>/latest` every 10 s while home WiFi is up.
+The Status line shows the MAC and the last-push age; enabling cloud keeps
+eco off (a napping radio cannot push). Nothing is ever pushed on the
+fallback AP.
 
 ### Status LED
 

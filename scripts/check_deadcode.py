@@ -391,6 +391,44 @@ def main():
     r.add("the AP rename feature is still wired end to end", not ap_missing,
           "disconnected at: " + ", ".join(ap_missing))
 
+    # --- 8b. the cloud feature must stay wired end to end ------------------
+    # Same disease as rule 8: each layer can be deleted one at a time while
+    # every remaining layer looks tidy. The token path gets one extra shape
+    # check (post() must send the auth_ buffer loaded from NVS, not a default
+    # or constant) - the AP rename shipped exactly that bug once (saved the
+    # new name, broadcast the old one), and a token variant would push to the
+    # wrong database while the UI says "Saved".
+    clcpp = strip_cpp(read("src/network/cloud_push.cpp"))
+    post_body = body_of(clcpp, "bool CloudPush::post")
+    begin_body = body_of(clcpp, "void CloudPush::begin")
+    cloud_missing = []
+    for what, present in [
+            ("firmware verb (setcloud)", has("setcloud", cmd)),
+            ("firmware verb (clearcloud)", has("clearcloud", cmd)),
+            ("console verb (setcloud)", has("setcloud", ch)),
+            ("console verb (clearcloud)", has("clearcloud", ch)),
+            # Dispatch-shaped, not just the word: the help STRING also contains
+            # "setcloud", so has() alone passes after the dispatch is deleted
+            # (proven by mutation). Match the full dispatch literal including
+            # the trailing space - "setcloudX " must not satisfy it.
+            ("console dispatch (setcloud)", 'startsWith("setcloud ")' in ch),
+            ("console dispatch (clearcloud)", '== "clearcloud"' in ch),
+            ("console help lists setcloud", "setcloud <host> <token>" in ch),
+            ("NVS writer", has("saveFb", nm)),
+            ("NVS eraser", has("clearFb", nm)),
+            ("NVS gate", has("fbEnabled", nm)),
+            ("shape validation", has("cloud_validateHost", ch)),
+            ("dashboard save", "cmd: 'setcloud'" in js),
+            ("dashboard forget", "cmd: 'clearcloud'" in js),
+            ("dashboard panel", 'id="cloudHost"' in read("frontend/index.html")),
+            ("begin loads from NVS", bool(begin_body) and "loadFb" in begin_body),
+            ("post sends the loaded token buffer",
+             bool(post_body) and "auth_" in post_body)]:
+        if not present:
+            cloud_missing.append(what)
+    r.add("the cloud monitoring feature is still wired end to end", not cloud_missing,
+          "disconnected at: " + ", ".join(cloud_missing))
+
     # --- 9. the defaults the docs quote must be the ones the code uses ------
     # Two copies of "ESP32-Elec-Counter" exist on purpose (config.h for the
     # firmware, mock_device.py for the E2E harness) precisely because the harness

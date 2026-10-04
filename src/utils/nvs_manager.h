@@ -50,6 +50,20 @@ public:
   void saveWiFi(const String &ssid, const String &password);
   void clearWiFi();
 
+  // Remote-monitoring (cloud) settings. The board pushes a small snapshot to
+  // a realtime database over HTTPS REST every CLOUD_PUSH_INTERVAL_MS, STA-only.
+  // `fb_host` is the database host (no protocol, no path - validated by
+  // cloud_validateHost), `fb_auth` the token (validated by cloud_validateAuth,
+  // NEVER sent to the dashboard or serial), `fb_enable` the on/off switch.
+  // fbEnabled() is true only when all three agree: a host with no token (or a
+  // token with no host) pushes nothing, instead of pushing somewhere half
+  // configured. Writes are staged; the caller commits under dataMutex like
+  // every other settings write.
+  bool loadFb(String &host, String &auth);
+  bool fbEnabled();
+  void saveFb(const String &host, const String &auth);
+  void clearFb();
+
   // Per-channel name
   bool loadChannelName(uint8_t channel, char *name, size_t nameLen);
   void saveChannelName(uint8_t channel, const char *name);

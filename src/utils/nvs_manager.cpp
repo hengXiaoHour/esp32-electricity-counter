@@ -91,6 +91,39 @@ void NVSManager::clearWiFi() {
   DEBUG_LOG("  [NVS] cleared WiFi credentials + mode\n");
 }
 
+// --- Remote monitoring (cloud) ---
+
+bool NVSManager::loadFb(String &host, String &auth) {
+  host = prefs.getString("fb_host", "");
+  auth = prefs.getString("fb_auth", "");
+  return host.length() > 0 && auth.length() > 0;
+}
+
+bool NVSManager::fbEnabled() {
+  // All three must agree. A host with no token would push somewhere
+  // unauthenticated; a token with no host pushes nowhere - both are "off".
+  if (prefs.getBool("fb_enable", false) == false) return false;
+  String host = prefs.getString("fb_host", "");
+  String auth = prefs.getString("fb_auth", "");
+  return host.length() > 0 && auth.length() > 0;
+}
+
+void NVSManager::saveFb(const String &host, const String &auth) {
+  prefs.putString("fb_host", host);
+  prefs.putString("fb_auth", auth);
+  prefs.putBool("fb_enable", true);
+  // No commit() here: same staged-write rule as saveWiFi/saveApCredentials,
+  // the caller commits under dataMutex.
+  DEBUG_LOG("  [NVS] cloud monitoring staged: host=\"%s\"\n", host.c_str());
+}
+
+void NVSManager::clearFb() {
+  prefs.remove("fb_host");
+  prefs.remove("fb_auth");
+  prefs.remove("fb_enable");
+  DEBUG_LOG("  [NVS] cloud monitoring cleared\n");
+}
+
 // --- Channel Config ---
 
 String NVSManager::channelKey(uint8_t channel, const char *suffix) {

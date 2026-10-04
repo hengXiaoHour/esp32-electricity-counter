@@ -78,7 +78,24 @@ else
   record $? "$(tail -1 /tmp/opencode/verify_apcreds.log)"
 fi
 
-# --- 2c. JSON string escaping (host build, no hardware) -------------------
+# --- 2c. Cloud config rules (host build, no hardware) --------------------
+# Remote monitoring is push-only HTTPS REST with a MAC-derived device path.
+# The shape rules (host form, token form, MAC formatting) are the only thing
+# standing between a typo and a dead database node, so they are unit-tested
+# here like the AP credential rules above.
+stage "Cloud config rules (unit)"
+gcc -std=c11 -Wall -Wextra -Isrc/network -x c \
+    scripts/test_cloud_cfg.c src/network/cloud_cfg.cpp \
+    -o /tmp/opencode/cloud_cfg_test 2>/tmp/opencode/verify_cloudcfg_build.log
+if [ $? -ne 0 ]; then
+  record 1 "cloud_cfg compiles"
+else
+  record 0 "cloud_cfg compiles"
+  /tmp/opencode/cloud_cfg_test >/tmp/opencode/verify_cloudcfg.log 2>&1
+  record $? "$(tail -1 /tmp/opencode/verify_cloudcfg.log)"
+fi
+
+# --- 2d. JSON string escaping (host build, no hardware) -------------------
 # One unescaped quote in the network name would corrupt EVERY system broadcast,
 # not just the Access Point panel, because the frame is rebuilt ~7x a second.
 stage "JSON escaping"
@@ -93,7 +110,13 @@ else
   record $? "$(tail -1 /tmp/opencode/verify_jsonesc.log)"
 fi
 
-# --- 3. Frontend syntax + no cloud code survives ------------------------
+# --- 3. Frontend syntax + no LEGACY cloud code ---------------------------
+# The pattern below names the REMOVED era only (Firebase SDK tags, the old
+# cloudDb/device-picker plumbing, ntfy). The current push-only remote-
+# monitoring panel (cloudHost/cloudStatus/setcloud) is intentional and uses
+# none of those tokens - which is exactly why the pattern still passes with
+# the panel present. If a future edit needs one of these words in frontend/,
+# rename the token here deliberately, never by broadening the match.
 stage "Frontend"
 node --check frontend/script.js 2>/tmp/opencode/verify_js.log
 record $? "script.js parses"
@@ -120,7 +143,7 @@ for f in frontend/*.js frontend/*.html frontend/*.css; do
   [ -n "$hits" ] && CLOUD_HITS="$CLOUD_HITS$f: $hits"$'\n'
 done
 [ -z "$CLOUD_HITS" ]
-record $? "no Firebase/RTDB/cloud code left in frontend/ (comments ignored)"
+record $? "no legacy cloud code in frontend/ (comments ignored)"
 [ -n "$CLOUD_HITS" ] && printf '%s' "$CLOUD_HITS"
 
 # --- 3b. No dead code or dead assets ------------------------------------

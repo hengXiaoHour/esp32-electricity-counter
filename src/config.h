@@ -199,6 +199,14 @@ struct SystemData {
   float mcuTempC;    // on-die temperature, °C (NAN when the chip has no sensor)
   bool ecoMode;      // true while nobody is watching (modem-sleep + quiet radio)
 
+  // Remote-monitoring status for the dashboard. No secret here by construction:
+  // the token lives only in NVS and inside the TLS tunnel - cloudDev is the
+  // MAC id (also the database path), cloudAgeS is -1 when nothing ever landed.
+  bool cloudEnabled;
+  bool cloudOk;
+  int32_t cloudAgeS;
+  char cloudDev[13];
+
   Event events[EVENT_LOG_SIZE];
   uint8_t eventCount;
 

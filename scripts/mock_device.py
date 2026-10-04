@@ -243,6 +243,15 @@ class State:
         self.station_up = False        # set by `setwifi`, cleared by `clearwifi`
         self.sta_ssid = ""             # the home network this board joins
         self.sta_pass = ""
+        # Remote monitoring mirror. The token is ACCEPTED and recorded in
+        # `applied` (so E2E can assert it arrived) but NEVER rendered into the
+        # snapshot - exactly like the firmware, which keeps it in NVS only.
+        self.cloud_en = False
+        self.cloud_host = ""
+        self.cloud_token = ""
+        self.cloud_ok = False
+        self.cloud_age = -1
+        self.cloud_dev = "A1B2C3D4E5F6"
         self.epoch = int(time.time())
         self.time_synced = True
         self.time_rejects = 0
@@ -296,6 +305,11 @@ class State:
                                 and self.ap_pass == AP_PASS_DEFAULT),
                 "staSsid": self.sta_ssid,
                 "staIsDefault": not self.sta_ssid,
+                "cloud": {"en": bool(self.cloud_en),
+                          "ok": bool(self.cloud_ok),
+                          "age": self.cloud_age,
+                          "dev": self.cloud_dev,
+                          "host": self.cloud_host},
                 "mcuTemp": 51.2,
                 "eco": False,
                 "time": {"ok": self.time_synced, "age": 0 if self.time_synced else 4294967295},
@@ -435,6 +449,35 @@ class State:
                 self.station_up = False
                 self.applied.append(("clearwifi",))
                 return True, "  Stored WiFi credentials cleared", False
+
+            if verb == "setcloud":
+                host = extract_json_string(frame, "host")
+                auth = extract_json_string(frame, "auth") or ""
+                if host is None or "." not in host:
+                    return True, "  Not saved: bad database host.", False
+                if not auth:
+                    return True, "  Not saved: bad auth token.", False
+                self.cloud_en = True
+                self.cloud_host = host
+                self.cloud_token = auth
+                # A push only lands with STA up (STA-only, like the firmware);
+                # the E2E suite always configures the home network first.
+                self.cloud_ok = bool(self.station_up)
+                self.cloud_age = 4 if self.station_up else -1
+                self.applied.append(("setcloud", host, auth))
+                self.rebooted = True
+                self.reboot_reason = "setcloud"
+                return True, ('  Saved. Pushing to "%s" on boot (STA only).'
+                              % host), False
+
+            if verb == "clearcloud":
+                self.cloud_en = False
+                self.cloud_host = ""
+                self.cloud_token = ""
+                self.cloud_ok = False
+                self.cloud_age = -1
+                self.applied.append(("clearcloud",))
+                return True, "  Remote monitoring stopped", False
 
             return False, None, False
 

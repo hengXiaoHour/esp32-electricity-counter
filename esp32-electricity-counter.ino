@@ -7,6 +7,7 @@
 #include "src/network/ota_handler.h"
 #include "src/network/time_sync.h"
 #include "src/network/console_handler.h"
+#include "src/network/cloud_push.h"
 #include "src/ui/status_led.h"  
 #include "src/ui/buzzer.h"
 #include "src/utils/nvs_manager.h"
@@ -23,6 +24,7 @@ WiFiManager     wifiMgr;
 WebSocketServer wsServer;
 OTAHandler      otaHandler;
 StatusLED       statusLED;
+CloudPush       cloudPush;
 
 SystemData systemData;
 SemaphoreHandle_t dataMutex;
@@ -67,9 +69,11 @@ static float readMcuTempC() {
 
 // Eco mode: nobody is watching the dashboard, so the radio idles.
 // Presence = at least one WebSocket viewer (an OTA in progress also counts -
-// flashing needs a solid link). After ECO_IDLE_MS with no viewer the board
-// lets the WiFi modem sleep; sensing, limits, NVS and the buzzer are
-// untouched - only the radio quiets down, which is where the heat comes from.
+// flashing needs a solid link) or an enabled cloud push (a radio that naps
+// cannot push - cloud on means eco off, stated in the UI). After ECO_IDLE_MS
+// with no viewer the board lets the WiFi modem sleep; sensing, limits, NVS
+// and the buzzer are untouched - only the radio quiets down, which is where
+// the heat comes from.
 // The AP never sleeps (it must keep beaconing), so eco only parks the modem
 // in STA-only mode; in fallback-AP mode eco just means "no viewers".
 static bool ecoActive = false;
@@ -77,7 +81,8 @@ static uint32_t lastViewerMs = 0;
 static const uint32_t ECO_IDLE_MS = 60000;
 
 static void updateEcoMode() {
-  bool watched = wsServer.clientCount() > 0 || otaHandler.isInProgress();
+  bool watched = wsServer.clientCount() > 0 || otaHandler.isInProgress() ||
+                 cloudPush.wantsRadio();
   if (watched) {
     lastViewerMs = millis();
     if (ecoActive) {
@@ -139,6 +144,20 @@ static void updateSharedData() {
   systemData.otaInProgress = otaHandler.isInProgress();
   systemData.otaProgress = otaHandler.getProgress();
   systemData.ecoMode = ecoActive;
+  // Cloud status for the dashboard. The token NEVER lands here - only the
+  // on/off state, the last-push health, and the MAC device id (which is also
+  // the database path, so showing it tells the user where to look).
+  systemData.cloudEnabled = cloudPush.enabled();
+  systemData.cloudOk = cloudPush.lastPushOk();
+  {
+    uint32_t s = cloudPush.secondsSincePush();
+    systemData.cloudAgeS = (s == UINT32_MAX) ? -1 : (int32_t)s;
+  }
+  {
+    const char *dev = cloudPush.deviceId();
+    strncpy(systemData.cloudDev, dev ? dev : "", sizeof(systemData.cloudDev) - 1);
+    systemData.cloudDev[sizeof(systemData.cloudDev) - 1] = '\0';
+  }
   // On-die temperature, throttled to 1 Hz: temperatureRead() blocks briefly on
   // classic ESP32, and nothing about heat changes 12 times a second.
   // NAN on chips without a sensor (classic ESP32 reads ~10°C high uncalibrated;
@@ -197,6 +216,10 @@ void networkTask(void *pvParameters) {
     // In fallback-AP mode neither runs and the browser lend remains the clock.
     if (wifiMgr.stationUp()) timeSync.beginNTP();
     timeSync.pollNTP();
+
+    // Remote monitoring, STA-only and push-only (never reads). Runs on the
+    // network task so a slow TLS handshake stalls broadcasts, never sensing.
+    cloudPush.loop(&systemData, &dataMutex);
 
     // Serial processing on Core 0
     while (Serial.available()) {
@@ -462,6 +485,10 @@ void setup() {
   // defaults), which is why this needs the NVS handle the AP-only migration
   // removed. begin() has returned before anything else reads them.
   wifiMgr.begin(&nvs);
+  // After the radio is up: loads fb_host/fb_auth/fb_enable from NVS and
+  // re-validates (NVS outlives any firmware version). Disabled unless all
+  // three agree - a half-configured cloud pushes nothing.
+  cloudPush.begin(&nvs);
   statusLED.setMode(LED_OFF);
   DEBUG_LOG("  %-19sAP @ %s (always)\n", "WiFi", WiFi.softAPIP().toString().c_str());
   DEBUG_LOG("  %-19s\"%s\" / \"%s\"\n", "Network", wifiMgr.getSSID(), wifiMgr.getPass());
@@ -472,7 +499,8 @@ void setup() {
 
   // Two tasks on two cores. The firebaseTask that used to sit at priority 1
   // on Core 0 to keep its blocking TLS work away from the broadcast loop is
-  // gone with the cloud: networkTask is the only Core 0 task now.
+  // gone with the old cloud SDK: the small REST push runs inline on networkTask
+  // instead (STA-only, every 10 s), so there is still exactly one Core 0 task.
   xTaskCreatePinnedToCore(networkTask, "network", 8192, NULL, 2, NULL, 0);
   xTaskCreatePinnedToCore(sensorTask, "sensor", 8192, NULL, 2, NULL, 1);
 
