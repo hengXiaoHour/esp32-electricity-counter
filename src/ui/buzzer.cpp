@@ -11,6 +11,8 @@ void Buzzer::begin(uint8_t pinArg) {
 
 void Buzzer::ring(uint8_t beeps) {
   if (beeps == 0) return;
+  // Restart-from-first-beep, even mid-pause: a new trip interrupts the silence
+  // rather than queueing behind it.
   state = BEEP_ON;
   beepsRemaining = beeps;
   lastChange = millis();
@@ -43,13 +45,22 @@ void Buzzer::loop() {
             digitalWrite(pin, HIGH);
             state = BEEP_ON;
           } else {
+            // Last beep done: hold a full second of silence before reporting
+            // idle, so the next pattern (same channel repeating, or the next
+            // tripped channel) starts cleanly instead of blurring into this one.
             digitalWrite(pin, LOW);
-            state = IDLE;
+            state = END_PAUSE;
           }
         } else {
           digitalWrite(pin, LOW);
-          state = IDLE;
+          state = END_PAUSE;
         }
+      }
+      break;
+
+    case END_PAUSE:
+      if (now - lastChange >= END_PAUSE_MS) {
+        state = IDLE;
       }
       break;
 

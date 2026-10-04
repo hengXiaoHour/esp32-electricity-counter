@@ -110,8 +110,9 @@ then too.
 | Off | Idling normally on home WiFi |
 
 Trips do **not** use the LED (they already have the buzzer + dashboard). The
-trip buzzer repeats the channel number in beeps (ch3 = 3 beeps) at 80ms
-on/off so patterns stay countable.
+trip buzzer repeats the channel number in beeps (ch3 = 3 beeps) at 40ms
+on/off, with a 1s silence between rounds so two tripped channels never blur
+into one long count.
 
 ### Clock, event log, eco mode
 

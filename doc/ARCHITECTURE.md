@@ -391,9 +391,11 @@ the limit (manual reset or monthly rollover).
 
 While **any** channel is tripped, `updateBuzzer()` keeps beeping forever,
 round-robining through the tripped channels: ch1 → 1 beep, ch2 → 2 beeps, …
-ch5 → 5 beeps (80 ms on / 80 ms off, multiples of the 80 ms sensor cycle so the
-timings land exactly). It re-arms only when the buzzer is idle, so a pattern is
-never cut short. `resetCounter()` and rollover call `buzzer->stop()`.
+ch5 → 5 beeps (40 ms on / 40 ms off, pumped by the 20 ms network tick so the
+timings land exactly), then a 1 s silence before the next round - so two tripped
+channels never blur into one long count. It re-arms only when the buzzer is
+idle, so a pattern is never cut short. `resetCounter()` and rollover call
+`buzzer->stop()`, which silences immediately without waiting out the pause.
 
 ### LED
 

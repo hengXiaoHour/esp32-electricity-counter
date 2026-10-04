@@ -186,6 +186,10 @@ void networkTask(void *pvParameters) {
     wsServer.loop();
     otaHandler.loop();
     updateEcoMode();
+    // Second pump for the buzzer state machine (sensorTask pumps it too): the
+    // 20ms network tick is what makes the 40ms beep timings land exactly.
+    // Safe to call from both tasks - see buzzer.h.
+    buzzer.loop();
 
     // Internet time when there is internet: STA up means SNTP can discipline
     // the clock with no phone attached. beginNTP() is once-only; pollNTP()

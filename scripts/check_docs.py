@@ -93,6 +93,8 @@ def main():
     ts_cpp = read("src/network/time_sync.cpp")
     lm = read("src/core/limit_manager.cpp")
     lm_h = read("src/core/limit_manager.h")
+    buzz_h = read("src/ui/buzzer.h")
+    buzz_cpp = read("src/ui/buzzer.cpp")
 
     # --- task layout ---------------------------------------------------
     task_calls = ino.count("xTaskCreatePinnedToCore")
@@ -224,6 +226,22 @@ def main():
           re.search(r"saveForensicEvents\(tail, keep\);\s*[\s\S]{0,400}?nvs->commit\(\);",
                     lm) is not None,
           "persistForensic stages without committing")
+
+    # --- buzzer: fast countable beeps, separated rounds -----------------------
+    # Two properties matter: the 40ms phases (countable at speed) and the 1s
+    # end-pause (neighbouring channels must not blur into one long count).
+    # Both are plain constants, so assert values, not vibes.
+    _beep = re.search(r"BEEP_MS\s*=\s*(\d+)", buzz_h)
+    _gap = re.search(r"GAP_MS\s*=\s*(\d+)", buzz_h)
+    _pause = re.search(r"END_PAUSE_MS\s*=\s*(\d+)", buzz_h)
+    c.add("beep phases are short enough to count at speed (<=50ms)",
+          _beep and _gap and int(_beep.group(1)) <= 50 and int(_gap.group(1)) <= 50,
+          "BEEP_MS=%s GAP_MS=%s" % (_beep.group(1) if _beep else "?",
+                                    _gap.group(1) if _gap else "?"))
+    c.add("every pattern round ends with a 1s silence before the next",
+          _pause is not None and int(_pause.group(1)) == 1000 and
+          "state = END_PAUSE" in buzz_cpp and "case END_PAUSE:" in buzz_cpp,
+          "the end-pause state is gone - patterns blur together")
 
     # --- eco mode: quiet radio when nobody watches -------------------------
     c.add("presence is WebSocket viewers (OTA counts - flashing needs link)",

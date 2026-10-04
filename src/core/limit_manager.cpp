@@ -83,7 +83,9 @@ void LimitManager::checkLimits() {
 }
 
 // While any channel is tripped, keep beeping forever (looping through every
-// tripped channel's beep count) until all tripped channels are reset.
+// tripped channel's beep count) until all tripped channels are reset. The
+// driver's 1s end-pause separates each round, so neighbouring channels never
+// blur into one long count.
 void LimitManager::updateBuzzer() {
   if (!buzzer) return;
   if (buzzer->isBusy()) return;
