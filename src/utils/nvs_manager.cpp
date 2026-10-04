@@ -93,34 +93,43 @@ void NVSManager::clearWiFi() {
 
 // --- Remote monitoring (cloud) ---
 
-bool NVSManager::loadFb(String &host, String &auth) {
+bool NVSManager::loadFb(String &host, String &email, String &pass) {
   host = prefs.getString("fb_host", "");
-  auth = prefs.getString("fb_auth", "");
-  return host.length() > 0 && auth.length() > 0;
+  email = prefs.getString("fb_email", "");
+  pass = prefs.getString("fb_pass", "");
+  // Empty host still means "compiled default" (the project host ships in
+  // config.h), but an empty ACCOUNT means unconfigured - there is no default
+  // login and there must never be one.
+  if (host.length() == 0) host = String(CLOUD_DB_HOST_DEFAULT);
+  return email.length() > 0 && pass.length() > 0;
 }
 
 bool NVSManager::fbEnabled() {
-  // All three must agree. A host with no token would push somewhere
-  // unauthenticated; a token with no host pushes nowhere - both are "off".
+  // All three must agree. A host with no account would push nowhere; an
+  // account with no host pushes nowhere either - both are "off".
   if (prefs.getBool("fb_enable", false) == false) return false;
-  String host = prefs.getString("fb_host", "");
-  String auth = prefs.getString("fb_auth", "");
-  return host.length() > 0 && auth.length() > 0;
+  String host, email, pass;
+  loadFb(host, email, pass);
+  return host.length() > 0 && email.length() > 0 && pass.length() > 0;
 }
 
-void NVSManager::saveFb(const String &host, const String &auth) {
+void NVSManager::saveFb(const String &host, const String &email, const String &pass) {
   prefs.putString("fb_host", host);
-  prefs.putString("fb_auth", auth);
+  prefs.putString("fb_email", email);
+  prefs.putString("fb_pass", pass);
   prefs.putBool("fb_enable", true);
   // No commit() here: same staged-write rule as saveWiFi/saveApCredentials,
   // the caller commits under dataMutex.
-  DEBUG_LOG("  [NVS] cloud monitoring staged: host=\"%s\"\n", host.c_str());
+  DEBUG_LOG("  [NVS] cloud account staged: host=\"%s\" user=\"%s\"\n",
+            host.c_str(), email.c_str());
 }
 
 void NVSManager::clearFb() {
   prefs.remove("fb_host");
-  prefs.remove("fb_auth");
+  prefs.remove("fb_email");
+  prefs.remove("fb_pass");
   prefs.remove("fb_enable");
+  prefs.remove("fb_auth");  // legacy secret-era key: must not survive the switch
   DEBUG_LOG("  [NVS] cloud monitoring cleared\n");
 }
 

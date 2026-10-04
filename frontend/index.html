@@ -286,16 +286,22 @@
             </div>
           </div>
           <div class="cal-row-single">
-            <label for="cloudAuth">Token:</label>
+            <label for="cloudEmail">Account:</label>
             <div class="cal-field">
-              <input type="password" id="cloudAuth" placeholder="Paste database token" autocomplete="off" oninput="this.dataset.userSet='true'">
+              <input type="text" id="cloudEmail" placeholder="board account email" autocomplete="off" spellcheck="false" oninput="this.dataset.userSet='true'">
+            </div>
+          </div>
+          <div class="cal-row-single">
+            <label for="cloudAuth">Password:</label>
+            <div class="cal-field">
+              <input type="password" id="cloudAuth" placeholder="Account password" autocomplete="off" oninput="this.dataset.userSet='true'">
             </div>
           </div>
           <div class="cal-actions">
             <button class="btn-sm" id="cloudSaveBtn" onclick="saveCloudSettings()">Save</button>
             <button class="btn-sm" id="cloudForgetBtn" onclick="clearCloudSettings()">Forget</button>
           </div>
-          <div class="hint" id="cloudHint">Pushes a small reading to your realtime database every 10 seconds, <strong>home WiFi only</strong> (never on the fallback AP). The device path is <strong>/devices/&lt;MAC&gt;/latest</strong> - the Status line shows the MAC. <strong>Save reboots the board.</strong> The token is never shown back, and enabling cloud keeps the radio awake (eco stays off).</div>
+          <div class="hint" id="cloudHint">Signs into your realtime database and pushes a small reading every 10 seconds, <strong>home WiFi only</strong> (never on the fallback AP). The device path is <strong>/devices/&lt;MAC&gt;/latest</strong> - the Status line shows the MAC. <strong>Save reboots the board.</strong> The password is never shown back, and signing in keeps the radio awake (eco stays off).</div>
         </div>
 
         <div class="panel-box admin-only">

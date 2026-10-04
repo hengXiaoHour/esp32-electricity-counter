@@ -76,7 +76,6 @@ int main(void) {
   expect("NULL token refused", cloud_validateAuth(NULL), false);
   expect("trailing newline refused", cloud_validateAuth("token123\n"), false);
   expect("inner space refused", cloud_validateAuth("tok en"), false);
-
   // Boundary: exactly 256 accepted, 257 refused.
   {
     static char a256[CLOUD_MAX_AUTH_LEN + 1];
@@ -87,6 +86,73 @@ int main(void) {
     a257[CLOUD_MAX_AUTH_LEN + 1] = '\0';
     expect("256-char token accepted", cloud_validateAuth(a256), true);
     expect("257-char token refused", cloud_validateAuth(a257), false);
+  }
+
+  // --- herd login: email + password ---------------------------------------
+  expect("typical account", cloud_validateEmail("board@esp32.local"), true);
+  expect("empty email refused", cloud_validateEmail(""), false);
+  expect("NULL email refused", cloud_validateEmail(NULL), false);
+  expect("missing at refused", cloud_validateEmail("board.esp32.local"), false);
+  expect("double at refused", cloud_validateEmail("a@b@c.local"), false);
+  expect("nothing before at refused", cloud_validateEmail("@esp32.local"), false);
+  expect("nothing after at refused", cloud_validateEmail("board@"), false);
+  expect("no dot after at refused", cloud_validateEmail("board@localhost"), false);
+  expect("space refused", cloud_validateEmail("bo ard@esp32.local"), false);
+  expect("typical password", cloud_validatePass("correct horse 99!"), true);
+  expect("spaces allowed in password", cloud_validatePass("with space"), true);
+  expect("empty password refused", cloud_validatePass(""), false);
+  expect("NULL password refused", cloud_validatePass(NULL), false);
+  expect("newline refused", cloud_validatePass("secret\n"), false);
+
+  // --- three-arg splitter ---------------------------------------------------
+  {
+    char h[CLOUD_MAX_HOST_LEN + 1], e[CLOUD_MAX_EMAIL_LEN + 1], pw[CLOUD_MAX_PASS_LEN + 1];
+    expect("plain three args",
+           cloud_splitArgs3("db.firebaseio.com board@esp32.local hunter2", h, sizeof(h), e, sizeof(e), pw, sizeof(pw)), true);
+    expect("...host split", strcmp(h, "db.firebaseio.com") == 0, true);
+    expect("...email split", strcmp(e, "board@esp32.local") == 0, true);
+    expect("...pass split", strcmp(pw, "hunter2") == 0, true);
+    expect("password keeps inner spaces",
+           cloud_splitArgs3("db.firebaseio.com board@esp32.local correct horse 99!", h, sizeof(h), e, sizeof(e), pw, sizeof(pw))
+           && strcmp(pw, "correct horse 99!") == 0, true);
+    expect("extra whitespace tolerated",
+           cloud_splitArgs3("  db.firebaseio.com   board@esp32.local   hunter2  ", h, sizeof(h), e, sizeof(e), pw, sizeof(pw))
+           && strcmp(h, "db.firebaseio.com") == 0 && strcmp(pw, "hunter2") == 0, true);
+    expect("missing password refused",
+           cloud_splitArgs3("db.firebaseio.com board@esp32.local", h, sizeof(h), e, sizeof(e), pw, sizeof(pw)), false);
+    expect("missing email refused",
+           cloud_splitArgs3("db.firebaseio.com", h, sizeof(h), e, sizeof(e), pw, sizeof(pw)), false);
+    expect("empty refused",
+           cloud_splitArgs3("", h, sizeof(h), e, sizeof(e), pw, sizeof(pw)), false);
+    expect("over-long host refused, not truncated",
+           cloud_splitArgs3("db.firebaseio.com board@esp32.local hunter2", h, 4, e, sizeof(e), pw, sizeof(pw)), false);
+  }
+
+  // --- JWT audience readout (cloud diag, never the token) --------------------
+  // "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJteS1wcm9qZWN0In0.signature" decodes the
+  // middle segment to {"aud":"my-project"}. Built from a real JWT shape.
+  {
+    // Header {"alg":"HS256"} / payload {"aud":"my-project","x":1} / sig.
+    const char *jwt = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJteS1wcm9qZWN0IiwieCI6MX0.c2ln";
+    char aud[64];
+    expect("aud extracted", cloud_jwtAud(jwt, aud, sizeof(aud)), true);
+    expect("...correct value", strcmp(aud, "my-project") == 0, true);
+    expect("two segments refused", cloud_jwtAud("abc.def", aud, sizeof(aud)), false);
+    expect("one segment refused", cloud_jwtAud("abc", aud, sizeof(aud)), false);
+    expect("bad chars refused", cloud_jwtAud("eyJhbGciOiJIUzI1NiJ9.eyJ!!!QiOiJ4In0.c2ln", aud, sizeof(aud)), false);
+    expect("missing aud refused",
+           cloud_jwtAud("eyJhbGciOiJIUzI1NiJ9.eyJ4IjoxLCJ6IjoyfQ.c2ln", aud, sizeof(aud)), false);
+    expect("NULL jwt refused", cloud_jwtAud(NULL, aud, sizeof(aud)), false);
+    expect("tiny buffer refused", cloud_jwtAud(jwt, aud, 4), false);
+  }
+  {
+    char out[16];
+    expect("SGVsbG8=less Hello", cloud_b64urlDecode("SGVsbG8", out, sizeof(out)) == 5
+           && strcmp(out, "Hello") == 0, true);
+    expect("dash/underscore alphabet", cloud_b64urlDecode("Pz4-", out, sizeof(out)) == 3, true);
+    expect("empty refused", cloud_b64urlDecode("", out, sizeof(out)) == -1, true);
+    expect("len-1-mod-4 refused", cloud_b64urlDecode("abcde", out, sizeof(out)) == -1, true);
+    expect("overflow refused", cloud_b64urlDecode("SGVsbG8", out, 4) == -1, true);
   }
 
   // --- device id from MAC ----------------------------------------------

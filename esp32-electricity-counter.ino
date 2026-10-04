@@ -475,7 +475,7 @@ void setup() {
   // Blocking commands (test led, nvs_debug, reboot) are deferred and run from
   // loop() on Core 1 where blocking is safe (no WDT, no network stall).
   consoleHandler.begin(&nvs, &powerCalc, &systemData, &dataMutex, &buzzer,
-                       &limitMgr, &wifiMgr, &otaHandler, &statusLED);
+                       &limitMgr, &wifiMgr, &otaHandler, &statusLED, &cloudPush);
 
   WiFi.onEvent(onWiFiEvent);
 

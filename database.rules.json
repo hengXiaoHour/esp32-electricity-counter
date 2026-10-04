@@ -1,0 +1,13 @@
+{
+  "rules": {
+    "devices": {
+      "$dev": {
+        ".write": true,
+        ".read": "auth != null",
+        "latest": {
+          ".validate": "newData.hasChildren(['dev', 'epoch', 'uptime', 'rssi', 'v', 'ch'])"
+        }
+      }
+    }
+  }
+}

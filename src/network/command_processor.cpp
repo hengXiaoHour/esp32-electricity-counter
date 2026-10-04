@@ -438,19 +438,22 @@ bool processCommand(NVSManager *nvs, SystemData *sysData,
     if (responseOut) *responseOut = "  Stored WiFi credentials cleared";
 
   } else if (s.indexOf("\"cmd\":\"setcloud\"") >= 0) {
-    // Remote monitoring via realtime DB. PIN-gated by the central gate above
-    // like every other mutating verb - no separate account, no Google sign-in,
-    // same as STA mode. Shape-checked by cloud_validateHost/Auth (host-tested);
-    // the token is stored to NVS and never rendered anywhere.
-    String host, auth;
+    // Remote monitoring via realtime DB, herd login. PIN-gated by the central
+    // gate above like every other mutating verb - no separate account system
+    // on the board beyond the PIN, no Google sign-in. Shape-checked by the
+    // cloud_validate trio (host-tested); the password is stored to NVS and
+    // never rendered anywhere.
+    String host, email, pass;
     if (!extractJsonString(s, "host", host) || !cloud_validateHost(host.c_str())) {
       if (responseOut) *responseOut = "  Not saved: bad database host.";
-    } else if (!extractJsonString(s, "auth", auth) || !cloud_validateAuth(auth.c_str())) {
-      if (responseOut) *responseOut = "  Not saved: bad auth token.";
+    } else if (!extractJsonString(s, "email", email) || !cloud_validateEmail(email.c_str())) {
+      if (responseOut) *responseOut = "  Not saved: bad account email.";
+    } else if (!extractJsonString(s, "pass", pass) || !cloud_validatePass(pass.c_str())) {
+      if (responseOut) *responseOut = "  Not saved: bad account password.";
     } else {
       bool locked = (dataMutex &&
                      xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE);
-      nvs->saveFb(host, auth);
+      nvs->saveFb(host, email, pass);
       nvs->commit();   // inside the mutex, same reason as setwifi
       if (locked) xSemaphoreGive(*dataMutex);
 

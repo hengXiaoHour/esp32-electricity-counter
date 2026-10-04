@@ -589,17 +589,18 @@ panel's Power row, so the mode is visible, not mysterious.
 
 The cloud is back as a push-only realtime-database mirror: every 10 s, STA
 only, one `PATCH /devices/<MAC>/latest.json?auth=...` over HTTPS REST, then
-the connection closes. No SDK on the board (the old Firebase client's
-blocking TLS handshake was load-bearing pain), no reads ever (the old
-per-loop poll shared the push's TLS session and tore it down on every
-missing node - lessons.md, "Archived - cloud era"), no cloud OTA (dead end
-then, out of scope now).
+the connection closes. Auth is the herd's email/password login (Identity
+Toolkit REST, still no SDK): the board signs in, holds the ID token in RAM,
+refreshes it hourly, and re-logs-in on 401. The token is never stored to
+flash and never rendered - and unlike the secret era, an ID token RESPECTS
+the database rules, so the deployed `.validate` shape-check is enforced on
+the board's own writes.
 
 | Decision | Why |
 |---|---|
 | Device path is the radio MAC (`A1:B2:...` → `AABB...`) | No settable board id. The old hand-typed id orphaned nodes on every typo or re-type; the silicon already has a unique id. |
-| PIN-gated, no account | Same gate as every mutating verb (`setcloud`/`clearcloud` serial + WS) - no Google sign-in, no second identity system. |
-| Token never leaves the board except inside the TLS tunnel | Not in the snapshot, not in logs, not on the dashboard. The panel shows host + MAC + push health only. |
+| PIN-gated board-side | Same gate as every mutating verb (`setcloud`/`clearcloud` serial + WS) - the Firebase account is a setting, and changing settings needs the PIN. |
+| Password never leaves the board except inside the TLS tunnel | Not in the snapshot, not in logs, not on the dashboard. The panel shows host + account + MAC + push health only. |
 | Cloud on = eco off | Stated in the UI next to the toggle. A radio that naps cannot push; pretending otherwise would show stale "last push" ages with no explanation. |
 | Runs on networkTask, mutex held only for the snapshot | A slow handshake stalls broadcasts for a couple of seconds, never sensing. Classic ESP32 needed `min_spiffs` for this: TLS put it at 103% of the default 1.2 MB app slot; min_spiffs gives 1.9 MB with OTA kept. |
 

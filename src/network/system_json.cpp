@@ -144,14 +144,16 @@ void buildSystemJson(const SystemData &data, PowerCalculator *powerCalc,
   json += (long)data.cloudAgeS;
   json += ",\"dev\":\"";
   json += data.cloudDev;
-  // The host is NOT a secret (it rides in the TLS handshake anyway), so the
-  // panel can show what is configured - same rationale as apSsid above. The
-  // token stays out, always.
+  // The host and account are NOT secrets (host rides in TLS SNI, the email
+  // is an identifier), so the panel can show what is configured - same
+  // rationale as apSsid above. The PASSWORD stays out, always.
   {
-    String host, auth;
-    nvs->loadFb(host, auth);
+    String host, email, pass;
+    nvs->loadFb(host, email, pass);
     json += "\",\"host\":\"";
     appendJsonEscaped(json, host);
+    json += "\",\"acct\":\"";
+    appendJsonEscaped(json, email);
   }
   json += "\"}";
   // Clock health. Read straight from TimeSync rather than through SystemData:

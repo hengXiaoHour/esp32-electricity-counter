@@ -50,18 +50,17 @@ public:
   void saveWiFi(const String &ssid, const String &password);
   void clearWiFi();
 
-  // Remote-monitoring (cloud) settings. The board pushes a small snapshot to
-  // a realtime database over HTTPS REST every CLOUD_PUSH_INTERVAL_MS, STA-only.
-  // `fb_host` is the database host (no protocol, no path - validated by
-  // cloud_validateHost), `fb_auth` the token (validated by cloud_validateAuth,
-  // NEVER sent to the dashboard or serial), `fb_enable` the on/off switch.
-  // fbEnabled() is true only when all three agree: a host with no token (or a
-  // token with no host) pushes nothing, instead of pushing somewhere half
-  // configured. Writes are staged; the caller commits under dataMutex like
-  // every other settings write.
-  bool loadFb(String &host, String &auth);
+  // Remote-monitoring (cloud) account. Herd login: the board signs into
+  // Firebase Authentication with this email + password, holds the ID token
+  // in RAM (refreshed hourly, re-login on 401), and pushes with it. The token
+  // itself is NEVER stored (re-login on boot is one HTTPS call) and NEVER
+  // rendered: not in the snapshot, not in logs, not on the dashboard.
+  // Writes are staged; the caller commits under dataMutex like every other
+  // settings write. clearFb() also scrubs the legacy fb_auth token key, so
+  // switching from the secret era leaves nothing behind.
+  bool loadFb(String &host, String &email, String &pass);
   bool fbEnabled();
-  void saveFb(const String &host, const String &auth);
+  void saveFb(const String &host, const String &email, const String &pass);
   void clearFb();
 
   // Per-channel name

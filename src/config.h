@@ -89,6 +89,16 @@
 #define STA_CONNECT_TIMEOUT_MS 10000
 
 // ==============================
+// Cloud (herd login: email/password -> ID token)
+// ==============================
+// The database host + Web API key are PUBLIC values (the key only names the
+// project - it ships inside every web app; the password does the securing),
+// so they live here as defaults rather than NVS settings. The ACCOUNT
+// (email + password) stays in NVS via `setcloud`, like the WiFi credentials.
+#define CLOUD_API_KEY_DEFAULT "AIzaSyA1BCYnxBc9q_ONa58TTkGimlGPn0wyvj0"
+#define CLOUD_DB_HOST_DEFAULT "esp32-electricity-counter-default-rtdb.firebaseio.com"
+
+// ==============================
 // Default Calibration Constants
 // ==============================
 // SCT-013-100: 100A RMS → 1V RMS output

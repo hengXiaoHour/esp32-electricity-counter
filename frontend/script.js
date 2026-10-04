@@ -292,24 +292,27 @@ function clearStaSettings() {
   }).catch(() => false);
 }
 
-// ============ Remote Monitoring (cloud) ============
-// Push-only realtime-database mirror, home WiFi only. The page is about to
-// lose its socket on save, so the disconnect hint applies. The token field is
-// write-only by design: it is cleared after every save and never filled from
-// the snapshot (the board never sends it back).
+// ============ Remote Monitoring (cloud, herd login) ============
+// Email/password sign-in, home WiFi only. The page is about to lose its
+// socket on save, so the disconnect hint applies. The password field is
+// write-only by design: cleared after every save, never filled from the
+// snapshot (the board never sends it back - only the account email).
 function saveCloudSettings() {
   const hostInput = document.getElementById('cloudHost');
+  const emailInput = document.getElementById('cloudEmail');
   const authInput = document.getElementById('cloudAuth');
   const host = ((hostInput.value || '').trim()).replace(/^https?:\/\//i, '').split('/')[0];
-  const auth = (authInput.value || '').trim();
+  const email = (emailInput.value || '').trim();
+  const auth = authInput.value || '';
 
   if (!host || host.indexOf('.') < 0) return showToast('Enter the database host (no https://, no path)');
-  if (!auth) return showToast('Paste the database token');
+  if (!email || email.indexOf('@') < 0) return showToast('Enter the board account email');
+  if (!auth) return showToast('Enter the account password');
   if (isDemo) return showToast('Not available in demo mode');
 
-  return sendCommand({ cmd: 'setcloud', host: host, auth: auth }).then(() => {
+  return sendCommand({ cmd: 'setcloud', host: host, email: email, pass: auth }).then(() => {
     authInput.value = '';
-    showToast(`Saved — pushing to "${host}" after restart (home WiFi only)`, 6000);
+    showToast(`Saved — signing in as "${email}" after restart (home WiFi only)`, 6000);
     const hint = document.getElementById('cloudHint');
     if (hint) {
       hint.innerHTML = '<strong>The board is restarting.</strong> Pushes land at ' +
@@ -776,9 +779,10 @@ function updateDashboard(data) {
       : 'unchanged (saved — type to replace)';
   }
 
-  // Remote-monitoring panel. The snapshot carries on/off, last-push health and
-  // the MAC device id - never the token, so the token field stays write-only:
-  // cleared on save, placeholder-only otherwise, never filled from data.
+  // Remote-monitoring panel. The snapshot carries on/off, last-push health,
+  // the MAC device id and the account email - never the password, so the
+  // password field stays write-only: cleared on save, placeholder-only
+  // otherwise, never filled from data.
   const cloudStatusEl = document.getElementById('cloudStatus');
   if (cloudStatusEl && data.cloud && typeof data.cloud.en === 'boolean') {
     const c = data.cloud;
@@ -801,11 +805,15 @@ function updateDashboard(data) {
   if (cloudAuthEl && data.cloud && typeof data.cloud.en === 'boolean') {
     cloudAuthEl.placeholder = data.cloud.en
       ? 'unchanged (saved — type to replace)'
-      : 'Paste database token';
+      : 'Account password';
   }
   const cloudHostEl = document.getElementById('cloudHost');
   if (cloudHostEl && !cloudHostEl.dataset.userSet && data.cloud && typeof data.cloud.host === 'string' && data.cloud.host) {
     cloudHostEl.value = data.cloud.host;
+  }
+  const cloudEmailEl = document.getElementById('cloudEmail');
+  if (cloudEmailEl && !cloudEmailEl.dataset.userSet && data.cloud && typeof data.cloud.acct === 'string' && data.cloud.acct) {
+    cloudEmailEl.value = data.cloud.acct;
   }
 
   // MCU temperature + power state (Connection panel). Null means this chip has

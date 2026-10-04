@@ -10,11 +10,11 @@ the ESP32 **is** the WiFi network and the web server.
 Join `ESP32-Elec-Counter` (password `configure123`), open
 `http://192.168.4.1/`, done.
 
-Optional: give it your home WiFi plus a realtime-database host + token
-(Settings → Remote Monitoring) and it mirrors readings to
-`/devices/<MAC>/latest` every 10 s for checking from anywhere. The token
+Optional: give it your home WiFi plus a realtime-database account (email +
+password) and it mirrors readings to
+`/devices/<MAC>/latest` every 10 s for checking from anywhere. The password
 never leaves the board except inside that connection; the dashboard shows
-push health but never the token.
+push health but never the password.
 
 ## 2. Why?
 
@@ -107,11 +107,23 @@ then too.
 
 ### Remote monitoring (optional, home WiFi only)
 
-Needs a Firebase Realtime Database (any project — the free tier is plenty).
-In the Firebase console: create a Realtime Database, copy its host
-(`<project>-default-rtdb.<region>.firebasedatabase.app`), and generate a
-database secret (Project settings → Service accounts → Database secrets).
-Suggested rules — the board only ever writes its own node, your phone reads:
+Needs a Firebase Realtime Database (any project — the free tier is plenty)
+plus one Email/Password user (Authentication → enable the provider → Add
+user). In the Firebase console copy the database host
+(`<project>-default-rtdb.<region>.firebasedatabase.app`); the Web API key
+and host already ship as firmware defaults.
+
+Rules ship as a file — deploy them with the CLI instead of pasting in the
+console (needs `npm i -g firebase-tools`, one time):
+
+```bash
+firebase login
+firebase use --add        # pick your project (alias stays local, gitignored)
+firebase deploy --only database
+```
+
+The committed `database.rules.json` lets the board write only its own
+`/devices/<MAC>` node while you read with any authenticated client:
 
 ```json
 {
@@ -126,11 +138,12 @@ Suggested rules — the board only ever writes its own node, your phone reads:
 }
 ```
 
-(With a database secret the board authenticates via `?auth=`; tighten `.write`
-with `auth.uid` rules if other writers share the project.)
+(The board signs in with an ID token, so `.validate` is enforced on its
+writes too - unlike a database secret, which would bypass the rules.)
 
-From a browser: Settings → Remote Monitoring (host + token, PIN-gated).
-Or over serial: `setcloud <host> <token>` / `clearcloud`. Saving reboots;
+From a browser: Settings → Remote Monitoring (host + account email +
+password, PIN-gated). Or over serial:
+`setcloud <host> <email> <password>` / `clearcloud`. Saving reboots;
 pushes land at `/devices/<MAC>/latest` every 10 s while home WiFi is up.
 The Status line shows the MAC and the last-push age; enabling cloud keeps
 eco off (a napping radio cannot push). Nothing is ever pushed on the

@@ -243,12 +243,13 @@ class State:
         self.station_up = False        # set by `setwifi`, cleared by `clearwifi`
         self.sta_ssid = ""             # the home network this board joins
         self.sta_pass = ""
-        # Remote monitoring mirror. The token is ACCEPTED and recorded in
+        # Remote monitoring mirror. The password is ACCEPTED and recorded in
         # `applied` (so E2E can assert it arrived) but NEVER rendered into the
         # snapshot - exactly like the firmware, which keeps it in NVS only.
         self.cloud_en = False
         self.cloud_host = ""
-        self.cloud_token = ""
+        self.cloud_email = ""
+        self.cloud_pass = ""
         self.cloud_ok = False
         self.cloud_age = -1
         self.cloud_dev = "A1B2C3D4E5F6"
@@ -309,7 +310,8 @@ class State:
                           "ok": bool(self.cloud_ok),
                           "age": self.cloud_age,
                           "dev": self.cloud_dev,
-                          "host": self.cloud_host},
+                          "host": self.cloud_host,
+                          "acct": self.cloud_email},
                 "mcuTemp": 51.2,
                 "eco": False,
                 "time": {"ok": self.time_synced, "age": 0 if self.time_synced else 4294967295},
@@ -452,19 +454,23 @@ class State:
 
             if verb == "setcloud":
                 host = extract_json_string(frame, "host")
-                auth = extract_json_string(frame, "auth") or ""
+                email = extract_json_string(frame, "email")
+                pass_ = extract_json_string(frame, "pass") or ""
                 if host is None or "." not in host:
                     return True, "  Not saved: bad database host.", False
-                if not auth:
-                    return True, "  Not saved: bad auth token.", False
+                if email is None or "@" not in email:
+                    return True, "  Not saved: bad account email.", False
+                if not pass_:
+                    return True, "  Not saved: bad account password.", False
                 self.cloud_en = True
                 self.cloud_host = host
-                self.cloud_token = auth
+                self.cloud_email = email
+                self.cloud_pass = pass_
                 # A push only lands with STA up (STA-only, like the firmware);
                 # the E2E suite always configures the home network first.
                 self.cloud_ok = bool(self.station_up)
                 self.cloud_age = 4 if self.station_up else -1
-                self.applied.append(("setcloud", host, auth))
+                self.applied.append(("setcloud", host, email, pass_))
                 self.rebooted = True
                 self.reboot_reason = "setcloud"
                 return True, ('  Saved. Pushing to "%s" on boot (STA only).'
@@ -473,7 +479,8 @@ class State:
             if verb == "clearcloud":
                 self.cloud_en = False
                 self.cloud_host = ""
-                self.cloud_token = ""
+                self.cloud_email = ""
+                self.cloud_pass = ""
                 self.cloud_ok = False
                 self.cloud_age = -1
                 self.applied.append(("clearcloud",))

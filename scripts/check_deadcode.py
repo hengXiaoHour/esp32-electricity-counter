@@ -232,10 +232,13 @@ def main():
           "hidden and never toggled: " + ", ".join("#" + i for i in dead_hidden))
 
     # --- 6. the files this cleanup deleted must stay deleted -------------
+    # NOTE: firebase.json / database.rules.json / .firebaserc used to be here
+    # (old cloud era). They are back by design - see check_docs.py. Only the
+    # alias (.firebaserc) stays local via .gitignore.
     gone = ["scripts/setup.py", "scripts/deploy.py", "frontend/config.js",
             "frontend/config.example.js", "doc/opencode_agent/memories.json",
             ".workflow/active.json", ".workflow/PLAN.md", ".workflow/RESEARCH.md",
-            "firebase.json", "database.rules.json", ".firebaserc", "tools",
+            "tools",
             "src/sensor", "src/utils/device_id.h", "src/utils/device_id.cpp",
             "src/network/firebase_bridge.cpp", "src/network/firebase_config.h",
             "src/network/ntfy_notifier.cpp", "src/network/ap_portal.h",
@@ -399,7 +402,7 @@ def main():
     # new name, broadcast the old one), and a token variant would push to the
     # wrong database while the UI says "Saved".
     clcpp = strip_cpp(read("src/network/cloud_push.cpp"))
-    post_body = body_of(clcpp, "bool CloudPush::post")
+    post_body = body_of(clcpp, "int CloudPush::postStatus")
     begin_body = body_of(clcpp, "void CloudPush::begin")
     cloud_missing = []
     for what, present in [
@@ -413,7 +416,7 @@ def main():
             # the trailing space - "setcloudX " must not satisfy it.
             ("console dispatch (setcloud)", 'startsWith("setcloud ")' in ch),
             ("console dispatch (clearcloud)", '== "clearcloud"' in ch),
-            ("console help lists setcloud", "setcloud <host> <token>" in ch),
+            ("console help lists setcloud", "setcloud <host> <email> <pass>" in ch),
             ("NVS writer", has("saveFb", nm)),
             ("NVS eraser", has("clearFb", nm)),
             ("NVS gate", has("fbEnabled", nm)),
@@ -422,8 +425,8 @@ def main():
             ("dashboard forget", "cmd: 'clearcloud'" in js),
             ("dashboard panel", 'id="cloudHost"' in read("frontend/index.html")),
             ("begin loads from NVS", bool(begin_body) and "loadFb" in begin_body),
-            ("post sends the loaded token buffer",
-             bool(post_body) and "auth_" in post_body)]:
+            ("post sends the session token buffer (never a constant)",
+             bool(post_body) and "idToken_" in post_body)]:
         if not present:
             cloud_missing.append(what)
     r.add("the cloud monitoring feature is still wired end to end", not cloud_missing,

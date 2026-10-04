@@ -23,6 +23,8 @@ extern "C" {
 
 #define CLOUD_MAX_HOST_LEN 128
 #define CLOUD_MAX_AUTH_LEN 256
+#define CLOUD_MAX_EMAIL_LEN 128
+#define CLOUD_MAX_PASS_LEN 128
 // 12 hex digits, no separators, upper case. NOT NUL-terminated by contract:
 // callers size the buffer CLOUD_DEVICE_ID_LEN+1 and terminate it.
 #define CLOUD_DEVICE_ID_LEN 12
@@ -38,6 +40,36 @@ bool cloud_validateHost(const char *host);
 // bytes (a pasted token with a trailing newline is the classic failure and must
 // be refused at input, not debugged over serial later).
 bool cloud_validateAuth(const char *auth);
+
+// Herd auth (email/password login): the account the board signs in as.
+// Email is loosely shaped (exactly one '@', a dot after it, no spaces -
+// Firebase itself is the real validator); the password rule is only
+// non-empty and bounded, because Firebase passwords may contain spaces and
+// strength was already enforced when the user was created.
+bool cloud_validateEmail(const char *email);
+bool cloud_validatePass(const char *pass);
+
+// Splits `setcloud <host> <email> <password...>` into three. Host and email
+// never contain spaces so they split on whitespace; the password is the
+// REMAINDER of the line (leading separator + trailing whitespace trimmed),
+// so a password with spaces survives. Returns false on missing parts or any
+// overflow (refused, never truncated - same rule as ap_creds_splitArgs).
+// Buffers need CLOUD_MAX_HOST_LEN+1 / CLOUD_MAX_EMAIL_LEN+1 /
+// CLOUD_MAX_PASS_LEN+1 bytes.
+bool cloud_splitArgs3(const char *args, char *host, size_t hostLen,
+                      char *email, size_t emailLen, char *pass, size_t passLen);
+
+// base64url decoding (JWT segments: A–Z a–z 0–9 - _ , no padding) for the
+// `cloud diag` command, which proves WHAT token the board holds (length +
+// audience claim) without ever printing the token. Returns decoded length,
+// or -1 on bad input/overflow. out needs ~4/3 of the input length.
+int cloud_b64urlDecode(const char *in, char *out, size_t outLen);
+
+// Extracts the "aud" (audience = project id) claim from a JWT's payload
+// WITHOUT verifying anything: this is a diagnostic readout, not auth.
+// Returns false unless the token has three dot-separated segments and the
+// payload contains a string "aud". out needs 64+ bytes for real audiences.
+bool cloud_jwtAud(const char *jwt, char *out, size_t outLen);
 
 // "AA:BB:CC:DD:EE:FF" (any case) -> "AABBCCDDEEFF". Returns false unless the
 // input is exactly 17 chars of hex pairs separated by colons; out needs

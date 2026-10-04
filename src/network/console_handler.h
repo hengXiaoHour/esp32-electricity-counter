@@ -10,6 +10,7 @@ class Buzzer;
 class WiFiManager;
 class OTAHandler;
 class StatusLED;
+class CloudPush;
 
 // Executes textual diagnostic commands (the serial console vocabulary) and
 // captures their output into a String instead of writing to Serial. This lets
@@ -27,7 +28,8 @@ public:
 
   void begin(NVSManager *nvs, PowerCalculator *powerCalc, SystemData *sysData,
              SemaphoreHandle_t *dataMutex, Buzzer *buzzer, LimitManager *limitMgr,
-             WiFiManager *wifiMgr, OTAHandler *otaHandler, StatusLED *statusLed);
+             WiFiManager *wifiMgr, OTAHandler *otaHandler, StatusLED *statusLed,
+             CloudPush *cloudPush);
 
   // Runs one command line, appending its output (newline separated) to `out`.
   // Unknown commands append "Unknown command. Type 'help'.".
@@ -78,6 +80,7 @@ private:
   WiFiManager *wifiMgr;
   OTAHandler *otaHandler;
   StatusLED *statusLed;
+  CloudPush *cloud;
   bool ready;
 
   // Deferred command (blocking/destructive — runs from loop()).
@@ -108,6 +111,7 @@ private:
   void cmdSetWifi(const String &args, String &out);
   void cmdSetCloud(const String &args, String &out);
   void cmdClearCloud(String &out);
+  void cmdCloudDiag(String &out);
   void cmdSetAp(const String &args, String &out);
   void cmdResetAp(String &out);
   void cmdLed(const String &args, String &out);

@@ -20,6 +20,7 @@ Usage:  python3 scripts/check_docs.py
 Exit 0 = every claim holds.
 """
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -283,15 +284,17 @@ def main():
           "device_id" not in strip_comments(nvs).lower() and
           "setdevice" not in js.lower(),
           "a hand-typed id is back")
-    c.add("the token never reaches the dashboard snapshot",
-          '\\"auth\\"' not in sysjson,
-          "auth material in the wire format")
+    c.add("the password never reaches the dashboard snapshot",
+          '\\"auth\\"' not in sysjson and '\\"pass\\"' not in sysjson,
+          "credential material in the wire format")
     c.add("the host IS published (not secret) so the panel shows it",
           '\\"host\\"' in sysjson and "appendJsonEscaped(json, host)" in sysjson,
           "panel cannot show what is configured")
     c.add("both input verbs validate shape through the host-tested helpers",
-          "cloud_validateHost" in ch and "cloud_validateAuth" in ch and
-          "cloud_validateHost" in cmd and "cloud_validateAuth" in cmd,
+          "cloud_validateHost" in ch and "cloud_validateEmail" in ch and
+          "cloud_validatePass" in ch and "cloud_splitArgs3" in ch and
+          "cloud_validateHost" in cmd and "cloud_validateEmail" in cmd and
+          "cloud_validatePass" in cmd,
           "a verb trusts raw input")
     c.add("the shape helpers are unit-tested and the suite runs in verify_all",
           "test_cloud_cfg" in verify_sh and "CLOUD_DEVICE_ID_LEN" in cl_test,
@@ -299,20 +302,61 @@ def main():
     c.add("cloud counts as watched, so cloud-on means eco-off",
           "cloudPush.wantsRadio()" in ino,
           "eco can nap a radio that must push")
+    # Session hygiene: the ID token lives in RAM and is refreshed, never
+    # stored. A prefs.putString in the pusher means the session leaked to
+    # flash; a missing refresh/signIn means the login cannot survive an hour.
+    _sess = strip_comments(cl_cpp)
+    c.add("the session never reaches flash (re-login on boot instead)",
+          "putString" not in _sess and "putBytes" not in _sess,
+          "the pusher persists session material")
+    c.add("expiry refreshes and 401 re-logs-in (one retry, never a loop)",
+          "refresh()" in _sess and "signIn()" in _sess and "401" in _sess,
+          "the session cannot survive its first hour")
+    # ...but "present in the file" is not "wired": 401 also appears in a log
+    # line and signIn() in two places, so deleting any one path still passes
+    # the rule above (proven by mutation). Pin each path to its function body.
+    _ensure = re.search(r"bool CloudPush::ensureLogin\(\) \{([\s\S]*?)\n\}\n", cl_cpp)
+    _post = re.search(r"bool CloudPush::post\(const String &body\) \{([\s\S]*?)\n\}\n", cl_cpp)
+    _ensure_b = strip_comments(_ensure.group(1)) if _ensure else ""
+    _post_b = strip_comments(_post.group(1)) if _post else ""
+    c.add("ensureLogin falls back to a full sign-in, not just a refresh",
+          "refresh()" in _ensure_b and "signIn()" in _ensure_b,
+          "first boot can never sign in")
+    c.add("a rejected push re-logs-in once inside post()",
+          re.search(r"if\s*\(\s*code\s*==\s*401\s*\)", _post_b) is not None and
+          "signIn()" in _post_b,
+          "a dead token is never replaced")
+    c.add("exactly one retry per push (initial + one, never a loop)",
+          _sess.count("postStatus(") == 3,  # definition + initial + retry
+          "postStatus call count moved off 3")
     # The TLS stack put classic at 103% of the default 1.2 MB app slot;
     # min_spiffs (1.9 MB, OTA kept) is the documented scheme. Reverting the
     # README line to the bare FQBN silently unbuilds the classic board.
     c.add("README pins min_spiffs for the classic ESP32 build",
           "esp32:esp32:esp32:PartitionScheme=min_spiffs" in rdme,
           "classic line reverted to the default scheme (103% overflow)")
-    # The token must never be logged: pull every DEBUG_LOG/STATUS_LOG call out
-    # of the pusher and assert none of them formats auth_. A substring rule on
-    # the whole file cannot say this - auth_ legitimately EXISTS in the file
-    # (it is stored and sent inside TLS), just never in a log line.
+    # The password and both session tokens must never be logged: pull every
+    # DEBUG_LOG/STATUS_LOG call out of the pusher and assert none of them
+    # formats one. A substring rule on the whole file cannot say this - the
+    # buffers legitimately EXIST in the file (stored, sent inside TLS), just
+    # never in a log line. The account email MAY be logged (identifier, and
+    # the user typed it themselves).
     _log_calls = re.findall(r"(?:DEBUG_LOG|STATUS_LOG)\(([\s\S]*?)\);", cl_cpp)
-    c.add("the token is never logged (only host/status lines)",
-          _log_calls and all("auth_" not in call for call in _log_calls),
-          "a log line formats the token")
+    _secret_names = ("pass_", "idToken_", "refreshToken_")
+    c.add("password and session tokens are never logged (only host/status/email)",
+          _log_calls and all(not any(s in call for s in _secret_names)
+                             for call in _log_calls),
+          "a log line formats a credential")
+    # Same for the diag readout: it may print LENGTH and aud, never bytes.
+    # memcpy(tok, idToken_) is the sanctioned copy (for strlen + aud parse);
+    # any consoleAppendf/out-formatting of the buffers is a leak.
+    _diag = re.search(r"void CloudPush::diag\(String &out[^{]*\{([\s\S]*?)\n\}\n", cl_cpp)
+    _diag_b = strip_comments(_diag.group(1)) if _diag else ""
+    _diag_outs = re.findall(r"consoleAppendf\(out,([\s\S]*?)\);", _diag_b)
+    c.add("cloud diag prints length/audience, never token bytes",
+          _diag is not None and _diag_outs and
+          all(not any(s in call for s in _secret_names) for call in _diag_outs),
+          "diag() formats credential bytes")
 
     # --- five channels means five, everywhere ---------------------------------
     # The 6->5 migration left a channels[5] out-of-bounds read in the status
@@ -569,7 +613,11 @@ def main():
           "mixed content" in arch)
 
     # --- the files the migration deleted must really be gone ------------
-    gone = ["firebase.json", "database.rules.json", ".firebaserc", "tools",
+    # NOTE: firebase.json / database.rules.json / .firebaserc used to be on
+    # this list (old cloud era). They are back by design: the rules ship as a
+    # file + `firebase deploy --only database` instead of console clicking.
+    # Only the alias (.firebaserc) stays local - see .gitignore.
+    gone = ["tools",
             "frontend/config.js", "src/sensor", "src/utils/device_id.h",
             "src/network/firebase_bridge.cpp", "src/network/firebase_config.h",
             "src/network/ntfy_notifier.cpp", "src/network/ap_portal.h",
@@ -577,6 +625,30 @@ def main():
     still = [g for g in gone if (ROOT / g).exists()]
     c.add("every file the migration deleted is actually gone", not still,
           "still present: %s" % still)
+
+    # --- the committed RTDB rules must be valid and match the payload ------
+    # Rules deploy by CLI, not console clicking, so a typo here ships to the
+    # database. Assert shape, not vibes: parses as JSON, guards devices/$dev,
+    # and requires the fields the pusher actually sends (dev/epoch/uptime/
+    # rssi/v/ch - see CloudPush::snapshot). The .validate sits at
+    # devices/$dev/latest (NOT $dev): writes land at .../latest.json, so a
+    # validator one level up sees {latest: {...}} and rejects everything -
+    # shipped exactly that bug once, and every push 401d.
+    try:
+        _rules = json.loads(read("database.rules.json"))
+        _fb = json.loads(read("firebase.json"))
+        _dev = _rules.get("rules", {}).get("devices", {}).get("$dev", {})
+        _need = {"dev", "epoch", "uptime", "rssi", "v", "ch"}
+        _valid = _dev.get("latest", {}).get(".validate", "")
+        _rules_ok = (".write" in _dev and ".read" in _dev and
+                     _need <= set(re.findall(r"'(\w+)'", _valid)) and
+                     _fb.get("database", {}).get("rules") == "database.rules.json")
+    except (ValueError, AttributeError):
+        _rules_ok = False
+        _dev = {}
+    c.add("database.rules.json is valid and guards devices/$dev with the payload fields",
+          _rules_ok,
+          "$dev rule=%s" % (_dev,))
 
     # --- the gates the docs point at must exist ------------------------
     for s in ["scripts/verify_all.sh", "scripts/embed_web.py",

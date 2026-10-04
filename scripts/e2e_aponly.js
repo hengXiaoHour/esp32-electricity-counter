@@ -586,11 +586,11 @@ function check(name, cond, detail) {
         'hint = "' + (staHint || '').slice(0, 90) + '"');
 
   // ---------------------------------------------------------------------
-  // Remote Monitoring (cloud) panel.
+  // Remote Monitoring (cloud, herd login).
   //
-  // Push-only realtime-DB mirror: the panel sends host+token, the snapshot
-  // sends back everything EXCEPT the token. The token must never appear in
-  // any board frame - that is the property this block guards.
+  // Email/password sign-in: the panel sends host+email+password, the snapshot
+  // sends back everything EXCEPT the password. The password must never appear
+  // in any board frame - that is the property this block guards.
   console.log('\n== Remote Monitoring (cloud) ==');
   check('the cloud panel exists', await page.locator('#cloudSaveBtn').count() === 1);
   const beforeCloud = await page.evaluate(() => window.__wsSent.length);
@@ -601,35 +601,39 @@ function check(name, cond, detail) {
         (await page.evaluate(() => window.__wsSent.length)) === beforeCloud);
 
   await page.fill('#cloudHost', 'demo-project.firebaseio.com');
-  await page.fill('#cloudAuth', 'SECRET-TOKEN-123');
+  await page.fill('#cloudEmail', 'board@esp32.local');
+  await page.fill('#cloudAuth', 'SECRET-PASS-123');
   await page.click('#cloudSaveBtn');
   await page.waitForTimeout(600);
   const cloudFrames = (await page.evaluate((n) => window.__wsSent.slice(n), beforeCloud))
     .filter(f => f.indexOf('"setcloud"') >= 0);
   check('the panel puts a setcloud frame on the wire', cloudFrames.length >= 1);
   const cloudFrame = cloudFrames[cloudFrames.length - 1] || '';
-  check('...carrying host and token',
+  check('...carrying host, email and password',
         cloudFrame.indexOf('"host":"demo-project.firebaseio.com"') >= 0 &&
-        cloudFrame.indexOf('"auth":"SECRET-TOKEN-123"') >= 0, cloudFrame);
+        cloudFrame.indexOf('"email":"board@esp32.local"') >= 0 &&
+        cloudFrame.indexOf('"pass":"SECRET-PASS-123"') >= 0, cloudFrame);
   check('...and the admin PIN', /"pin":"1234"/.test(cloudFrame), cloudFrame);
-  check('the token box is cleared afterwards (write-only)',
+  check('the password box is cleared afterwards (write-only)',
         (await page.inputValue('#cloudAuth')) === '');
 
-  // The board applied it: the snapshot now reports pushing under the MAC id,
-  // and NO board frame anywhere carries the token back.
+  // The board applied it: the snapshot now reports pushing under the MAC id
+  // with the account email, and NO board frame anywhere carries the password.
   await page.waitForTimeout(1200);
   const cloudStatus = await page.locator('#cloudStatus').textContent();
   check('the status line reports pushing with the device id',
         /pushing/i.test(cloudStatus) && /A1B2C3D4E5F6/.test(cloudStatus),
         'status = "' + cloudStatus + '"');
   const boardSoFar = await page.evaluate(() => window.__wsSeen.slice());
-  const tokenLeaks = boardSoFar.filter(m => JSON.stringify(m).indexOf('SECRET-TOKEN-123') >= 0);
-  check('the token never comes back in any board frame', tokenLeaks.length === 0,
-        'leaking frames: ' + tokenLeaks.length);
+  const passLeaks = boardSoFar.filter(m => JSON.stringify(m).indexOf('SECRET-PASS-123') >= 0);
+  check('the password never comes back in any board frame', passLeaks.length === 0,
+        'leaking frames: ' + passLeaks.length);
   const cloudSnap = boardSoFar.filter(m => m.type !== 'console' && m.type !== 'auth' && 'cloud' in m).pop();
-  check('the board publishes the database host for the panel',
-        cloudSnap && cloudSnap.cloud && cloudSnap.cloud.host === 'demo-project.firebaseio.com',
-        'host=' + (cloudSnap && cloudSnap.cloud ? JSON.stringify(cloudSnap.cloud.host) : 'none'));
+  check('the board publishes host and account for the panel',
+        cloudSnap && cloudSnap.cloud &&
+        cloudSnap.cloud.host === 'demo-project.firebaseio.com' &&
+        cloudSnap.cloud.acct === 'board@esp32.local',
+        'cloud=' + (cloudSnap && cloudSnap.cloud ? JSON.stringify(cloudSnap.cloud) : 'none'));
 
   // PIN gate holds for the new verbs too: without a PIN the board refuses.
   // The refusal shape is {"type":"auth","ok":false} - see mock_device.py's
@@ -639,7 +643,7 @@ function check(name, cond, detail) {
   const noPinCloud = await page.evaluate(() => new Promise((resolve) => {
     const s = new WebSocket('ws://' + location.host + '/ws');
     const timer = setTimeout(() => { try { s.close(); } catch (x) {} resolve('TIMEOUT'); }, 3000);
-    s.onopen = () => s.send(JSON.stringify({ cmd: 'setcloud', host: 'x.firebaseio.com', auth: 'y' }));
+    s.onopen = () => s.send(JSON.stringify({ cmd: 'setcloud', host: 'x.firebaseio.com', email: 'b@e.local', pass: 'y' }));
     s.onmessage = (ev) => {
       try {
         const d = JSON.parse(ev.data);

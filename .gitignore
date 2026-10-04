@@ -60,3 +60,7 @@ tests/
 .workflow/active.json
 .playwright-mcp/
 node_modules/
+# firebase CLI project alias (per-user, per-machine): created by
+# `firebase use --add`. The rules themselves ARE committed
+# (database.rules.json + firebase.json); only the alias is local.
+.firebaserc
