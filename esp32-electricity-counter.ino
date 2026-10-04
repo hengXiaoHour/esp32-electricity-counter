@@ -291,12 +291,12 @@ void networkTask(void *pvParameters) {
       if (g_statusStream && millis() - lastStatusPrint >= 2000) {
         lastStatusPrint = millis();
         if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-          Serial.printf("[status] up %lus | AP clients %d | ws %d | W [%.0f %.0f %.0f %.0f %.0f %.0f]\n",
+          Serial.printf("[status] up %lus | AP clients %d | ws %d | W [%.0f %.0f %.0f %.0f %.0f]\n",
             (unsigned long)(millis() / 1000), wifiMgr.clientCount(),
             (int)wsServer.clientCount(),
             systemData.channels[0].activePower, systemData.channels[1].activePower,
             systemData.channels[2].activePower, systemData.channels[3].activePower,
-            systemData.channels[4].activePower, systemData.channels[5].activePower);
+            systemData.channels[4].activePower);
           xSemaphoreGive(dataMutex);
         }
       }
@@ -392,7 +392,7 @@ void setup() {
 
   DEBUG_LOG("\n");
   DEBUG_LOG("  =============================================\n");
-  DEBUG_LOG("   ESP32-S3 6-Channel Electricity Counter\n");
+  DEBUG_LOG("   ESP32-S3 5-Channel Electricity Counter\n");
   DEBUG_LOG("  =============================================\n");
   // %u, not %d: getFlashChipSize() is uint32_t and %d expects int. This pair of
   // -Wformat warnings had been sitting in the build log since before the

@@ -7,9 +7,9 @@
 // boot prints only the WiFi/server block.
 //
 // STATUS_LOG: operational transitions worth watching live — eco sleep,
-// cloud viewer presence, bridge start, rollover, auto-zero, ntfy pushes.
+// cloud push health, rollover, auto-zero.
 // DEBUG_LOG: developer diagnostics — NVS save confirmations, [CMD] traces,
-// Firebase/NTFY error details, boot calibration dumps.
+// push refusal lines, boot calibration dumps.
 extern bool g_statusStream;
 extern bool g_debugStream;
 

@@ -2,7 +2,7 @@
 
 ## 1. What is it?
 
-A standalone box that watches 6 AC circuits at once — current, voltage, power,
+A standalone box that watches 5 AC circuits at once — current, voltage, power,
 power factor and monthly kWh per channel — and shows it all on a live web
 dashboard served by the board itself. No cloud account, no router, no internet:
 the ESP32 **is** the WiFi network and the web server.
@@ -32,7 +32,7 @@ push health but never the token.
 
 | Component | Pins |
 |---|---|
-| CT current sensors ×6 (SCT-013-100) | GPIO 7, 5, 6, 8, 4, 2 |
+| CT current sensors ×5 (SCT-013-100) | GPIO 7, 5, 6, 8, 4 |
 | Voltage sensor (ZMPT101B) | GPIO 1 |
 | Active buzzer | GPIO 13 |
 | Status LED (plain / WS2812 RGB, CLI-selectable) | GPIO 48 |

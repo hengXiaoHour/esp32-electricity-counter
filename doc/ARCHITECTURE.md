@@ -1,4 +1,4 @@
-# Architecture — ESP32-S3 6-Channel AC Electricity Counter
+# Architecture — ESP32-S3 5-Channel AC Electricity Counter
 
 This file is the canonical reference for the project: **what the structure is**
 (Part A, locked) and **how it actually works** (Part B, derived from the code).
@@ -186,7 +186,7 @@ sent with every mutating frame rather than negotiated once (see B.9).
 
 | Signal | Pins | Device |
 |---|---|---|
-| CT current ch1–ch6 | GPIO7, 5, 6, 8, 4, 2 | SCT-013-100 |
+| CT current ch1–ch5 | GPIO7, 5, 6, 8, 4 | SCT-013-100 |
 | Voltage reference | GPIO1 | ZMPT101B |
 | Active buzzer | GPIO13 | — |
 | RGB LED | GPIO48 | WS2812 (R/G physically swapped → compensated in software) |

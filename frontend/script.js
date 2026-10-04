@@ -152,7 +152,6 @@ function toggleSidebar() {
 }
 
 // ============ Connection ============
-// ============ Connection ============
 // There is nothing to choose any more. The page is SERVED BY the board, so
 // location.host is the board - there is no IP to type, no mode dropdown, and
 // no cloud to fall back to. Connect, or do not.

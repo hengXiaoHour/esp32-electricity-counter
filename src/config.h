@@ -67,9 +67,10 @@
 // ==============================
 // Firmware Version
 // ==============================
-// 3.0.0 = AP-only architecture: the board serves its own dashboard from
-// flash, lends its clock from the browser, and gates every mutating command
-// behind an admin PIN. No station interface, no cloud, no ntfy.
+// 3.0.0 = STA-first architecture: the board joins home WiFi (fallback AP
+// only), serves its own dashboard from flash, disciplines its clock by NTP
+// (browser lend on the fallback AP), pushes an opt-in cloud mirror, and gates
+// every mutating command behind an admin PIN.
 #define FIRMWARE_VERSION "3.0.0"
 
 // ==============================

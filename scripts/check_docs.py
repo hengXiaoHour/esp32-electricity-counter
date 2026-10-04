@@ -314,7 +314,17 @@ def main():
           _log_calls and all("auth_" not in call for call in _log_calls),
           "a log line formats the token")
 
-    # --- eco mode: quiet radio when nobody watches -------------------------
+    # --- five channels means five, everywhere ---------------------------------
+    # The 6->5 migration left a channels[5] out-of-bounds read in the status
+    # print plus "6-Channel" claims across the docs. Count-proof: assert the
+    # absence, not a comment saying so.
+    c.add("no sixth-channel residue: channels[5] appears nowhere in firmware",
+          "channels[5]" not in ino and "channels[5]" not in strip_comments(read("src/network/system_json.cpp")),
+          "a ch6 index survived the 5-channel migration")
+    c.add("the docs count five channels, not six",
+          "6-Channel" not in ino and "6-Channel" not in rdme and
+          "6-Channel" not in arch and "ch1–ch6" not in arch,
+          "a 6-channel claim is back")
     c.add("presence is WebSocket viewers (OTA counts - flashing needs link)",
           "wsServer.clientCount() > 0 || otaHandler.isInProgress()" in ino)
     c.add("eco parks the modem only in STA-only mode, never under the AP",
