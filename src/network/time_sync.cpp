@@ -39,27 +39,91 @@ void TimeSync::begin() {
                (long)tv.tv_sec, (unsigned)(elapsedMs / 1000));
   } else {
     synced = false;
-    STATUS_LOG("  [TIME] no saved clock - waiting for a dashboard to connect\n");
+    STATUS_LOG("  [TIME] no saved clock - waiting for NTP (STA) or a dashboard\n");
   }
 }
 
-bool TimeSync::setTimeFromBrowser(int64_t epochSeconds) {
+void TimeSync::beginNTP() {
+  if (ntpStarted) return;
+  ntpStarted = true;
+  // UTC, no DST: the board works in epoch throughout and the browser renders
+  // local time, so no timezone is configured here. Three servers so one dead
+  // host does not silence the sync.
+  configTime(0, 0, "pool.ntp.org", "time.nist.gov", "time.google.com");
+  STATUS_LOG("  [TIME] NTP started - clock will follow the internet\n");
+}
+
+void TimeSync::pollNTP() {
+  if (!ntpStarted) return;
+  time_t now = time(nullptr);
+  if (now < (time_t)PLAUSIBLE_MIN_EPOCH || now > (time_t)PLAUSIBLE_MAX_EPOCH) {
+    return;  // SNTP has not written yet (or the link just dropped)
+  }
+  if (!synced) {
+    // First plausible reading: full accept path (jump check is skipped while
+    // unsynced, exactly like the first browser frame).
+    acceptEpoch((int64_t)now, "NTP");
+    return;
+  }
+  // Already synced: SNTP disciplines the clock in the background, so just
+  // re-anchor the age tracker about once a minute. Without this the dashboard
+  // would show an ever-growing "set, Ns ago" while the clock is in fact live.
+  // No RTC write here - the minute-level freshness is not worth the flash wear
+  // on top of what acceptEpoch already persisted.
+  int64_t expected = lastSyncEpoch + (int64_t)(millis() - lastSyncMillis) / 1000;
+  int64_t drift = (int64_t)now - expected;
+  if (drift > 90 || drift < -90) {
+    // The live clock disagrees with our track by more than SNTP would ever
+    // allow: something else moved it (or it moved). Do NOT silently adopt it -
+    // leave the tracker alone so the age indicator goes stale honestly.
+    return;
+  }
+  if ((int64_t)now - lastSyncEpoch >= 60) {
+    lastSyncEpoch = (int64_t)now;
+    lastSyncMillis = millis();
+  }
+}
+
+bool TimeSync::acceptEpoch(int64_t epochSeconds, const char *source) {
   if (epochSeconds < PLAUSIBLE_MIN_EPOCH || epochSeconds > PLAUSIBLE_MAX_EPOCH) {
-    DEBUG_LOG("  [TIME] rejected implausible browser clock: %lld\n",
+    DEBUG_LOG("  [TIME] rejected implausible %s clock: %lld\n", source,
               (long long)epochSeconds);
     return false;
   }
 
-  // Anti-jitter: a phone's clock is within seconds of ours. A frame that
-  // disagrees by more than MAX_JUMP_SECONDS is a bug or an attack, and
-  // accepting it could move the billing month.
+  // Anti-jitter, shared by both sources: a correct clock is within seconds of
+  // ours. A value that disagrees by more than MAX_JUMP_SECONDS is a bug or an
+  // attack, and accepting it could move the billing month.
   if (synced) {
     int64_t drift = epochSeconds - (lastSyncEpoch + (millis() - lastSyncMillis) / 1000);
     if (drift > MAX_JUMP_SECONDS || drift < -MAX_JUMP_SECONDS) {
-      DEBUG_LOG("  [TIME] rejected browser clock %llds away from ours\n",
+      DEBUG_LOG("  [TIME] rejected %s clock %llds away from ours\n", source,
                 (long long)(drift < 0 ? -drift : drift));
       return false;
     }
+  }
+
+  lastSyncEpoch = epochSeconds;
+  lastSyncMillis = millis();
+  synced = true;
+
+  // Persist for the next boot. RTC memory, so this survives ESP.restart().
+  rtcLastEpoch = epochSeconds;
+  rtcLastMillis = lastSyncMillis;
+  rtcValid = 1;
+
+  STATUS_LOG("  [TIME] clock set from %s: epoch %ld\n", source, (long)epochSeconds);
+  return true;
+}
+
+bool TimeSync::setTimeFromBrowser(int64_t epochSeconds) {
+  // The browser path SETS the clock (SNTP is absent in fallback-AP mode), then
+  // records through the shared gate. The NTP path never sets - SNTP owns the
+  // system time there - it only records via pollNTP().
+  if (epochSeconds < PLAUSIBLE_MIN_EPOCH || epochSeconds > PLAUSIBLE_MAX_EPOCH) {
+    DEBUG_LOG("  [TIME] rejected implausible browser clock: %lld\n",
+              (long long)epochSeconds);
+    return false;
   }
 
   struct timeval tv;
@@ -71,18 +135,12 @@ bool TimeSync::setTimeFromBrowser(int64_t epochSeconds) {
   }
 
   bool moved = (time(nullptr) != (time_t)epochSeconds);
-  lastSyncEpoch = epochSeconds;
-  lastSyncMillis = millis();
-  synced = true;
-
-  // Persist for the next boot. RTC memory, so this survives ESP.restart().
-  rtcLastEpoch = epochSeconds;
-  rtcLastMillis = lastSyncMillis;
-  rtcValid = 1;
-
-  STATUS_LOG("  [TIME] clock set from dashboard: epoch %ld (%s)\n",
-             (long)epochSeconds, moved ? "adjusted" : "already correct");
-  return true;
+  bool ok = acceptEpoch(epochSeconds, "dashboard");
+  if (ok && !moved) {
+    STATUS_LOG("  [TIME] dashboard clock already correct: epoch %ld\n",
+               (long)epochSeconds);
+  }
+  return ok;
 }
 
 uint32_t TimeSync::secondsSinceSync() const {

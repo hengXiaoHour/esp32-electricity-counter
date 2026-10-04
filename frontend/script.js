@@ -49,10 +49,16 @@ function showInstallRow() {
 }
 
 function hideInstallRow() {
-  const row = document.getElementById('installRow');
-  if (row) row.classList.add('hidden');
-  const h = document.getElementById('installHint');
-  if (h) h.classList.add('hidden');
+  // Two rows show the button: the connect panel (pre-connect) and Settings
+  // (post-connect, where the connect panel is hidden). Both go when installed.
+  for (const id of ['installRow', 'installRow2']) {
+    const row = document.getElementById(id);
+    if (row) row.classList.add('hidden');
+  }
+  for (const id of ['installHint', 'installHint2']) {
+    const h = document.getElementById(id);
+    if (h) h.classList.add('hidden');
+  }
 }
 
 window.addEventListener('beforeinstallprompt', (e) => {
@@ -77,8 +83,15 @@ function promptInstall() {
     });
     return;
   }
-  // Desktop: beforeinstallprompt doesn't fire on desktop Chrome — show guidance.
-  const h = document.getElementById('installHint');
+  // No prompt available - normal on a plain unencrypted (http) board address,
+  // browsers never fire beforeinstallprompt. Toggle the manual-steps hint
+  // nearest to the button that was pressed (connect panel or Settings).
+  const h2 = document.getElementById('installHint2');
+  const h1 = document.getElementById('installHint');
+  // Prefer the Settings hint when the dashboard is up (connect panel hidden),
+  // otherwise the connect-panel one.
+  const appVisible = !document.getElementById('app').classList.contains('hidden');
+  const h = (appVisible && h2) ? h2 : h1;
   if (h) h.classList.toggle('hidden');
 }
 
@@ -354,17 +367,26 @@ function verifyPin(pin) {
 }
 
 // Changing the PIN requires the CURRENT one - the board enforces that, since
-// set_pin goes through the same gate as every other mutation.
+// set_pin goes through the same gate as every other mutation. The new PIN must
+// be typed TWICE: a single box turns one typo into a lockout (the board would
+// happily save the mistyped value and the old PIN would stop working).
 function changePin() {
   if (!requirePin()) return Promise.resolve(false);
   const input = document.getElementById('pinNew');
+  const confirm = document.getElementById('pinConfirm');
   const val = (input.value || '').trim();
+  const again = (confirm ? confirm.value : '').trim();
   if (val.length < 4 || val.length > 16) {
     showToast('PIN must be 4-16 characters');
     return Promise.resolve(false);
   }
+  if (val !== again) {
+    showToast('New PIN entries do not match');
+    return Promise.resolve(false);
+  }
   return sendCommand({ cmd: 'set_pin', pin_new: val }).then(() => {
     input.value = '';
+    if (confirm) confirm.value = '';
     // Keep the session usable without re-prompting.
     adminPin = val;
     pinCache(val);
@@ -513,10 +535,12 @@ function setConnectStatus(msg, cls) {
 }
 
 // ============ Clock ============
-// The board has no internet and therefore no NTP. It borrows this browser's
-// clock (sendTime, on connect and every 10 min) and reports back whether it
-// has a valid one. Until it does, the monthly rollover is dormant - so this
-// indicator is not cosmetic, it is telling you whether billing will reset.
+// The board's clock, and where it came from. In STA mode it follows internet
+// NTP on its own (sendTime below is then just a top-up); in fallback-AP mode
+// there is no internet, so it borrows this browser's clock instead (on connect
+// and every 10 min). Either way it reports back whether it has a valid one.
+// Until it does, the monthly rollover is dormant - so this indicator is not
+// cosmetic, it is telling you whether billing will reset.
 function renderClock(data) {
   const el = document.getElementById('timeStatus');
   if (!el) return;
@@ -711,6 +735,20 @@ function updateDashboard(data) {
     staPassEl.placeholder = data.staIsDefault
       ? 'your home WiFi password'
       : 'unchanged (saved — type to replace)';
+  }
+
+  // MCU temperature + power state (Connection panel). Null means this chip has
+  // no on-die sensor - show a dash, never a fake 0.0°C. Classic ESP32 sensors
+  // read several degrees high uncalibrated, so the panel says approximate.
+  const mcuEl = document.getElementById('mcuTemp');
+  if (mcuEl) {
+    mcuEl.textContent = (typeof data.mcuTemp === 'number')
+      ? data.mcuTemp.toFixed(1) + ' °C (approx)' : '--';
+  }
+  const ecoEl = document.getElementById('ecoStatus');
+  if (ecoEl) {
+    ecoEl.textContent = data.eco ? 'ECO — nobody watching' : 'Full';
+    ecoEl.style.color = data.eco ? 'var(--muted, #8a8a8a)' : '';
   }
 
   // System status LED

@@ -157,10 +157,13 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
 .conn-txt { font-size: 0.72rem; color: var(--ok); }
 .wifi { width: 18px; height: 18px; color: var(--ok); }
 .wifi .bar { opacity: 0.18; }
-/* Only two levels exist now. rssiLevel() and its lv1/lv3/lv4 rules went with
-   the STA interface: an access point has no RSSI to report, so updateWifiIcon()
-   emits lv2 when the AP is up and lv0 when it is not. */
+/* Three STA levels by RSSI (see updateWifiIcon), plus the AP fallback which has
+   no RSSI and shows a fixed lv2. Every lv class the JS can emit MUST have a rule
+   here: an unknown level renders all bars dim, which is exactly the "icon stuck
+   empty while STA is connected" bug that removed lv1/lv3 would bring back. */
+.wifi.lv1 .bar:nth-child(-n+1) { opacity: 1; }
 .wifi.lv2 .bar:nth-child(-n+2) { opacity: 1; }
+.wifi.lv3 .bar { opacity: 1; }
 .wifi.lv0 { color: var(--text-3); }
 .wifi.disconnected { color: var(--text-3); }
 .wifi .bar { transition: opacity 0.3s ease; }

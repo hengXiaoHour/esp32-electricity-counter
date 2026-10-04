@@ -179,8 +179,10 @@ void LimitManager::logEnergyWrite(uint8_t ch, float v, const char *src) {
 }
 
 void LimitManager::logForensicEvent(uint8_t ch, ChannelStatus s, const char *msg, float v) {
+  // Kept as the name every call site uses; persistence now lives in logEvent
+  // itself, so there is no longer a RAM-only vs persisted distinction to get
+  // wrong at a new call site.
   logEvent(ch, s, msg, v);
-  persistForensic();
 }
 
 void LimitManager::persistForensic() {
@@ -192,6 +194,10 @@ void LimitManager::persistForensic() {
   // Ring buffer: index 0 is oldest, eventCount-1 newest (see logEvent).
   const Event *tail = &sysData->events[total - keep];
   nvs->saveForensicEvents(tail, keep);
+  // Committed HERE, not at some later coincidental save: a trip followed by a
+  // power cut must still leave its event in flash. Caller holds dataMutex (all
+  // logEvent paths do), so this commit cannot race the sensorTask save.
+  nvs->commit();
 }
 
 void LimitManager::logEvent(uint8_t ch, ChannelStatus s, const char *msg, float v) {
@@ -214,4 +220,7 @@ void LimitManager::logEvent(uint8_t ch, ChannelStatus s, const char *msg, float 
     ev.value = v;
     snprintf(ev.message, EVENT_MSG_LEN, "%s", msg);
   }
+  // Every event lands in flash, not just trips: the RAM ring is wiped by any
+  // reboot, and a power cut must not erase the last thing the board saw.
+  persistForensic();
 }

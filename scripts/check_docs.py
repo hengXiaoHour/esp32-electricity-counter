@@ -85,9 +85,14 @@ def main():
     header = read("src/network/web_assets.h")
     js = read("frontend/script.js")
     html = read("frontend/index.html")
+    css = read("frontend/style.css")
     sw = read("frontend/sw.js")
     sysjson = read("src/network/system_json.cpp")
     json_test = read("scripts/test_json_escape.c")
+    ts_h = read("src/network/time_sync.h")
+    ts_cpp = read("src/network/time_sync.cpp")
+    lm = read("src/core/limit_manager.cpp")
+    lm_h = read("src/core/limit_manager.h")
 
     # --- task layout ---------------------------------------------------
     task_calls = ino.count("xTaskCreatePinnedToCore")
@@ -173,6 +178,98 @@ def main():
     c.add("a prolonged STA loss brings the fallback AP up",
           _fb("lost for 30s"),
           "loop-loss path logs but never calls startFallbackAP()")
+
+    # --- LED means one thing in every radio state --------------------------
+    # Blink = OTA, solid = no home network, off = idling on STA. The old rule
+    # (solid while an AP client watched) left the LED ON during every normal
+    # STA session, which is exactly the complaint this replaces.
+    _led = re.search(r"static void updateLED\(\) \{([\s\S]*?)\n\}", ino)
+    _led_body = _led.group(1) if _led else ""
+    c.add("OTA blinks the LED",
+          "otaHandler.isInProgress()" in _led_body and "LED_BLINK_YELLOW" in _led_body)
+    c.add("no home network lights the LED solid",
+          "!wifiMgr.stationUp()" in _led_body and "LED_SOLID_RED" in _led_body)
+    c.add("a connected STA idles the LED off (no client-count rule)",
+          "LED_OFF" in _led_body and "clientCount" not in _led_body,
+          "updateLED still keys on AP clients")
+
+    # --- NTP disciplines the clock whenever STA is up ----------------------
+    c.add("NTP starts once the STA link is up",
+          "wifiMgr.stationUp()) timeSync.beginNTP()" in ino or
+          "stationUp()) timeSync.beginNTP()" in ino)
+    c.add("each network cycle polls NTP for a fresh sync",
+          "timeSync.pollNTP()" in ino)
+    c.add("SNTP is pointed at public servers in UTC (board works in epoch)",
+          "configTime(0, 0" in ts_cpp and "pool.ntp.org" in ts_cpp)
+    # Strip comments first: the name acceptEpoch also appears in a comment
+    # inside pollNTP, and a substring rule would keep passing after the real
+    # call was deleted (caught by mutation testing, not by reading).
+    _poll = re.search(r"void TimeSync::pollNTP\(\) \{([\s\S]*?)\n\}\n",
+                      strip_comments(ts_cpp))
+    c.add("NTP results pass the same plausibility gate as browser frames",
+          _poll is not None and "acceptEpoch(" in _poll.group(1),
+          "pollNTP() records time without going through acceptEpoch()")
+    c.add("the browser lend remains for the offline fallback-AP state",
+          "setTimeFromBrowser" in ts_cpp and "set_time" in js)
+
+    # --- every event survives a reboot (last 20 in NVS) --------------------
+    c.add("the forensic ring keeps the last 20 events",
+          re.search(r"FORENSIC_KEEP\s*=\s*20", nvs_h) is not None)
+    _logev = re.search(r"void LimitManager::logEvent\(uint8_t ch[^{]*\{([\s\S]*?)\n\}\n",
+                     lm)
+    c.add("RAM-only logging is gone: every logEvent persists",
+          _logev is not None and "persistForensic();" in _logev.group(1),
+          "logEvent() returns without persisting")
+    c.add("the forensic write commits immediately (power-cut safe)",
+          re.search(r"saveForensicEvents\(tail, keep\);\s*[\s\S]{0,400}?nvs->commit\(\);",
+                    lm) is not None,
+          "persistForensic stages without committing")
+
+    # --- eco mode: quiet radio when nobody watches -------------------------
+    c.add("presence is WebSocket viewers (OTA counts - flashing needs link)",
+          "wsServer.clientCount() > 0 || otaHandler.isInProgress()" in ino)
+    c.add("eco parks the modem only in STA-only mode, never under the AP",
+          re.search(r"if \(!wifiMgr\.apActive\(\)\) \{\s*\n.*WiFi\.setSleep\(true\)",
+                    ino) is not None,
+          "setSleep(true) can hit the fallback AP that must beacon")
+    c.add("a returning viewer restores full power before needing the link",
+          re.search(r"WiFi\.setSleep\(false\)", ino) is not None)
+    c.add("eco state rides the snapshot and the dashboard shows it",
+          '\\"eco\\"' in sysjson and 'getElementById(\'ecoStatus\')' in js)
+
+    # --- chip temperature rides the snapshot --------------------------------
+    c.add("the snapshot carries MCU temperature, null when sensorless",
+          '\\"mcuTemp\\"' in sysjson and "isnan(data.mcuTempC)" in sysjson,
+          "NaN would serialise as bare nan and kill the frame")
+    c.add("the temperature reader is compile-guarded for sensorless chips",
+          "#if defined(CONFIG_IDF_TARGET_ESP32) || "
+          "(defined(SOC_TEMP_SENSOR_SUPPORTED) && SOC_TEMP_SENSOR_SUPPORTED)" in ino,
+          "the readMcuTempC() guard was weakened - S3 would not compile")
+    c.add("the dashboard shows the temperature or a dash, never 0.0",
+          'getElementById(\'mcuTemp\')' in js)
+
+    # --- header wifi icon levels cover every emitted level ------------------
+    # The shipped bug: JS emitted lv1/lv3 while CSS only knew lv0/lv2, so the
+    # icon rendered dim next to a live RSSI number.
+    _emitted = set(re.findall(r"'(lv\d)'", js))
+    _styled = set(re.findall(r"\.wifi\.(lv\d)", css))
+    c.add("every wifi level the dashboard can emit has a CSS rule",
+          len(_emitted) > 0 and _emitted <= _styled,
+          "emitted=%s styled=%s" % (sorted(_emitted), sorted(_styled)))
+
+    # --- PIN change needs confirmation --------------------------------------
+    c.add("the new PIN must be typed twice and match",
+          'id="pinConfirm"' in html and "do not match" in js)
+    c.add("a mismatch never reaches the board",
+          re.search(r"val !== again[\s\S]{0,200}?return Promise\.resolve\(false\)",
+                    js) is not None)
+
+    # --- install button exists after connect, not just before ----------------
+    # The shipped bug: the only Install button lived in the connect panel,
+    # which hides the instant the dashboard connects.
+    c.add("settings has its own install button",
+          'id="installBtn2"' in html and "installHint2" in html and
+          "installHint2" in js)
     c.add("the station defaults live in config.h",
           "STA_SSID_DEFAULT" in cfg and "STA_PASS_DEFAULT" in cfg)
     c.add("station credentials are read from NVS first, defaults second",

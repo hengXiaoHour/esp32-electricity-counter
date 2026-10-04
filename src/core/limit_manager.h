@@ -41,10 +41,9 @@ private:
   uint8_t tripCycleIndex = 0;
 
   void logEvent(uint8_t ch, ChannelStatus s, const char *msg, float v);
-  // Critical events: RAM log + persist tail of the ring to NVS flash so
-  // the trail survives a power cut. The restored tail is pushed to the
-  // dashboard on the next WebSocket broadcast.
-  // Call ONLY with dataMutex already held (all current callers do).
+  // Every event is RAM-logged AND flash-persisted (last FORENSIC_KEEP kept), so
+  // a reboot or power cut can never erase the trail. Persisting commits
+  // immediately - call ONLY with dataMutex already held (all callers do).
   void logForensicEvent(uint8_t ch, ChannelStatus s, const char *msg, float v);
   void persistForensic();
   void rolloverIfNeeded();

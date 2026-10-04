@@ -51,20 +51,70 @@ void onWiFiEvent(WiFiEvent_t event, arduino_event_info_t info) {
 // Forward declarations
 static void handleSerialCommand(const String &cmd);
 
+// On-die temperature, or NAN when this chip has none. temperatureRead() only
+// exists where the silicon has a sensor (classic ESP32 via the ROM reader,
+// newer chips via the IDF driver) - calling it elsewhere is a compile error,
+// so the guard lives here and not at the call site.
+static float readMcuTempC() {
+#if defined(CONFIG_IDF_TARGET_ESP32) || (defined(SOC_TEMP_SENSOR_SUPPORTED) && SOC_TEMP_SENSOR_SUPPORTED)
+  float t = temperatureRead();
+  if (isnan(t)) return NAN;
+  return t;
+#else
+  return NAN;
+#endif
+}
+
+// Eco mode: nobody is watching the dashboard, so the radio idles.
+// Presence = at least one WebSocket viewer (an OTA in progress also counts -
+// flashing needs a solid link). After ECO_IDLE_MS with no viewer the board
+// lets the WiFi modem sleep; sensing, limits, NVS and the buzzer are
+// untouched - only the radio quiets down, which is where the heat comes from.
+// The AP never sleeps (it must keep beaconing), so eco only parks the modem
+// in STA-only mode; in fallback-AP mode eco just means "no viewers".
+static bool ecoActive = false;
+static uint32_t lastViewerMs = 0;
+static const uint32_t ECO_IDLE_MS = 60000;
+
+static void updateEcoMode() {
+  bool watched = wsServer.clientCount() > 0 || otaHandler.isInProgress();
+  if (watched) {
+    lastViewerMs = millis();
+    if (ecoActive) {
+      ecoActive = false;
+      // Full power back BEFORE the viewer needs the link: broadcasts resume on
+      // the next cycle and the modem is already awake.
+      WiFi.setSleep(false);
+      STATUS_LOG("  [ECO] viewer back - full power\n");
+    }
+    return;
+  }
+  if (!ecoActive && millis() - lastViewerMs > ECO_IDLE_MS) {
+    ecoActive = true;
+    if (!wifiMgr.apActive()) {
+      WiFi.setSleep(true);  // STA-only: modem naps between DTIM beacons
+    }
+    STATUS_LOG("  [ECO] no viewers for %lus - radio idling (sensing unaffected)\n",
+               (unsigned long)(ECO_IDLE_MS / 1000));
+  }
+}
+
 static void updateLED() {
-  // Simple logic, both LED types:
-  //   OTA running        -> blink every 0.5 s
-  //   STA connected      -> solid on (the normal running state, AP off)
-  //   fallback AP client -> solid on
-  //   otherwise (idle)   -> off
+  // One meaning in every radio state (STA or fallback AP):
+  //   OTA running        -> blink yellow
+  //   no home network    -> solid ON (red on RGB): the board is unreachable
+  //                         except through the fallback AP / serial
+  //   STA connected      -> OFF (idling normally; the AP is off too)
+  // A plain (non-RGB) LED shows ON for any solid colour, so red vs green only
+  // differs on RGB hardware - where red is the honest colour for "needs help".
   if (otaHandler.isInProgress()) {
     statusLED.setMode(LED_BLINK_YELLOW);
     statusLED.loop();
     return;
   }
 
-  if (wifiMgr.stationUp() || wifiMgr.clientCount() > 0) {
-    statusLED.setMode(LED_SOLID_GREEN);
+  if (!wifiMgr.stationUp()) {
+    statusLED.setMode(LED_SOLID_RED);
     statusLED.loop();
     return;
   }
@@ -81,14 +131,25 @@ static void updateSharedData() {
     systemData.currentCalibration[ch] = powerCalc.currentCal[ch];
   }
   systemData.uptime = millis() / 1000;
-  // AP-only: the board is never a station client, so there is no link to
-  // report. apMode carries the single meaningful bit; the wifi fields stay in
-  // SystemData so the snapshot shape does not change under the dashboard.
+  // Link state is read live from the radio every sensor cycle, so the snapshot
+  // never reports a stale mode after a fallback transition.
   systemData.wifiConnected = wifiMgr.stationUp();
   systemData.wifiRSSI = wifiMgr.staRSSI();
   systemData.apMode = wifiMgr.apActive();
   systemData.otaInProgress = otaHandler.isInProgress();
   systemData.otaProgress = otaHandler.getProgress();
+  systemData.ecoMode = ecoActive;
+  // On-die temperature, throttled to 1 Hz: temperatureRead() blocks briefly on
+  // classic ESP32, and nothing about heat changes 12 times a second.
+  // NAN on chips without a sensor (classic ESP32 reads ~10°C high uncalibrated;
+  // the dashboard labels it approximate).
+  {
+    static uint32_t lastTempMs = 0;
+    if (millis() - lastTempMs > 1000) {
+      lastTempMs = millis();
+      systemData.mcuTempC = readMcuTempC();
+    }
+  }
 
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {
     systemData.channels[ch].currentRMS = powerCalc.getCurrentRMS(ch);
@@ -124,6 +185,14 @@ void networkTask(void *pvParameters) {
     wifiMgr.loop();
     wsServer.loop();
     otaHandler.loop();
+    updateEcoMode();
+
+    // Internet time when there is internet: STA up means SNTP can discipline
+    // the clock with no phone attached. beginNTP() is once-only; pollNTP()
+    // records each fresh sync through the same validation as browser frames.
+    // In fallback-AP mode neither runs and the browser lend remains the clock.
+    if (wifiMgr.stationUp()) timeSync.beginNTP();
+    timeSync.pollNTP();
 
     // Serial processing on Core 0
     while (Serial.available()) {
@@ -309,6 +378,10 @@ void setup() {
   Serial.println();
 
   DEBUG_LOG("  %-19s%s\n", "NVS", "OK"); nvs.begin();
+
+  // No sensor on some chips (and zero-init would read as a plausible 0.0°C),
+  // so start unknown until the first 1 Hz sample lands in updateSharedData().
+  systemData.mcuTempC = NAN;
 
   // Restore the clock saved in RTC memory before anything reads the date:
   // LimitManager defers the monthly rollover until time() is valid, so this

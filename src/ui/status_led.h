@@ -3,9 +3,9 @@
 #include <Adafruit_NeoPixel.h>
 #include "../config.h"
 
-// LED State Machine (firmware logic uses only OFF / SOLID_GREEN / BLINK_YELLOW)
-//   OFF          – idle: AP up, no client
-//   SOLID_GREEN  – an AP client is connected
+// LED State Machine (firmware logic uses only OFF / SOLID_RED / BLINK_YELLOW)
+//   OFF          – idling normally: STA connected, AP off
+//   SOLID_RED    – no home network (joining, failed, or on fallback AP)
 //   BLINK_YELLOW – OTA in progress (toggles every 500 ms)
 //
 // Two physical driver types, same GPIO48:

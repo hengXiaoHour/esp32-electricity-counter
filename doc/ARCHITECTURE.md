@@ -391,25 +391,26 @@ the limit (manual reset or monthly rollover).
 
 While **any** channel is tripped, `updateBuzzer()` keeps beeping forever,
 round-robining through the tripped channels: ch1 → 1 beep, ch2 → 2 beeps, …
-ch6 → 6 beeps (120 ms on / 140 ms off). It re-arms only when the buzzer is idle,
-so a pattern is never cut short. `resetCounter()` and rollover call
-`buzzer->stop()`.
+ch5 → 5 beeps (80 ms on / 80 ms off, multiples of the 80 ms sensor cycle so the
+timings land exactly). It re-arms only when the buzzer is idle, so a pattern is
+never cut short. `resetCounter()` and rollover call `buzzer->stop()`.
 
 ### LED
 
-`updateLED()` is a strict three-way priority — and notably **trip state is not
-one of them**:
+`updateLED()` is a strict three-way priority with one meaning in every radio
+state — and notably **trip state is not one of them** (trips already have the
+buzzer, the snapshot status field, and the dashboard notification):
 
 | Condition | Mode |
 |---|---|
-| OTA in progress | solid blue |
-| AP not up yet | solid red |
-| AP up, 0 clients | blinking yellow |
-| AP up, ≥1 client | solid green |
+| OTA in progress | blink yellow |
+| no home network (joining, failed, or on fallback AP) | solid red |
+| STA connected, idling | off |
 
-`LED_BLINK_RED` is only reachable from the `test led` console command;
-`status_led.h` documents this explicitly. The
-README's "RED LED blink on trip" is therefore stale (Part C.2).
+On a plain (non-RGB) LED any solid colour is just ON, so red-vs-green only
+differs on RGB hardware — where red is the honest colour for "needs help".
+`LED_SOLID_GREEN` / `LED_BLINK_RED` remain reachable only from the `test led`
+console command. The README's "RED LED blink on trip" is stale (Part C.2).
 
 ### Monthly rollover
 
@@ -436,11 +437,11 @@ reboot can never restore stale kWh alongside an already-advanced month.
 ### Forensic event persistence
 
 The RAM ring holds 50 events and is wiped by any restart — which is exactly when
-you most want to know whether the trip was recent. So the last
-`FORENSIC_KEEP = 10` events are also written to NVS on every *critical* event
-(trip, manual reset, rollover, energy inject, boot). That is a few writes per
-day, negligible for flash wear. `setup()` restores them into `SystemData` before
-the first broadcast, so the trail is visible the moment a dashboard connects.
+you most want to know what happened. So **every** `logEvent()` also writes the
+last `FORENSIC_KEEP = 20` events to NVS and commits immediately: even a power
+cut seconds after a trip keeps it. That is a few small writes per day,
+negligible for flash wear. `setup()` restores them into `SystemData` before the
+first broadcast, so the trail is visible the moment a dashboard connects.
 
 ## B.7 Persistence (NVS)
 
@@ -480,39 +481,44 @@ power cut is unacceptable:
    Core 0 with no lock held, because `commit()` is `prefs.end(); prefs.begin()`
    and is not thread-safe against the Core 1 save.
 
-## B.8 Connectivity: an Access Point, Nothing Else
+## B.8 Connectivity: STA First, AP as Fallback
 
-`WiFiManager` is a single-state machine now. `begin()` takes no arguments, does
-not read NVS, and calls `startAPMode()`.
+`WiFiManager` tries the home network first (`WIFI_STA`, up to
+`STA_CONNECT_TIMEOUT_MS`), keeps the AP OFF while it is up, and only starts the
+fallback AP (`WIFI_AP_STA`, STA retrying in the background) when the home link
+is unconfigured, times out, or drops for 30 s. Once the fallback is up it stays
+up until reboot; the next boot tries STA first again. `isReady()` holds in
+either running state, so the dashboard starts whichever path wins.
 
 ```cpp
-WiFi.mode(WIFI_AP);
-WiFi.softAP("ESP32-Elec-Counter", "configure123");
-WiFi.setTxPower(WIFI_POWER_21dBm);
-WiFi.setSleep(false);              // an AP must keep beaconing
-WiFi.softAPConfig(192.168.4.1, 192.168.4.1, 192.168.4.1);
-dnsServer.start(53, "*", apIP);    // every hostname -> the dashboard
+WiFi.mode(WIFI_STA);
+WiFi.begin(staSsid_, staPass_);   // skipped when unconfigured (placeholder)
+// ... on failure:
+WiFi.mode(WIFI_AP_STA);
+WiFi.softAP(apSsid_, apPass_);    // 192.168.4.1 + captive DNS, recovery only
+WiFi.setSleep(false);             // an AP must keep beaconing
 ```
 
-`loop()` does exactly one thing: `dnsServer.processNextRequest()`.
+`loop()` does two things: the captive-portal `dnsServer.processNextRequest()`
+when the fallback AP is up, and the 30 s STA-loss watch that brings the
+fallback up later. The placeholder SSID literal lives exactly once in
+`config.h` as `STA_SSID_PLACEHOLDER`; the join guard compares the *runtime*
+buffer to it, because checking the compiled default once made real NVS
+credentials sit quiet and never join.
 
-**Removed with the STA path**, and each was load-bearing in a way worth
-recording:
+**Not wanted back**, each load-bearing in a way worth recording:
 
 | Gone | Why it no longer applies |
 |---|---|
-| STA connect, retry ladder, `WIFI_MAX_RETRIES` | there is no network to join |
-| Connect-timeout reboot failsafe + `RTC_DATA_ATTR` failure counter | nothing to time out |
-| Link-flap detection, `WL_CONNECTED` polling | there is no link |
-| RSSI sampling | an AP does not report one |
-| Modem-sleep eco mode | an AP must keep beaconing; see below |
-| `setwifi` console verb, `/save` portal handler | no credentials to store |
-| `isConnected() \|\| isApMode()` | two-way test for a one-way state; now `isReady()` |
+| STA retry ladder, connect-timeout reboot failsafe | the fallback AP *is* the failure path; rebooting would destroy it |
+| `RTC_DATA_ATTR` boot-failure counter | same reason |
+| `isConnected() \|\| isApMode()` | two-way test for what is now two states; `isReady()` covers both |
+| RSSI sampling as the only signal | the header icon now maps STA RSSI to lv1/lv2/lv3 (CSS rules for all three) |
 
-**Stored credentials are left alone.** Old firmware wrote `wifi_ssid` /
-`wifi_pass` into NVS. Nothing reads them now, and they are deliberately *not*
-wiped automatically — a downgrade to an older build still finds them. `clearwifi`
-exists purely to erase them.
+**Station credentials are live again.** `wifi_ssid` / `wifi_pass` in NVS are read
+at every boot and take precedence over `STA_SSID_DEFAULT`. `setwifi` writes
+them (PIN-gated, reboot to apply); `clearwifi` erases them without rebooting,
+and the next boot then skips straight to the fallback AP.
 
 ### The network name and password are settings
 
@@ -567,13 +573,17 @@ There is no retry ladder, connect timeout or boot-failure counter, and no
 `STA_GOT_IP`-gated banner. Each of those existed to escape a station link that
 could not come up; an AP that must beacon anyway has nothing to escape.
 
-### Eco mode is gone
+### Eco mode is back (presence-based)
 
-The old design slept the modem and slowed cloud pushes to 10 s when nobody was
-watching (`wsServer.clientCount() || fbBridge.cloudWatched() || otaInProgress`).
-Both inputs are gone and the mechanism is meaningless: a station link can sleep,
-an access point cannot. Sensing on Core 1 was never affected by eco and still
-runs full-rate.
+The AP-era deletion ("an AP must keep beaconing") no longer applies in
+STA-only mode, where nothing broadcasts. Presence is WebSocket viewers — an
+OTA in progress also counts, because flashing needs a solid link. After
+60 s with no viewer the board lets the WiFi modem sleep; sensing, limits,
+NVS, buzzer and LED logic are untouched, only the radio quiets down, which
+is where the heat comes from. A returning viewer restores full power before
+needing the link. In fallback-AP mode eco only means "no viewers" (the AP
+keeps beaconing regardless). The `eco` snapshot bit drives the Connection
+panel's Power row, so the mode is visible, not mysterious.
 
 ## B.9 One Command Path, One Gate
 
@@ -616,7 +626,7 @@ flashing hardware is a check nobody runs.
 
 | Verb | PIN? | Why |
 |---|---|---|
-| `set_time` | no | every viewer sends it on connect; it is what gives the board a clock at all |
+| `set_time` | no | every viewer sends it on connect; in fallback-AP mode it is what gives the board a clock at all (in STA mode NTP already did) |
 | `verify_pin` | no | its whole job is to answer the question |
 | everything else | **yes** | any state change, including `console` and `set_pin` |
 
@@ -630,7 +640,12 @@ allowed" from "I did not understand that", and since the board is the authority,
 the UI must not have to guess. On receiving it the page drops back to read-only
 and forgets the cached PIN — so changing the PIN on the device revokes open tabs.
 
-### The browser lends the clock
+### The clock: NTP first, browser as fallback
+
+In STA mode the board has internet, so `TimeSync` points SNTP at public
+servers (`beginNTP()` on link-up) and the clock disciplines itself with no
+phone attached. In fallback-AP mode there is no internet, so the browser
+still lends its clock: `set_time` on WebSocket open and periodically after.
 
 `set_time` is the reason this section is not just about authorisation.
 

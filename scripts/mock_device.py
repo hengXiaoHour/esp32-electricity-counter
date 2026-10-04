@@ -296,6 +296,8 @@ class State:
                                 and self.ap_pass == AP_PASS_DEFAULT),
                 "staSsid": self.sta_ssid,
                 "staIsDefault": not self.sta_ssid,
+                "mcuTemp": 51.2,
+                "eco": False,
                 "time": {"ok": self.time_synced, "age": 0 if self.time_synced else 4294967295},
                 "ch": ch,
                 "events": [

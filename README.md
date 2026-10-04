@@ -101,6 +101,37 @@ If it cannot join within ~10s, the fallback AP comes up instead so the board is
 never headless — and if a working link later drops for 30s, the AP comes up
 then too.
 
+### Status LED
+
+| LED | Meaning |
+|---|---|
+| Blinking yellow | OTA update in progress |
+| Solid red (ON on a plain LED) | No home network — join the fallback AP or use serial |
+| Off | Idling normally on home WiFi |
+
+Trips do **not** use the LED (they already have the buzzer + dashboard). The
+trip buzzer repeats the channel number in beeps (ch3 = 3 beeps) at 80ms
+on/off so patterns stay countable.
+
+### Clock, event log, eco mode
+
+- **Clock:** on home WiFi the board syncs itself over internet NTP — no phone
+  needed. On the fallback AP (no internet) the dashboard lends its clock
+  instead. Either way the monthly reset only fires with a valid clock.
+- **Event log:** every event (trips, resets, rollovers, boot) is written to
+  flash immediately — the last 20 survive any reboot or power cut and show in
+  the dashboard's event list.
+- **Eco mode:** with nobody watching the dashboard for 60s the WiFi modem naps
+  to cut heat; sensing and counting never stop. Opening the dashboard wakes it
+  instantly. The Connection panel shows `ECO` vs `Full`, plus the chip
+  temperature (classic ESP32 only, approximate — the S3 has no sensor).
+- **Admin PIN:** changing it asks twice; a mismatch is refused before anything
+  is sent, so one typo can't lock you out.
+- **Installing the app:** the Install button lives in Settings → Connection
+  (the connect screen's button vanishes once connected). Browsers won't
+  auto-install from an `http` board address, so the button shows manual steps:
+  Android → menu → Add to Home screen, iPhone → Share → Add to Home Screen.
+
 ### Limits
 
 - No access from outside your own WiFi

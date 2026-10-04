@@ -196,6 +196,9 @@ struct SystemData {
   int8_t wifiRSSI;
   bool apMode;
 
+  float mcuTempC;    // on-die temperature, °C (NAN when the chip has no sensor)
+  bool ecoMode;      // true while nobody is watching (modem-sleep + quiet radio)
+
   Event events[EVENT_LOG_SIZE];
   uint8_t eventCount;
 

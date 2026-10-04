@@ -49,7 +49,7 @@
       <button class="btn-outline" id="installBtn" onclick="promptInstall()">&#8595; Install App</button>
     </div>
     <div id="installHint" class="install-hint hidden">
-      Desktop: click the install icon (&#8595;&#10010;) in your browser's address bar, or the menu &#8942; &rarr; Install &ldquo;ESP32 Counter&rdquo;. Android: tap the Install App button above.
+      Your browser cannot auto-install from a plain unencrypted (http) board address, so add it by hand: Android Chrome &rarr; menu &#8942; &rarr; Add to Home screen &middot; iPhone Safari &rarr; Share &rarr; Add to Home Screen &middot; Desktop Chrome &rarr; install icon in the address bar or menu &rarr; Install.
     </div>
   </div>
 </div>
@@ -178,7 +178,11 @@
             </div>
             <div class="cal-row-single">
               <label for="pinNew">New PIN:</label>
-              <input type="password" id="pinNew" autocomplete="off" placeholder="4-16 characters">
+              <input type="password" id="pinNew" autocomplete="off" placeholder="4-16 characters" oninput="this.dataset.userSet='true'">
+            </div>
+            <div class="cal-row-single">
+              <label for="pinConfirm">Confirm:</label>
+              <input type="password" id="pinConfirm" autocomplete="off" placeholder="repeat the new PIN" oninput="this.dataset.userSet='true'">
               <button class="btn-sm" onclick="changePin()">Set</button>
             </div>
           </div>
@@ -200,6 +204,19 @@
             <span id="timeStatus" class="mono conn-txt">--</span>
             <button class="btn-sm" onclick="sendTime()">Sync now</button>
           </div>
+          <div class="cal-row-single">
+            <label>MCU:</label>
+            <span id="mcuTemp" class="mono conn-txt">--</span>
+          </div>
+          <div class="cal-row-single">
+            <label>Power:</label>
+            <span id="ecoStatus" class="mono conn-txt">--</span>
+          </div>
+          <div class="cal-row-single" id="installRow2">
+            <label>App:</label>
+            <button class="btn-sm" id="installBtn2" onclick="promptInstall()">&#8595; Install App</button>
+          </div>
+          <div id="installHint2" class="hint hidden">Your browser cannot auto-install from a plain unencrypted (http) board address, so add it by hand: Android Chrome &rarr; menu &#8942; &rarr; Add to Home screen &middot; iPhone Safari &rarr; Share &rarr; Add to Home Screen &middot; Desktop Chrome &rarr; install icon in the address bar or menu &rarr; Install. Then it opens full-screen like a native app.</div>
           <div style="margin-top:12px;">
             <button class="btn-outline" onclick="handleDisconnect()">Disconnect</button>
           </div>

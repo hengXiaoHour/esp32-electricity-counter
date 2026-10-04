@@ -45,6 +45,14 @@ void buildSystemJson(const SystemData &data, PowerCalculator *powerCalc,
   json += String(data.voltageRMS, 1);
   json += ",\"uptime\":";
   json += data.uptime;
+  // On-die temperature, one decimal. NAN (no sensor on this chip) is emitted
+  // as JSON null, never as nan - String(NAN) would print "nan", which is not
+  // valid JSON and would make the dashboard drop the whole frame.
+  json += ",\"mcuTemp\":";
+  if (isnan(data.mcuTempC)) json += "null";
+  else json += String(data.mcuTempC, 1);
+  json += ",\"eco\":";
+  json += data.ecoMode ? "true" : "false";
   json += ",\"wifi\":";
   json += data.wifiConnected ? "true" : "false";
   json += ",\"rssi\":";

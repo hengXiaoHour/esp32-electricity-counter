@@ -246,6 +246,45 @@ function check(name, cond, detail) {
   const badge2 = await page.locator('#roleBadge').textContent();
   check('UI drops back to viewer', /Viewer/.test(badge2), 'badge = ' + badge2);
 
+  console.log('\n== changing the PIN asks for confirmation ==');
+  // A single new-PIN box turns one typo into a lockout: the board would save
+  // the mistyped value and the old PIN would stop working. So the panel has a
+  // Confirm box, and a mismatch must never reach the board.
+  await page.evaluate((p) => window.unlockWithPin(p), PIN);
+  await page.waitForTimeout(400);
+  await page.evaluate(() => window.showPage('settings'));
+  const setBtn = page.locator('#pinRow button.btn-sm').nth(1);
+  const beforePin = await page.evaluate(() => window.__wsSent.length);
+  await page.fill('#pinNew', 'abcd');
+  await page.fill('#pinConfirm', 'wxyz');
+  await setBtn.click();
+  await page.waitForTimeout(300);
+  check('a mismatched confirmation is refused without sending',
+        (await page.evaluate(() => window.__wsSent.length)) === beforePin);
+  check('...and says why',
+        /do not match/i.test(await page.locator('#toast').textContent()),
+        'toast = "' + await page.locator('#toast').textContent() + '"');
+
+  await page.fill('#pinNew', '5678');
+  await page.fill('#pinConfirm', '5678');
+  await setBtn.click();
+  await page.waitForTimeout(500);
+  const pinFrames = (await page.evaluate((n) => window.__wsSent.slice(n), beforePin))
+    .filter(f => f.indexOf('"set_pin"') >= 0);
+  check('matching entries put a set_pin frame on the wire', pinFrames.length >= 1);
+  const pinFrame = pinFrames[pinFrames.length - 1] || '';
+  check('...carrying the new PIN', pinFrame.indexOf('"pin_new":"5678"') >= 0, pinFrame);
+  check('...and the current (admin) PIN', /"pin":"1234"/.test(pinFrame), pinFrame);
+
+  // Restore, or every later stage that unlocks with the factory PIN fails.
+  await page.fill('#pinNew', PIN);
+  await page.fill('#pinConfirm', PIN);
+  await setBtn.click();
+  await page.waitForTimeout(500);
+  const restoreFrames = (await page.evaluate(() => window.__wsSent.slice()))
+    .filter(f => f.indexOf('"pin_new":"1234"') >= 0);
+  check('the PIN is restored afterwards', restoreFrames.length >= 1);
+
   console.log('\n== trip notification plumbing ==');
   const hasNotify = await page.evaluate(() => 'Notification' in window);
   check('Notification API reachable in this context', hasNotify);
@@ -543,6 +582,44 @@ function check(name, cond, detail) {
   check('the STA hint says the board restarts with the AP staying off',
         /restart/i.test(staHint) && /AP stays OFF|fallback AP/i.test(staHint),
         'hint = "' + (staHint || '').slice(0, 90) + '"');
+
+  // ---------------------------------------------------------------------
+  // Header icon + Connection-panel rows follow the snapshot.
+  //
+  // The icon once only knew lv0/lv2 (the AP-only era) while the STA code could
+  // emit lv1/lv3, which have no CSS rule and render dim - the header showed a
+  // dead icon next to a live RSSI number. The mock publishes rssi -58 with STA
+  // up, which must render as a lit lv2, never lv0/disconnected.
+  console.log('\n== header icon and status rows ==');
+  await page.evaluate(() => window.showPage('dashboard'));
+  await page.waitForTimeout(800);
+  const wifiClass = await page.locator('.wifi').getAttribute('class');
+  check('the header wifi icon reflects the STA link, not a dead icon',
+        /lv[123]/.test(wifiClass || '') && !/disconnected/.test(wifiClass || ''),
+        'class="' + wifiClass + '"');
+  // ...and the level has a real CSS rule behind it, not just a class name: with
+  // the lv2 rule deleted the class is still "lv2" but zero bars light up.
+  // rssi -58 renders lv2 = dot + first arc lit.
+  const litBars = await page.evaluate(() => {
+    let lit = 0, total = 0;
+    document.querySelectorAll('.wifi .bar').forEach((b) => {
+      total++;
+      if (window.getComputedStyle(b).opacity === '1') lit++;
+    });
+    return { lit: lit, total: total };
+  });
+  check('the STA level actually lights bars (CSS rule present)',
+        litBars.total === 4 && litBars.lit >= 2, JSON.stringify(litBars));
+  await page.evaluate(() => window.showPage('settings'));
+  await page.waitForTimeout(300);
+  check('MCU temperature renders from the snapshot',
+        /51\.2/.test(await page.locator('#mcuTemp').textContent()),
+        'mcu="' + await page.locator('#mcuTemp').textContent() + '"');
+  check('eco state renders from the snapshot',
+        /Full|ECO/.test(await page.locator('#ecoStatus').textContent()),
+        'eco="' + await page.locator('#ecoStatus').textContent() + '"');
+  check('settings has its own install button (connect panel hides on connect)',
+        await page.locator('#installBtn2').count() === 1);
 
   console.log('\n' + checks + ' checks, ' + failures + ' failures');
   await browser.close();
