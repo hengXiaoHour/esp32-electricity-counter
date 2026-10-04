@@ -1,7 +1,5 @@
 # ESP32 / ESP32-S3 5-Channel AC Electricity Counter
 
-![Dashboard](docs/screenshots/dashboard.png)
-
 ## 1. What is it?
 
 A standalone box that watches 6 AC circuits at once — current, voltage, power,
@@ -11,8 +9,6 @@ the ESP32 **is** the WiFi network and the web server.
 
 Join `ESP32-Elec-Counter` (password `configure123`), open
 `http://192.168.4.1/`, done.
-
-![Analytics](docs/screenshots/analytics.png)
 
 ## 2. Why?
 
@@ -57,8 +53,6 @@ the serial console restores the factory network.
 
 By default the board joins your home WiFi and the AP stays **OFF** (see **Home
 Network** below) — the AP only appears when the home link fails.
-
-![Settings](docs/screenshots/settings.png)
 
 ## Build & flash
 

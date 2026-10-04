@@ -17,9 +17,7 @@ This structure is **LOCKED**. All AI agents MUST read this file before creating
 or modifying any files, and MUST NOT create files or directories outside this
 layout without explicit user approval.
 
-Machine-readable lock: `./.architecture.lock.json`
-
-Allowed directories (from the lock file): `doc`, `src`, `src/sensor`, `src/core`,
+Allowed directories: `doc`, `src`, `src/sensor`, `src/core`,
 `src/network`, `src/ui`, `src/utils`, `frontend`, `scripts`, `.workflow`,
 `doc/opencode_agent`.
 
@@ -30,11 +28,10 @@ esp32-electricity-counter/
 ├── esp32-electricity-counter.ino    # Entry point: setup() + loop() + task creation
 ├── .gitignore
 ├── README.md                        # Setup instructions
-├── design.md                        # Dashboard visual style + design decisions
 │
 ├── doc/                             # Documentation
 │   ├── ARCHITECTURE.md              # THIS FILE
-│   ├── .architecture.lock.json      # Machine-readable lock (do not edit)
+│   ├── design.md                    # Dashboard visual style + design decisions
 │   └── opencode_agent/              # Agent context (hand-maintained)
 │       ├── AGENTS.md               # traps + traps-not-in-the-code; points here
 │       └── lessons.md               # hard-won knowledge not derivable from code
@@ -113,7 +110,7 @@ file that has to be maintained by hand.
 
 ## Lock Enforcement
 
-1. **Before creating any file**, read this file and `.architecture.lock.json`
+1. **Before creating any file**, read this file
 2. If the new file path fits the tree above — proceed
 3. If a directory doesn't exist yet but fits logically — ask the user
 4. If the file doesn't fit the structure at all — BLOCKED, explain why
