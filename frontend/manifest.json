@@ -1,7 +1,7 @@
 {
   "name": "ESP32 Counter",
   "short_name": "ESP32 Counter",
-  "description": "6-Channel AC electricity monitor for ESP32-S3",
+  "description": "5-Channel AC electricity monitor for ESP32 and ESP32-S3",
   "id": "esp32-electricity-counter",
   "start_url": "./index.html",
   "scope": "./",

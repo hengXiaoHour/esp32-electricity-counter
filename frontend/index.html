@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>ESP32 Counter — Electricity Monitor</title>
-<meta name="description" content="6-Channel AC electricity monitor for ESP32-S3">
+<meta name="description" content="5-Channel AC electricity monitor for ESP32 and ESP32-S3">
 <meta name="theme-color" content="#101316">
 <meta name="application-name" content="ESP32 Counter">
 <meta name="mobile-web-app-capable" content="yes">
@@ -206,7 +206,7 @@
         </div>
 
         <div class="panel-box admin-only">
-          <div class="panel-header"><h3>Access Point</h3></div>
+          <div class="panel-header"><h3>Access Point (fallback)</h3></div>
           <div class="cal-row-single">
             <label for="apSsid">Network name:</label>
             <div class="cal-field">
@@ -224,7 +224,34 @@
             <button class="btn-sm" id="apSaveBtn" onclick="saveApSettings()">Save</button>
             <button class="btn-sm" id="apResetBtn" onclick="resetApSettings()">Defaults</button>
           </div>
-          <div class="hint" id="apHint">Renames the WiFi network this board publishes and saves both to its flash. <strong>The board reboots to apply it</strong>, so your phone drops off &mdash; join the new network and reopen the dashboard. Forgot the password? <strong>Defaults</strong> puts the board back on the name and password printed in the README.</div>
+          <div class="hint" id="apHint">Fallback-only: this network appears <strong>only when the home network fails</strong> (the AP stays OFF while home WiFi is up). Renaming saves to flash and <strong>reboots to apply it</strong>. Forgot the password? <strong>Defaults</strong> puts it back on the name and password printed in the README.</div>
+        </div>
+
+        <div class="panel-box admin-only">
+          <div class="panel-header"><h3>Home Network (default)</h3></div>
+          <div class="cal-row-single">
+            <label for="staStatus">Status:</label>
+            <div class="cal-field">
+              <span class="mono" id="staStatus">Loading&hellip;</span>
+            </div>
+          </div>
+          <div class="cal-row-single">
+            <label for="staSsid">Network:</label>
+            <div class="cal-field">
+              <input type="text" id="staSsid" placeholder="Your home WiFi name" autocomplete="off" spellcheck="false" oninput="this.dataset.userSet='true'">
+            </div>
+          </div>
+          <div class="cal-row-single">
+            <label for="staPass">Password:</label>
+            <div class="cal-field">
+              <input type="password" id="staPass" placeholder="Your home WiFi password" autocomplete="off" oninput="this.dataset.userSet='true'">
+            </div>
+          </div>
+          <div class="cal-actions">
+            <button class="btn-sm" id="staSaveBtn" onclick="saveStaSettings()">Save</button>
+            <button class="btn-sm" id="staForgetBtn" onclick="clearStaSettings()">Forget</button>
+          </div>
+          <div class="hint" id="staHint">The DEFAULT path: the board joins this network on boot and the AP stays <strong>OFF</strong>. <strong>Save reboots the board.</strong> If it cannot join, the fallback AP above comes up instead so the board is never headless.</div>
         </div>
 
         <div class="panel-box admin-only">
@@ -243,6 +270,14 @@
               <span class="hint-inline">(100-2000)</span>
             </div>
             <button class="btn-sm" onclick="setRmsSamples()">Set</button>
+          </div>
+          <div class="cal-row-single">
+            <label for="azBatches">Auto-Zero Batches:</label>
+            <div class="cal-field">
+              <input type="number" id="azBatches" step="1" min="1" max="64" value="1" placeholder="1-64" oninput="this.dataset.userSet='true'">
+              <span class="hint-inline">(1-64)</span>
+            </div>
+            <button class="btn-sm" onclick="setAzBatches()">Set</button>
           </div>
           <div class="cal-section-title">Channel Calibration</div>
           <div id="azStatus" class="az-status hidden"></div>

@@ -35,12 +35,16 @@ static uint32_t lastSensorCycle = 0;
 static const int AZ_BATCHES_PER_CYCLE = 2;
 
 void onWiFiEvent(WiFiEvent_t event, arduino_event_info_t info) {
-  // Only AP events matter now. The old STA_GOT_IP hook existed to gate a
-  // one-shot banner print; that banner waits on wifiMgr.isReady() instead,
-  // which is a stronger signal than the event (softAP() has returned and the
-  // interface actually holds 192.168.4.1).
+  // STA_GOT_IP is now a readiness signal (STA-first boot); AP_START only fires
+  // in the fallback path. Neither gates anything by itself - wifiMgr.isReady()
+  // is what the dashboard waits on - these are pure reporting.
   if (event == ARDUINO_EVENT_WIFI_AP_START) {
-    STATUS_LOG("  [WiFi] soft AP started\n");
+    STATUS_LOG("  [WiFi] fallback AP started\n");
+  } else if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
+    STATUS_LOG("  [WiFi] home network joined, IP %s\n",
+               WiFi.localIP().toString().c_str());
+  } else if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
+    STATUS_LOG("  [WiFi] home network lost - retrying, fallback AP if prolonged\n");
   }
 }
 
@@ -50,21 +54,22 @@ static void handleSerialCommand(const String &cmd);
 static void updateLED() {
   // Simple logic, both LED types:
   //   OTA running        -> blink every 0.5 s
-  //   AP client connected -> solid on
-  //   otherwise (idle)    -> off
+  //   STA connected      -> solid on (the normal running state, AP off)
+  //   fallback AP client -> solid on
+  //   otherwise (idle)   -> off
   if (otaHandler.isInProgress()) {
     statusLED.setMode(LED_BLINK_YELLOW);
     statusLED.loop();
     return;
   }
 
-  if (wifiMgr.clientCount() == 0) {
-    statusLED.setMode(LED_OFF);
+  if (wifiMgr.stationUp() || wifiMgr.clientCount() > 0) {
+    statusLED.setMode(LED_SOLID_GREEN);
     statusLED.loop();
     return;
   }
 
-  statusLED.setMode(LED_SOLID_GREEN);
+  statusLED.setMode(LED_OFF);
   statusLED.loop();
 }
 
@@ -79,9 +84,9 @@ static void updateSharedData() {
   // AP-only: the board is never a station client, so there is no link to
   // report. apMode carries the single meaningful bit; the wifi fields stay in
   // SystemData so the snapshot shape does not change under the dashboard.
-  systemData.wifiConnected = false;
-  systemData.wifiRSSI = 0;
-  systemData.apMode = wifiMgr.isReady();
+  systemData.wifiConnected = wifiMgr.stationUp();
+  systemData.wifiRSSI = wifiMgr.staRSSI();
+  systemData.apMode = wifiMgr.apActive();
   systemData.otaInProgress = otaHandler.isInProgress();
   systemData.otaProgress = otaHandler.getProgress();
 
@@ -138,21 +143,28 @@ void networkTask(void *pvParameters) {
       }
     }
 
-    // Print the join instructions once the AP is up.
+    // Print where the dashboard lives once either path is up. STA-first: the
+    // common case prints the home IP and says the AP stayed off; the fallback
+    // case prints the AP address instead.
     {
       static bool wifiPrinted = false;
       if (!wifiPrinted && wifiMgr.isReady()) {
         wifiPrinted = true;
-        Serial.printf("\n  %-19s%s\n", "WiFi", "AP MODE (always)");
-        Serial.printf("  %-19s\"%s\"\n", "Network:", wifiMgr.getSSID());
-        Serial.printf("  %-19s%s\n", "Password:", wifiMgr.getPass());
-        Serial.printf("  %-19shttp://%s/\n", "Dashboard:", WiFi.softAPIP().toString().c_str());
+        if (wifiMgr.apActive()) {
+          Serial.printf("\n  %-19s%s\n", "WiFi", "AP FALLBACK (home network failed)");
+          Serial.printf("  %-19s\"%s\"\n", "Network:", wifiMgr.getSSID());
+          Serial.printf("  %-19s%s\n", "Password:", wifiMgr.getPass());
+          Serial.printf("  %-19shttp://%s/\n", "Dashboard:", WiFi.softAPIP().toString().c_str());
+        } else {
+          Serial.printf("\n  %-19s%s\n", "WiFi", "STA (AP off)");
+          Serial.printf("  %-19shttp://%s/\n", "Dashboard:", WiFi.localIP().toString().c_str());
+        }
       }
     }
 
-    // The dashboard server starts as soon as the AP has an IP. In AP-only mode
-    // there is no upstream to wait for, so this is no longer a "wait for
-    // WiFi then hope" handshake - softAP() returning IS the readiness signal.
+    // The dashboard server starts as soon as EITHER path has an IP: STA joined
+    // (AP off) or fallback AP up. isReady() is what decides, so a dead router
+    // can only force the fallback, never block the server.
     if (!wsServer.isRunning() && wifiMgr.isReady()) {
       wsServer.startServer();
       Serial.printf("  %-19s%s\n", "Dashboard", "SERVED FROM FLASH");
@@ -162,8 +174,12 @@ void networkTask(void *pvParameters) {
       otaHandler.begin("esp32-elec-counter");
       Serial.printf("  %-19s%s\n", "OTA", "STARTED");
       Serial.println();
-      Serial.println("  Join the network, then open http://192.168.4.1/");
-      Serial.println("  Core 0: Network (AP, WebSocket, Dashboard, OTA)");
+      if (wifiMgr.apActive()) {
+        Serial.println("  Join the fallback network, then open http://192.168.4.1/");
+      } else {
+        Serial.println("  Open the dashboard at the IP above (same WiFi as the board)");
+      }
+      Serial.println("  Core 0: Network (WiFi, WebSocket, Dashboard, OTA)");
       Serial.println("  Core 1: Sensor (ADC, Power, Limits)");
       Serial.println("  Type 'help' for commands");
       Serial.print("> ");
@@ -225,7 +241,7 @@ void sensorTask(void *pvParameters) {
           nvs.saveNoiseFloor(ch, median);
           nvs.commit();
           STATUS_LOG("  [NVS] ch%d auto-zero complete (median of %d): %.3f A\n",
-            ch + 1, PowerCalculator::AZ_BATCHES, median);
+            ch + 1, powerCalc.azBatches, median);
         }
       }
     }
@@ -328,6 +344,7 @@ void setup() {
     powerCalc.lpfAlpha[ch] = nvs.loadLpfAlpha(ch);
   }
   powerCalc.rmsSamples = nvs.loadRmsSamples();
+  powerCalc.setAzBatches(nvs.loadAzBatches());
   powerCalc.voltageCal = nvs.loadVoltageCalibration();
 
   DEBUG_LOG("  %-19svoltage=%.1fV  current=%.1f (ch1)  RMS samples=%d\n",

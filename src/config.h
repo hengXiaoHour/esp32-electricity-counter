@@ -5,18 +5,47 @@
 // ==============================
 // Pin Assignments
 // ==============================
+// Two build targets share this file. The classic ESP32 only exposes 6
+// WiFi-safe ADC1 pins (GPIO 32/33/34/35/36/39); ADC2 pins (GPIO 0/2/4/12-15/
+// 25/26/27) return garbage while the AP radio is on, so all analog inputs
+// must live on ADC1. That is why both variants run 5 current channels +
+// 1 voltage input.
+//
+// ESP32 classic boot-strapping pins avoided below: 0, 2, 12, 15 (also flash
+// 6-11, UART 1/3, PSRAM 16/17 on WROVER). GPIO 34/35/36/39 are input-only.
+
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+// ESP32-S3: ADC1 = GPIO 1-10. RGB LED on GPIO 48 (devkit built-in).
 #define PIN_CURRENT_CH1   7
 #define PIN_CURRENT_CH2   5
 #define PIN_CURRENT_CH3   6
 #define PIN_CURRENT_CH4   8
 #define PIN_CURRENT_CH5   4
-#define PIN_CURRENT_CH6   2
 
 #define PIN_VOLTAGE       1
 
 #define PIN_BUZZER        13
 
 #define PIN_RGB_LED       48
+
+#else
+// ESP32 (classic): GPIO 36/39/34/35/32 for the five CTs, GPIO 33 for ZMPT101B.
+// Buzzer on GPIO 13; status LED on GPIO 2, the devkit's built-in blue LED
+// (kept out of the ADC map on purpose: GPIO 2 is ADC2, which is unusable while
+// the WiFi radio is on - fine for an LED, never for a sensor).
+#define PIN_CURRENT_CH1   36
+#define PIN_CURRENT_CH2   39
+#define PIN_CURRENT_CH3   34
+#define PIN_CURRENT_CH4   35
+#define PIN_CURRENT_CH5   32
+
+#define PIN_VOLTAGE       33
+
+#define PIN_BUZZER        13
+
+#define PIN_RGB_LED       2
+
+#endif
 
 // ==============================
 // ADC Configuration
@@ -42,6 +71,21 @@
 // flash, lends its clock from the browser, and gates every mutating command
 // behind an admin PIN. No station interface, no cloud, no ntfy.
 #define FIRMWARE_VERSION "3.0.0"
+
+// ==============================
+// Station WiFi (STA) - the DEFAULT path. The board joins this home network on
+// boot; the AP below is fallback-only and stays OFF unless the home link fails.
+// `setwifi <ssid> <pass>` (serial or dashboard) stores the real thing in NVS and
+// takes precedence over this default. To hard-wire a network instead, put it
+// here.
+#define STA_SSID_PLACEHOLDER "YOUR_HOME_SSID"
+#define STA_SSID_DEFAULT STA_SSID_PLACEHOLDER
+#define STA_PASS_DEFAULT "YOUR_HOME_PASSWORD"
+
+// How long to wait for the home network at boot before giving up and starting
+// the fallback AP. The board is unreachable during this window, so it is short
+// on purpose - the STA retry continues in the background once the AP is up.
+#define STA_CONNECT_TIMEOUT_MS 10000
 
 // ==============================
 // Default Calibration Constants
@@ -72,7 +116,7 @@ constexpr const char *AP_PASS_DEFAULT = "configure123";
 // ==============================
 // Channel Configuration
 // ==============================
-#define NUM_CHANNELS         6
+#define NUM_CHANNELS         5
 #define MAX_CHANNEL_NAME_LEN 24
 
 // Default monthly kWh limit
@@ -88,7 +132,7 @@ constexpr const char *AP_PASS_DEFAULT = "configure123";
 // ==============================
 // Auto-Recovery (limit trip)
 // ==============================
-#define AUTO_RECOVER_PF 0.1f
+#define AUTO_RECOVER_PF 0.2f
 
 // ==============================
 // Timing Constants (milliseconds)
@@ -163,5 +207,5 @@ struct SystemData {
 // Current sensor pins array
 static const uint8_t CURRENT_PINS[NUM_CHANNELS] = {
   PIN_CURRENT_CH1, PIN_CURRENT_CH2, PIN_CURRENT_CH3,
-  PIN_CURRENT_CH4, PIN_CURRENT_CH5, PIN_CURRENT_CH6
+  PIN_CURRENT_CH4, PIN_CURRENT_CH5
 };

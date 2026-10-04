@@ -58,9 +58,12 @@ PIN_EXEMPT_VERBS = ("set_time", "verify_pin")
 
 DEFAULTS = {
     "voltage_cal": 260.0,
-    "current_cal": [100.0] * 6,
-    "noise_floor": [0.0] * 6,
-    "lpf_alpha": [0.2] * 6,
+    # Sized by NUM_CHANNELS in src/config.h (5); check_docs.py compares these
+    # lengths with the header so a channel-count change fails the gate instead
+    # of silently desyncing the mock from the firmware.
+    "current_cal": [100.0] * 5,
+    "noise_floor": [0.0] * 5,
+    "lpf_alpha": [0.2] * 5,
     "rms_samples": 1000,
 }
 
@@ -234,9 +237,12 @@ class State:
         self.lock = threading.Lock()
         self.pin = pin
         self.names = ["Living Room AC", "Kitchen", "Office", "Server Rack",
-                      "Washing Machine", "Lighting"]
-        self.limits = [48.0, 30.0, 25.0, 60.0, 20.0, 15.0]
-        self.kwh = [12.4, 8.1, 4.9, 31.2, 6.7, 2.3]
+                      "Washing Machine"]
+        self.limits = [48.0, 30.0, 25.0, 60.0, 20.0]
+        self.kwh = [12.4, 8.1, 4.9, 31.2, 6.7]
+        self.station_up = False        # set by `setwifi`, cleared by `clearwifi`
+        self.sta_ssid = ""             # the home network this board joins
+        self.sta_pass = ""
         self.epoch = int(time.time())
         self.time_synced = True
         self.time_rejects = 0
@@ -253,7 +259,8 @@ class State:
     def snapshot(self):
         with self.lock:
             ch = []
-            for i in range(6):
+            # len(self.names), not a literal: NUM_CHANNELS in src/config.h.
+            for i in range(len(self.names)):
                 over = self.limits[i] > 0 and self.kwh[i] >= self.limits[i]
                 ch.append({
                     "n": self.names[i],
@@ -268,9 +275,10 @@ class State:
             return {
                 "v": 231.4,
                 "uptime": 4242,
-                "wifi": False,          # AP-only: never a station client
-                "rssi": 0,
-                "ap": True,
+                "wifi": bool(self.station_up),  # STA link to the home network
+                "rssi": -58 if self.station_up else 0,
+                # STA-first: the fallback AP is up exactly when STA is down.
+                "ap": not self.station_up,
                 "voltageCalibration": DEFAULTS["voltage_cal"],
                 "currentCalibration": list(DEFAULTS["current_cal"]),
                 "rmsSamples": DEFAULTS["rms_samples"],
@@ -286,6 +294,8 @@ class State:
                 "apSsid": self.ap_ssid,
                 "apIsDefault": (self.ap_ssid == AP_SSID_DEFAULT
                                 and self.ap_pass == AP_PASS_DEFAULT),
+                "staSsid": self.sta_ssid,
+                "staIsDefault": not self.sta_ssid,
                 "time": {"ok": self.time_synced, "age": 0 if self.time_synced else 4294967295},
                 "ch": ch,
                 "events": [
@@ -402,6 +412,27 @@ class State:
                 self.reboot_reason = "reset_ap"
                 return True, ('  Reset to "%s" / "%s". The board is restarting.'
                               % (AP_SSID_DEFAULT, AP_PASS_DEFAULT)), False
+
+            if verb == "setwifi":
+                ssid = extract_json_string(frame, "ssid")
+                pass_ = extract_json_string(frame, "pass") or ""
+                if ssid is None or not ssid:
+                    return True, "  Not saved: the SSID is empty.", False
+                self.sta_ssid = ssid
+                self.sta_pass = pass_
+                self.station_up = True        # the reboot would come up joined
+                self.applied.append(("setwifi", ssid, pass_))
+                self.rebooted = True
+                self.reboot_reason = "setwifi"
+                return True, ('  Saved. The board will join "%s" on boot.'
+                              % ssid), False
+
+            if verb == "clearwifi":
+                self.sta_ssid = ""
+                self.sta_pass = ""
+                self.station_up = False
+                self.applied.append(("clearwifi",))
+                return True, "  Stored WiFi credentials cleared", False
 
             return False, None, False
 

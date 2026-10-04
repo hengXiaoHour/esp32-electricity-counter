@@ -61,6 +61,8 @@ void buildSystemJson(const SystemData &data, PowerCalculator *powerCalc,
   json += "]";
   json += ",\"rmsSamples\":";
   json += data.rmsSamples;
+  json += ",\"azBatches\":";
+  json += powerCalc->azBatches;
   json += ",\"noiseFloor\":[";
   for (int i = 0; i < NUM_CHANNELS; i++) {
     json += String(powerCalc->noiseFloor[i], 3);
@@ -110,6 +112,17 @@ void buildSystemJson(const SystemData &data, PowerCalculator *powerCalc,
     appendJsonEscaped(json, ssid);
     json += "\",\"apIsDefault\":";
     json += (ssid == AP_SSID_DEFAULT && pass == AP_PASS_DEFAULT) ? "true" : "false";
+  }
+  // The home network, same rules: the SSID is public (a scan reads it), the
+  // password never leaves the board. `staIsDefault` is false whenever anything
+  // is stored, which is what the UI needs to word its placeholder.
+  {
+    String ssid, pass;
+    const bool stored = nvs->loadWiFi(ssid, pass) && ssid.length() > 0;
+    json += ",\"staSsid\":\"";
+    appendJsonEscaped(json, ssid);
+    json += "\",\"staIsDefault\":";
+    json += stored ? "false" : "true";
   }
   // Clock health. Read straight from TimeSync rather than through SystemData:
   // it is owned by the network layer, needs no mutex, and must be visible even

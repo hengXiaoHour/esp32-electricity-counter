@@ -137,7 +137,7 @@ One piece. The board *is* the network, the web server and the application.
                                │  lands on the dashboard.
                                ▼
    ┌───────────────────────────────────────────────────────────────┐
-   │  ESP32-S3  ·  AP-only, always                                │
+   │  ESP32 / ESP32-S3  ·  STA default, AP fallback-only          │
    │                                                               │
    │  AsyncWebServer :80                                          │
    │    /                 -> the whole PWA, served from flash     │
@@ -150,8 +150,15 @@ One piece. The board *is* the network, the web server and the application.
    └───────────────────────────────────────────────────────────────┘
 ```
 
-**There is no station interface and no cloud.** Nothing the board does requires
-an upstream network, and the dashboard it serves is compiled into its own flash.
+**There is no cloud, and the AP is fallback-only.** Nothing the board *requires*
+comes from an upstream network — the dashboard it serves is compiled into its
+own flash — so it runs STA-first: it joins your home router
+(`STA_SSID_DEFAULT` / `setwifi`, stored in NVS) and the AP stays OFF. Only if
+the home link fails (unconfigured, ~10s timeout at boot, or a 30s loss later)
+does the fallback AP come up for recovery. `WiFiManager::isReady()` holds in
+either running state, so the dashboard starts whichever path wins; once the
+fallback is up it stays up until reboot, and the next boot tries STA first
+again.
 
 ### Why the board serves the dashboard
 
@@ -341,18 +348,19 @@ Triggered by `set_noise_floor` with no `val` (dashboard) or `auto_zero <ch>`
 without the sensing loop stalling.
 
 - `requestAutoZero(ch)` appends to a FIFO; duplicates are rejected.
-- `AZ_BATCHES = 32` captures of a full `collectSamples()+computeAll()` pass.
-- The sensor loop does **2 batches per cycle** (`AZ_BATCHES_PER_CYCLE`), so a
-  32-batch capture spreads over ~16 cycles ≈ 1.3 s of normal operation.
+- `AZ_BATCHES = 1` capture of a full `collectSamples()+computeAll()` pass, so a
+  channel's floor is measured in a single batch — one sensor cycle total. (This
+  used to average 32 samples; with 1 sample the value is the raw floor and
+  there is no outlier rejection, so it is noisier by design.)
+- The sensor loop still allows **2 batches per cycle** (`AZ_BATCHES_PER_CYCLE`).
 - While capturing, the target channel's noise floor is forced to 0 and its LPF is
   bypassed (`azLpfForced` → alpha 1.0) so the raw floor is measured, not a
   filtered estimate. **The stored `lpfAlpha[ch]` is never overwritten**, so the
   user's setting survives.
-- `autoZeroFinish()` sorts the 32 samples and takes the **median** (robust against
-  outliers, unlike a mean), commits it via `setNoiseFloor()` + NVS, and resets
-  `rmsInit` for all channels.
+- `autoZeroFinish()` takes the single captured floor, commits it via
+  `setNoiseFloor()` + NVS, and resets `rmsInit` for all channels.
 - Progress (`azActive`, `azChannel`, `azProgress`, `azQueue`) is published in
-  every broadcast so the dashboard can show "calibrating Ch1 (18/32) · waiting:
+  every broadcast so the dashboard can show "calibrating Ch1 (1/1) · waiting:
   Ch3, Ch5" and auto-advance.
 
 ## B.6 Budget, Trip & Alert State Machine
@@ -369,7 +377,7 @@ Per channel, when `limit > 0 && energy >= limit`:
   This is the anti-flood latch. The event is what the dashboard turns into a
   Web Notification — there is no server-side push left, so the buzzer, the
   channel `status` field and this event are the whole alarm path.
-- If power factor drops below `AUTO_RECOVER_PF` (0.1) — i.e. the load was removed
+- If power factor drops below `AUTO_RECOVER_PF` (0.2) — i.e. the load was removed
   — status returns to `STATUS_OK` and one `autoRecoverLogged` event is written.
   **The trip latch stays set on purpose**: energy is still over budget, so
   clearing it would re-trip and re-notify on the very next 80 ms cycle. The
@@ -444,16 +452,17 @@ commits immediately, and `flushEnergyToNvs()` runs as a pre-restart hook.
 | Group | Keys |
 |---|---|
 | Access point | `ap_ssid`, `ap_pass` — the network this board publishes; defaults live in `config.h` |
-| Legacy (written by older firmware, now unread) | `wifi_ssid`, `wifi_pass`, `wifi_mode` — erase with `clearwifi` |
+| Home network (STA) | `wifi_ssid`, `wifi_pass` — the router the board joins alongside its AP; erase with `clearwifi` |
 | Auth | `admin_pin` (default `1234`, plaintext) |
 | Per channel | name, monthly kWh limit, current cal, noise floor, LPF alpha, energy kWh |
 | Global | voltage cal, rms samples, last billing month, forensic events |
 
-`ap_ssid` / `ap_pass` are deliberately **not** stored in the old `wifi_ssid` /
-`wifi_pass` keys. Those hold the station credentials of a firmware that joined
-somebody else's router, nothing reads them, and `clearwifi` scrubs them — so
-reusing them would let a stale router SSID silently become the network the board
-broadcasts.
+`ap_ssid` / `ap_pass` and `wifi_ssid` / `wifi_pass` are **different things and
+must stay in different keys**. The first pair is the identity the board
+broadcasts — losing it means losing the phone dashboard, so it is what a saved
+value must never be able to clobber. The second pair is only a station client
+credential: a bad value costs internet access, never recovery access, which is
+exactly why `setwifi` needs no separate namespace.
 
 `ntfy_topic` / `ntfy_enable` may still be present from older firmware and are now
 ignored.
@@ -542,6 +551,22 @@ The write is committed *before* the restart is requested, so a reboot cannot
 resurrect the old identity, and the restart is deferred by a second so the reply
 flies first.
 
+### The home network is the default; the AP is fallback-only
+
+The board runs STA-first and joins the router named by `STA_SSID_DEFAULT`
+(or whatever `setwifi <ssid> <pass>` stored under `wifi_ssid` / `wifi_pass`).
+Three rules keep this from ever leaving the board headless:
+
+| Property | Why |
+|---|---|
+| The station credentials are validated *only* for being non-empty | A wrong station password only costs the STA link — and the fallback AP is what recovers it. Imposing the AP's 8-63 octet PSK rule here would reject perfectly valid home networks for no safety gain. |
+| Readiness holds in *either* running state | `isReady()` is `WIFI_STA_MODE \|\| WIFI_AP_MODE`. If the router is down, misnamed, or absent, the fallback AP still brings the dashboard up — the board is never headless, whichever path wins. |
+| The placeholder default is never passed to `WiFi.begin()` | `STA_SSID_PLACEHOLDER` (`"YOUR_HOME_SSID"`) exists exactly once in `config.h`. The join guard compares the *runtime* buffer to it — checking the compiled default instead is what once made a board with real NVS credentials sit quiet and never join. An unconfigured build skips straight to the fallback instead of retrying nothing. |
+
+There is no retry ladder, connect timeout or boot-failure counter, and no
+`STA_GOT_IP`-gated banner. Each of those existed to escape a station link that
+could not come up; an AP that must beacon anyway has nothing to escape.
+
 ### Eco mode is gone
 
 The old design slept the modem and slowed cloud pushes to 10 s when nobody was
@@ -565,7 +590,7 @@ runs full-rate.
 `set_monthly_kwh`, `set_noise_floor`, `set_lpf`, `set_rms_samples`,
 `reset_ch_cal`, `reset_ch_to_default` / `reset_channel_names`,
 `reset_nvs_defaults`, `test_force_rollover`, `set_pin`, `set_time`,
-`verify_pin`, and `console`.
+`verify_pin`, `set_ap` / `reset_ap`, `setwifi` / `clearwifi`, and `console`.
 
 It is a hand-rolled `indexOf` scanner, not a JSON library — which is why the
 code carries hand-written escape handling. Every mutating verb ends with
@@ -772,7 +797,7 @@ The LED goes solid blue while `isInProgress()` and the dashboard shows
 | ntfy retry | — | gone with ntfy |
 | NVS energy save | ~5 s | `sensorTask` |
 | Eco decision | — | gone with eco mode |
-| Auto-zero | 2 of 32 batches per 80 ms cycle | `AZ_BATCHES_PER_CYCLE` |
+| Auto-zero | 2 batches per 80 ms cycle, 1 batch total | `AZ_BATCHES_PER_CYCLE` / `AZ_BATCHES` |
 | WiFi connect timeout / retry | — | gone with STA |
 | AP fallback after retries | — | gone with STA |
 
@@ -822,12 +847,20 @@ from `test led`, as `status_led.h` itself notes.
 Trips are signalled by the **buzzer**, the channel `status` field, the event
 log, and the dashboard notification — not the LED.
 
-### C.3 Deferral claims for `setwifi` / `clearwifi` — **RESOLVED BY DELETION**
+### C.3 Deferral claims for `setwifi` / `clearwifi` — **RESOLVED**
 
 `console_handler.h` and `index.html` once stated that `setwifi connect/save` and
-`clearwifi` were deferred / "serial-only". Neither was true. Both verbs are now
-gone (`setwifi` prints a "board is AP-only" message; `clearwifi` runs inline and
-only erases stale credentials).
+`clearwifi` were deferred / "serial-only". Neither was true, and both verbs were
+then removed outright by the AP-only migration.
+
+Restored deliberately, with the deferral question settled per verb:
+
+- `setwifi` **is** deferred, and so is its reboot. The write is committed under
+  `dataMutex` first, then `requestReboot()` — restarting inside the WebSocket
+  handler would kill the socket before the acknowledgement flew.
+- `clearwifi` runs **inline** and does not reboot. Nothing about the running radio
+  depends on the stored value; it takes effect on the next boot, so forcing a
+  restart would cost the user a working dashboard for nothing.
 
 ### C.4 Dead constants in `config.h` — **REMOVED**
 

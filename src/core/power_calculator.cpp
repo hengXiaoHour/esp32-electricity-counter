@@ -168,7 +168,7 @@ bool PowerCalculator::autoZeroStart() {
 
 int PowerCalculator::autoZeroCapture(int n) {
   int captured = 0;
-  while (captured < n && azBatchCount < AZ_BATCHES) {
+  while (captured < n && azBatchCount < azBatches) {
     azFloors[azBatchCount++] = runAutoZeroSingle(azChannel);
     captured++;
   }
@@ -180,16 +180,16 @@ float PowerCalculator::autoZeroFinish() {
   for (int i = 0; i < NUM_CHANNELS; i++) {
     rmsInit[i] = false;
   }
-  for (int i = 0; i < AZ_BATCHES; i++) {
-    for (int j = i + 1; j < AZ_BATCHES; j++) {
+  for (int i = 0; i < azBatches; i++) {
+    for (int j = i + 1; j < azBatches; j++) {
       if (azFloors[j] < azFloors[i]) {
         float t = azFloors[i]; azFloors[i] = azFloors[j]; azFloors[j] = t;
       }
     }
   }
-  float median = (AZ_BATCHES % 2 == 1)
-      ? azFloors[AZ_BATCHES / 2]
-      : (azFloors[AZ_BATCHES / 2 - 1] + azFloors[AZ_BATCHES / 2]) * 0.5f;
+  float median = (azBatches % 2 == 1)
+      ? azFloors[azBatches / 2]
+      : (azFloors[azBatches / 2 - 1] + azFloors[azBatches / 2]) * 0.5f;
   azActive = false;
   azChannel = -1;
   azBatchCount = 0;

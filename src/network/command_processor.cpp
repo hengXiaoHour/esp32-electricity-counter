@@ -49,7 +49,7 @@ static bool extractJsonString(const String &s, const char *key, String &outVal) 
 // set_name, reset_counter, test_inject, set_voltage_cal, set_current_cal,
 // set_monthly_kwh, set_noise_floor, set_lpf, set_rms_samples, reset_ch_cal,
 // reset_channel_names, reset_nvs_defaults, test_force_rollover, set_time,
-// verify_pin, set_pin, set_ap, reset_ap.
+// verify_pin, set_pin, set_ap, reset_ap, setwifi, clearwifi.
 //
 // The two ntfy verbs are GONE rather than left as accepted no-ops: ntfy.sh
 // needs the internet this board does not have, and keeping a setting that
@@ -235,6 +235,17 @@ bool processCommand(NVSManager *nvs, SystemData *sysData,
       }
     }
 
+  } else if (s.indexOf("\"cmd\":\"set_az_batches\"") >= 0) {
+    int vi = s.indexOf("\"val\":");
+    if (vi >= 0) {
+      int val = s.substring(vi + 6).toInt();
+      if (val >= 1 && val <= PowerCalculator::AZ_BATCHES_MAX && powerCalc) {
+        powerCalc->setAzBatches(val);
+        nvs->saveAzBatches((uint8_t)val);
+        handled = true;
+      }
+    }
+
   } else if (s.indexOf("\"cmd\":\"reset_ch_cal\"") >= 0) {
     int ch = -1;
     int ci = s.indexOf("\"ch\":");
@@ -259,7 +270,7 @@ bool processCommand(NVSManager *nvs, SystemData *sysData,
     // A channel is ALWAYS required. The dashboard always sends "ch"; a
     // command without a valid channel is ignored instead of being treated as
     // "reset every channel" (previously a flattened child object dropped the
-    // "ch" field and wiped all 6 channels' limits).
+    // "ch" field and wiped all channels' limits).
     int ch = -1;
     int ci = s.indexOf("\"ch\":");
     if (ci >= 0) ch = s.substring(ci + 5).toInt();
@@ -284,9 +295,11 @@ bool processCommand(NVSManager *nvs, SystemData *sysData,
   } else if (s.indexOf("\"cmd\":\"reset_nvs_defaults\"") >= 0) {
     nvs->saveVoltageCalibration(DEFAULT_VOLTAGE_CALIBRATION);
     nvs->saveRmsSamples(MAX_RMS_SAMPLES / 2);
+    nvs->saveAzBatches(PowerCalculator::AZ_BATCHES_DEFAULT);
     powerCalc->voltageCal = DEFAULT_VOLTAGE_CALIBRATION;
     powerCalc->rmsSamples = MAX_RMS_SAMPLES / 2;
     powerCalc->setRmsSamples(MAX_RMS_SAMPLES / 2);
+    powerCalc->setAzBatches(PowerCalculator::AZ_BATCHES_DEFAULT);
     for (int i = 0; i < NUM_CHANNELS; i++) {
       nvs->saveChannelCurrentCal(i, DEFAULT_CURRENT_CALIBRATION);
       nvs->saveNoiseFloor(i, 0.0f);
@@ -385,6 +398,42 @@ bool processCommand(NVSManager *nvs, SystemData *sysData,
                      AP_PASS_DEFAULT + "\". The board is restarting.";
     }
     consoleHandler.requestReboot("  (AP credentials reset - restarting)");
+
+  } else if (s.indexOf("\"cmd\":\"setwifi\"") >= 0) {
+    // The HOME network the board joins alongside its own AP. PIN-gated like
+    // every other mutating verb. Unlike set_ap this is NOT an identity the user
+    // must be able to reach: the board keeps beaconing its AP either way, so a
+    // bad password here costs internet access, not recovery access.
+    String ssid, pass;
+    if (!extractJsonString(s, "ssid", ssid) || ssid.length() == 0) {
+      if (responseOut) *responseOut = "  Not saved: the SSID is empty.";
+    } else if (!extractJsonString(s, "pass", pass)) {
+      // Open networks are legitimate; an absent key means empty, not an error.
+      pass = "";
+    } else {
+      bool locked = (dataMutex &&
+                     xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE);
+      nvs->saveWiFi(ssid, pass);
+      nvs->commit();   // inside the mutex, same reason as set_ap
+      if (locked) xSemaphoreGive(*dataMutex);
+
+      handled = true;
+      if (responseOut) {
+        *responseOut = String("  Saved. The board will join \"") + ssid +
+                       "\" on boot.";
+      }
+      consoleHandler.requestReboot("  (home network changed - restarting)");
+    }
+
+  } else if (s.indexOf("\"cmd\":\"clearwifi\"") >= 0) {
+    bool locked = (dataMutex &&
+                   xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE);
+    nvs->clearWiFi();
+    nvs->commit();
+    if (locked) xSemaphoreGive(*dataMutex);
+
+    handled = true;
+    if (responseOut) *responseOut = "  Stored WiFi credentials cleared";
 
   } else if (s.indexOf("\"cmd\":\"set_time\"") >= 0) {
     // The browser lends us its clock. Sent automatically on WebSocket open, so

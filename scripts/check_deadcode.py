@@ -287,7 +287,7 @@ def main():
 
     wcpp = strip_cpp(read("src/network/wifi_manager.cpp"))
     wch = strip_cpp(read("src/network/wifi_manager.h"))
-    ap_body = body_of(wcpp, "void WiFiManager::startAPMode")
+    ap_body = body_of(wcpp, "void WiFiManager::startFallbackAP")
     reads_buffer = bool(ap_body) and "apSsid_" in ap_body
     getter_ssid = body_of(wch, "getSSID")
     getter_pass = body_of(wch, "getPass")
@@ -297,6 +297,41 @@ def main():
     r.add("getSSID()/getPass() return the live buffers",
           "apSsid_" in getter_ssid and "apPass_" in getter_pass,
           "getSSID->%r getPass->%r" % (getter_ssid.strip(), getter_pass.strip()))
+
+    # --- 6b. STA-first: the AP must stay OFF unless the home link fails ----
+    # The exact bugs this catches: startStaMode() that never calls WiFi.begin(),
+    # a fallback that never starts the AP, an isReady() that only holds in one
+    # state (dashboard never starts in the other), or a placeholder guard that
+    # checks the compiled default instead of the runtime buffer (real NVS
+    # credentials then sit quiet and never join - shipped once, caught here).
+    sta_body = body_of(wcpp, "void WiFiManager::startStaMode")
+    fb_body = body_of(wcpp, "void WiFiManager::startFallbackAP")
+    r.add("startStaMode starts the station link from the live buffer",
+          bool(sta_body) and "WiFi.begin(" in sta_body and "staSsid_" in sta_body,
+          "no WiFi.begin(staSsid_) inside startStaMode")
+    r.add("startStaMode runs STA-only, never starting the AP itself",
+          bool(sta_body) and "WIFI_STA" in sta_body and "softAP(" not in sta_body,
+          "startStaMode touches the AP")
+    r.add("the placeholder guard compares the runtime buffer, not the default",
+          "strcmp(staSsid_, STA_SSID_PLACEHOLDER)" in (sta_body + fb_body),
+          "guard checks the default instead of staSsid_")
+    r.add("the fallback starts the AP for recovery",
+          bool(fb_body) and "softAP(" in fb_body and "apSsid_" in fb_body,
+          "startFallbackAP does not broadcast apSsid_")
+    r.add("isReady() holds in EITHER running state, never in INIT",
+          "WIFI_STA_MODE" in strip_cpp(read("src/network/wifi_manager.h")) and
+          "WIFI_AP_MODE" in strip_cpp(read("src/network/wifi_manager.h")) and
+          "WIFI_INIT" not in
+          re.search(r"bool isReady\(\) const \{[^}]*\}",
+                    read("src/network/wifi_manager.h")).group(0),
+          "isReady() misses a running state or admits INIT")
+    # stationUp()/staRSSI() are read by the .ino and the console; a dead
+    # getter is the same silent-nothing class of bug.
+    ino_txt = read("esp32-electricity-counter.ino")
+    r.add("the station getters are actually called by firmware and console",
+          "wifiMgr.stationUp()" in ino_txt and
+          "stationUp()" in strip_cpp(read("src/network/console_handler.cpp")),
+          "stationUp()/staRSSI() have no callers")
     # The two default pointers must stay gone: leaving them declared invites
     # the same read-by-accident, and nothing else references them now.
     stale_ptr = [sym for sym in ("AP_SSID", "AP_PASS")

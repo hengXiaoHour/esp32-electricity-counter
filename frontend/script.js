@@ -4,7 +4,7 @@ let activeEditChIdx = null;
 let latestChannelData = [];
 let pendingActions = {};
 let lastAzState = { active: false, channel: -1, queue: [] };
-const AZ_BATCHES = 32;
+const AZ_BATCHES_DEFAULT = 1;
 let demoInterval = null;
 let lastEventKey = '';
 let lastToastEventKey = '';
@@ -33,7 +33,7 @@ const CHART_DEFS = {
   'I': { label: 'Total Current (A)', color: '#9a9a9a' }
 };
 
-const NUM_CHANNELS = 6;
+const NUM_CHANNELS = 5;
 
 
 // ============ PWA install prompt ============
@@ -221,15 +221,14 @@ function saveApSettings() {
   // the connection is about to disappear.
   return sendCommand({ cmd: 'set_ap', ssid: ssid, pass: pass }).then(() => {
     passInput.value = '';
-    showToast(`Saved — the board is restarting as "${ssid}"`, 6000);
-    showToast('Rejoin that WiFi, then reopen http://192.168.4.1/', 6000);
+    showToast(`Saved — fallback AP will be "${ssid}"`, 6000);
+    showToast('It only appears when home WiFi fails; the board is restarting', 6000);
     // The page is about to lose its socket. Say so plainly rather than letting
     // the reconnect logic spin.
     const hint = document.getElementById('apHint');
     if (hint) {
-      hint.innerHTML = '<strong>The board is rebooting to join "' + ssid +
-        '".</strong> Join that network, then reopen ' +
-        '<span class="mono">http://192.168.4.1/</span>.';
+      hint.innerHTML = '<strong>The board is rebooting.</strong> The fallback AP "' + ssid +
+        '" only appears when home WiFi fails — otherwise the AP stays OFF.';
     }
     setTimeout(() => handleDisconnect(), 1500);
     return true;
@@ -241,6 +240,42 @@ function resetApSettings() {
   return sendCommand({ cmd: 'reset_ap' }).then(() => {
     showToast('Resetting to the default network name — the board is restarting', 6000);
     setTimeout(() => handleDisconnect(), 1500);
+    return true;
+  }).catch(() => false);
+}
+
+// ============ Home Network (default) ============
+// This IS how you reach the board: STA-first, AP stays OFF while this works.
+// The page is about to lose its socket on save, so the disconnect hint applies.
+function saveStaSettings() {
+  const ssidInput = document.getElementById('staSsid');
+  const passInput = document.getElementById('staPass');
+  const ssid = (ssidInput.value || '').trim();
+  const pass = passInput.value || '';
+
+  if (!ssid) return showToast('Enter your home WiFi name');
+  if (isDemo) return showToast('Not available in demo mode');
+
+  return sendCommand({ cmd: 'setwifi', ssid: ssid, pass: pass }).then(() => {
+    passInput.value = '';
+    showToast(`Saved — the board will join "${ssid}" after it restarts`, 6000);
+    const hint = document.getElementById('staHint');
+    if (hint) {
+      hint.innerHTML = '<strong>The board is restarting to join "' + ssid +
+        '".</strong> The AP stays OFF; open the dashboard at the board\'s new ' +
+        'home IP. If it cannot join, the fallback AP comes up instead.';
+    }
+    setTimeout(() => handleDisconnect(), 1500);
+    return true;
+  }).catch(() => false);
+}
+
+function clearStaSettings() {
+  if (isDemo) return showToast('Not available in demo mode');
+  return sendCommand({ cmd: 'clearwifi' }).then(() => {
+    showToast('Home network forgotten — fallback AP will come up', 6000);
+    const ssidInput = document.getElementById('staSsid');
+    if (ssidInput) { ssidInput.value = ''; delete ssidInput.dataset.userSet; }
     return true;
   }).catch(() => false);
 }
@@ -544,20 +579,26 @@ function notifyOnTrip(data, hasTrip) {
 }
 
 // ============ Network indicator (AP-only) ============
-// The board is an access point and never joins a network, so there is no RSSI
-// to display. The icon shows the shape of the world we are actually in: an AP
-// with clients, or an idle AP nobody is watching.
+// STA is the default path, so the icon shows the home-network link first and
+// the fallback AP second. Levels follow the STA RSSI; the AP has no RSSI, so
+// it shows a fixed mid level whenever it is up.
 function updateWifiIcon(data) {
   const wifi = document.querySelector('.wifi');
   if (!wifi) return;
-  if (!data.ap) {
-    wifi.setAttribute('class', 'wifi lv0 disconnected');
-    wifi.setAttribute('title', 'Access point starting');
+  if (data.wifi) {
+    const rssi = typeof data.rssi === 'number' ? data.rssi : -70;
+    const lv = rssi >= -55 ? 'lv3' : rssi >= -70 ? 'lv2' : 'lv1';
+    wifi.setAttribute('class', 'wifi ' + lv);
+    wifi.setAttribute('title', 'Connected over home WiFi (' + rssi + ' dBm), AP off');
     return;
   }
-  // Any WebSocket client is by definition on the AP, so the link is up.
-  wifi.setAttribute('class', 'wifi lv2');
-  wifi.setAttribute('title', 'Connected over the board\'s own WiFi (AP mode)');
+  if (data.ap) {
+    wifi.setAttribute('class', 'wifi lv2');
+    wifi.setAttribute('title', 'Connected over the fallback AP (home network down)');
+    return;
+  }
+  wifi.setAttribute('class', 'wifi lv0 disconnected');
+  wifi.setAttribute('title', 'Joining home WiFi...');
 }
 
 // ============ Smart DOM-preserving Dashboard Update ============
@@ -649,6 +690,29 @@ function updateDashboard(data) {
       : 'unchanged (custom — type to replace)';
   }
 
+  // Home-network panel. The SSID is published in the snapshot, but the
+  // password never is — only whether the board currently holds one. Same
+  // dataset.userSet guard, for the same reason: this frame arrives several
+  // times a second and would eat a half-typed name.
+  const staStatusEl = document.getElementById('staStatus');
+  if (staStatusEl) {
+    const up = !!data.wifi;
+    staStatusEl.textContent = up
+      ? 'CONNECTED' + (typeof data.rssi === 'number' ? ' — ' + data.rssi + ' dBm' : '')
+      : 'not connected';
+    staStatusEl.style.color = up ? 'var(--ok, #4ade80)' : 'var(--muted, #8a8a8a)';
+  }
+  const staSsidEl = document.getElementById('staSsid');
+  if (staSsidEl && !staSsidEl.dataset.userSet && typeof data.staSsid === 'string' && data.staSsid) {
+    staSsidEl.value = data.staSsid;
+  }
+  const staPassEl = document.getElementById('staPass');
+  if (staPassEl && !staPassEl.dataset.userSet && typeof data.staIsDefault === 'boolean') {
+    staPassEl.placeholder = data.staIsDefault
+      ? 'your home WiFi password'
+      : 'unchanged (saved — type to replace)';
+  }
+
   // System status LED
   const led = document.getElementById('sysLed');
   if (led) {
@@ -736,7 +800,7 @@ function updateDashboard(data) {
     const busy = azActiveCh >= 0 || azQueueArr.length > 0;
     if (busy) {
       let txt = azActiveCh >= 0
-        ? `\u25d0 calibrating Ch${azActiveCh + 1} (${data.azProgress || 0}/${AZ_BATCHES})`
+        ? `\u25d0 calibrating Ch${azActiveCh + 1} (${data.azProgress || 0}/${data.azBatches || AZ_BATCHES_DEFAULT})`
         : 'starting auto-zero\u2026';
       if (azQueueArr.length) {
         txt += '\u2003\u00b7\u2003waiting: ' + azQueueArr.map(c => 'Ch' + (c + 1)).join(', ');
@@ -757,6 +821,11 @@ function updateDashboard(data) {
   const rmsInput = document.getElementById('rmsSamples');
   if (rmsInput && typeof data.rmsSamples === 'number' && !rmsInput.dataset.userSet) {
     rmsInput.value = data.rmsSamples;
+  }
+
+  const azInput = document.getElementById('azBatches');
+  if (azInput && typeof data.azBatches === 'number' && !azInput.dataset.userSet) {
+    azInput.value = data.azBatches;
   }
 
   // Build calibration collapsible rows once
@@ -1206,12 +1275,23 @@ function setRmsSamples() {
   });
 }
 
+function setAzBatches() {
+  const inp = document.getElementById('azBatches');
+  const val = parseInt(inp.value);
+  if (isNaN(val) || val < 1 || val > 64) return showToast('Auto-Zero Batches must be 1-64');
+  delete inp.dataset.userSet;
+  sendCommand({ cmd: 'set_az_batches', val }).then(() => {
+    showToast(`Auto-Zero Batches set to ${val}`);
+  });
+}
+
 function handleResetNvs() {
   const btn = document.getElementById('resetNvsBtn');
   if (btn.dataset.confirm === 'true') {
     delete btn.dataset.confirm;
     btn.textContent = '\u21ba Reset NVS to Defaults';
     delete document.getElementById('rmsSamples').dataset.userSet;
+    delete document.getElementById('azBatches').dataset.userSet;
     delete document.getElementById('voltCal').dataset.userSet;
     for (let i = 0; i < 6; i++) {
       const nf = document.getElementById(`nf_${i}`);

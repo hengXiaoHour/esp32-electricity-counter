@@ -4,7 +4,13 @@
 
 class PowerCalculator {
 public:
-  static const int AZ_BATCHES = 32;
+  // Auto-zero sample count is runtime-tunable (CLI: az_batches <N>, dashboard
+  // Settings input) and persisted in NVS. Default 1 = the raw single-capture
+  // floor; larger values average outlier-rejecting medians, at 64 captures max.
+  static const int AZ_BATCHES_MAX = 64;
+  static const int AZ_BATCHES_DEFAULT = 1;
+  uint8_t azBatches = AZ_BATCHES_DEFAULT;
+  void setAzBatches(int n) { if (n >= 1 && n <= AZ_BATCHES_MAX) azBatches = (uint8_t)n; }
 
   void begin();
 
@@ -35,7 +41,7 @@ public:
   int getAutoZeroQueue(int *out, int maxLen) const;
   bool autoZeroStart();
   int autoZeroCapture(int n);
-  bool autoZeroDone() const { return azActive && azBatchCount >= AZ_BATCHES; }
+  bool autoZeroDone() const { return azActive && azBatchCount >= azBatches; }
   float autoZeroFinish();
   float runAutoZeroSingle(int ch);
 
@@ -59,7 +65,7 @@ private:
   int azQueueLen;
   int azChannel;
   int azBatchCount;
-  float azFloors[AZ_BATCHES];
+  float azFloors[AZ_BATCHES_MAX];
   bool azActive;
   bool azLpfForced;
 

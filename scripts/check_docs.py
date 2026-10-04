@@ -60,6 +60,14 @@ class Checker:
 def main():
     c = Checker()
 
+    # Read the channel count from the firmware, once, so every assertion below
+    # compares against the real number instead of a literal that can rot.
+    m = re.search(r"#define NUM_CHANNELS\s+(\d+)", read("src/config.h"))
+    if not m:
+        print("FATAL: NUM_CHANNELS not found in src/config.h")
+        return
+    NUM_CHANNELS = int(m.group(1))
+
     ino = read("esp32-electricity-counter.ino")
     arch = read("doc/ARCHITECTURE.md")
     rdme = read("README.md")
@@ -129,9 +137,68 @@ def main():
     c.add("no-cache is set on served assets",
           "no-cache" in ws_code)
 
-    # --- AP-only -------------------------------------------------------
-    c.add("WiFiManager has no station interface at all",
-          "connectToWiFi" not in wm and "WIFI_STA" not in wm and "WIFI_STA" not in wm_h)
+    # --- STA-first (AP is fallback-only, off unless the home link fails) ---
+    # STA-only is the normal running state, so the radio must start as WIFI_STA
+    # and only switch to WIFI_AP_STA inside the fallback. Starting in AP_STA
+    # would broadcast unconditionally, which is exactly what "AP off by default"
+    # forbids.
+    c.add("the radio starts STA-only, AP only in the fallback",
+          re.search(r"WiFi\.mode\(WIFI_STA\)", wm) is not None and
+          re.search(r"WiFi\.mode\(WIFI_AP_STA\)", wm) is not None)
+    c.add("the fallback starts the AP and keeps the STA retrying",
+          re.search(r"WiFi\.softAP\(.*?\).*?WiFi\.begin\(", wm, re.S) is not None)
+    c.add("readiness holds in EITHER running state, never in INIT",
+          re.search(r"state == WIFI_STA_MODE \|\| state == WIFI_AP_MODE", wm_h) is not None)
+    # The placeholder literal must exist exactly ONCE (as STA_SSID_PLACEHOLDER).
+    # A second copy anywhere is how a real default later ships still filtered.
+    c.add("the placeholder SSID literal exists exactly once, as its own macro",
+          cfg.count('"YOUR_HOME_SSID"') == 1 and
+          "STA_SSID_PLACEHOLDER" in cfg and
+          '"YOUR_HOME_SSID"' not in wm,
+          "a literal copy of the placeholder exists outside config.h")
+    c.add("the join guard compares the RUNTIME buffer to the placeholder macro",
+          "strcmp(staSsid_, STA_SSID_PLACEHOLDER)" in wm,
+          "the guard checks the default instead of the live value")
+    # Each of the three fallback triggers must actually CALL the fallback, not
+    # just log about it. A count is not enough: deleting one call site still
+    # leaves the total above any threshold, which is exactly how the first
+    # version of this rule survived its own mutation test.
+    _fb = lambda trig: re.search(re.escape(trig) + r"[\s\S]{0,400}?startFallbackAP\(\)", wm) is not None
+    c.add("the unconfigured path falls back instead of joining nothing",
+          _fb("no home network configured"),
+          "unconfigured path logs but never calls startFallbackAP()")
+    c.add("the join-timeout path falls back instead of hanging",
+          _fb("not reached in"),
+          "timeout path logs but never calls startFallbackAP()")
+    c.add("a prolonged STA loss brings the fallback AP up",
+          _fb("lost for 30s"),
+          "loop-loss path logs but never calls startFallbackAP()")
+    c.add("the station defaults live in config.h",
+          "STA_SSID_DEFAULT" in cfg and "STA_PASS_DEFAULT" in cfg)
+    c.add("station credentials are read from NVS first, defaults second",
+          "loadWiFi(staSsid, staPass)" in wm)
+    c.add("setwifi saves the station SSID to NVS (serial verb)",
+          'putString("wifi_ssid"' in nvs and "cmdSetWifi" in ch)
+    # The C source spells this as "\"cmd\":\"setwifi\"" (escaped quotes inside a
+    # C string literal), so the needle is written the same way in Python.
+    setwifi_needle = '"' + '\\"cmd\\":\\"setwifi\\"' + '"'
+    c.add("setwifi saves the station SSID to NVS (WebSocket verb)",
+          setwifi_needle in cmd, "needle %r not found" % setwifi_needle)
+    # The mock and the firmware must agree on the channel count, or the E2E
+    # suite tests a board that does not exist. Sizes compared, not literals.
+    mock = read("scripts/mock_device.py")
+    import ast as _ast
+    mock_channels = len(_ast.literal_eval(
+        re.search(r"self\.names = (\[[^\]]*\])", mock, re.S).group(1)))
+    c.add("the mock board publishes NUM_CHANNELS channels, like the firmware",
+          mock_channels == NUM_CHANNELS,
+          "mock=%s firmware=%s" % (mock_channels, NUM_CHANNELS))
+    c.add("the dashboard's channel count matches the firmware",
+          re.search(r"const NUM_CHANNELS = (\d+);", js).group(1) == str(NUM_CHANNELS),
+          "js=%s firmware=%s" % (re.search(r"const NUM_CHANNELS = (\d+);", js).group(1),
+                                 NUM_CHANNELS))
+    c.add("the dashboard reports the real station state, not a hardcoded false",
+          re.search(r"systemData\.wifiConnected = wifiMgr\.stationUp\(\)", ino) is not None)
     # AP-only removed the NVS dependency from WiFiManager::begin() and this
     # feature put it back: the network name and password are no longer compile-
     # time constants. The old claim ("takes no NVS argument") is now false, and
@@ -207,7 +274,7 @@ def main():
           # verb also appears in the command list and in the recovery prose, so a
           # substring match kept passing after the walkthrough was gutted.
           "`set_ap`" in rdme and "`reset_ap`" in rdme and
-          "Changing the network name and password" in rdme)
+          "fallback AP name and password" in rdme)
     c.add("ARCHITECTURE records that the AP identity is persisted",
           "`ap_ssid`, `ap_pass`" in arch and "set_ap" in arch and "reset_ap" in arch)
 
@@ -234,8 +301,9 @@ def main():
     c.add("the frontend caches the PIN in sessionStorage only",
           "sessionStorage.getItem('esp32counter_pin')" in js and
           "localStorage.setItem('esp32counter_pin'" not in js)
+    m = re.search(r"esp32-counter-v(\d+)", sw)
     c.add("service worker cache name was bumped past the pre-migration one",
-          "esp32-counter-v14" in sw)
+          m is not None and int(m.group(1)) >= 14)
     c.add("demo mode is reachable without a board",
           "?demo=1" in js)
 

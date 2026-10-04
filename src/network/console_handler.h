@@ -18,8 +18,9 @@ class StatusLED;
 // Commands that would block the network task (test led) or are destructive
 // (reboot, nvs_debug) are flagged as deferred — the web console sets
 // pendingDefer and the sketch's loop() runs them on Core 1 where blocking is
-// safe. Note that setwifi/clearwifi are NOT deferred: clearwifi runs inline,
-// and `setwifi` now only prints a "gone" message.
+// safe. Note that clearwifi is NOT deferred - it runs inline and takes effect
+// on the next boot - while setwifi DOES defer its reboot, because the commit
+// has to be safely in flash before the board restarts.
 class ConsoleHandler {
 public:
   ConsoleHandler();
@@ -99,16 +100,18 @@ private:
   void cmdNvsDebug(String &out);
   void cmdReboot(String &out);
   void cmdRmsSamples(const String &args, String &out);
+  void cmdAzBatches(const String &args, String &out);
   void cmdCurrCal(const String &args, String &out);
   void cmdAutoZero(const String &args, String &out);
   void cmdVoltCal(const String &args, String &out);
   void cmdClearWifi(String &out);
+  void cmdSetWifi(const String &args, String &out);
   void cmdSetAp(const String &args, String &out);
   void cmdResetAp(String &out);
   void cmdLed(const String &args, String &out);
 
   // Push RAM energy counters to NVS + commit. Called before every
-  // deliberate restart (reboot, setwifi connect) so counter data survives.
+  // deliberate restart (reboot, set_ap, setwifi) so counter data survives.
   void flushEnergy();
 
   static void ledTestStep(ConsoleHandler *self);

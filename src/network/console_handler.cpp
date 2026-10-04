@@ -197,6 +197,9 @@ void ConsoleHandler::exec(const String &line, String &out) {
   } else if (cmd.startsWith("rms_samples ")) {
     cmdRmsSamples(cmd.substring(12), out);
 
+  } else if (cmd.startsWith("az_batches ")) {
+    cmdAzBatches(cmd.substring(11), out);
+
   } else if (cmd.startsWith("curr_cal ")) {
     cmdCurrCal(cmd.substring(9), out);
 
@@ -206,10 +209,12 @@ void ConsoleHandler::exec(const String &line, String &out) {
   } else if (cmd.startsWith("volt_cal ")) {
     cmdVoltCal(cmd.substring(9), out);
 
+  } else if (cmd.startsWith("setwifi ")) {
+    cmdSetWifi(cmd.substring(8), out);
+
   } else if (cmd.startsWith("setwifi")) {
-    consoleAppendf(out, "%s", "  setwifi is gone: this board is AP-only.");
-    consoleAppendf(out, "  It never joins a network. Join \"%s\" from your phone.",
-                   wifiMgr ? wifiMgr->getSSID() : AP_SSID_DEFAULT);
+    consoleAppendf(out, "%s", "  Usage: setwifi <ssid> <password>");
+    consoleAppendf(out, "%s", "  Saves to NVS, then reboots to join that network.");
 
   } else if (cmd.startsWith("set_ap ")) {
     cmdSetAp(cmd.substring(7), out);
@@ -397,6 +402,19 @@ void ConsoleHandler::cmdReboot(String &out) {
   ESP.restart();
 }
 
+void ConsoleHandler::cmdAzBatches(const String &args, String &out) {
+  int val = args.toInt();
+  if (val >= 1 && val <= PowerCalculator::AZ_BATCHES_MAX) {
+    powerCalc->setAzBatches(val);
+    nvs->saveAzBatches((uint8_t)val);
+    nvs->commit();
+    consoleAppendf(out, "  Auto-zero batches set to %d", val);
+  } else {
+    consoleAppendf(out, "  Auto-zero batches must be 1-%d",
+                   PowerCalculator::AZ_BATCHES_MAX);
+  }
+}
+
 void ConsoleHandler::cmdRmsSamples(const String &args, String &out) {
   int val = args.toInt();
   if (val >= 100 && val <= MAX_RMS_SAMPLES) {
@@ -501,7 +519,38 @@ void ConsoleHandler::cmdClearWifi(String &out) {
   nvs->clearWiFi();
   nvs->commit();
   consoleAppendf(out, "%s", "  Stored WiFi credentials cleared");
-  consoleAppendf(out, "%s", "  (the board is AP-only and never joins a network)");
+  consoleAppendf(out, "%s", "  (on next boot the board will not join any network)");
+}
+
+void ConsoleHandler::cmdSetWifi(const String &args, String &out) {
+  // Same parsing helper as set_ap, so `setwifi "My Router" pass123` works and
+  // an over-long value is REFUSED rather than truncated into a different SSID.
+  char ssidBuf[AP_MAX_SSID_LEN + 1];
+  char passBuf[AP_MAX_PASS_LEN + 1];
+  if (!ap_creds_splitArgs(args.c_str(), ssidBuf, sizeof(ssidBuf),
+                          passBuf, sizeof(passBuf))) {
+    consoleAppendf(out, "%s", "  Usage: setwifi <ssid> <password>");
+    consoleAppendf(out, "%s", "         quote an SSID that contains spaces:");
+    consoleAppendf(out, "%s", "         setwifi \"Home Router\" mypass123");
+    return;
+  }
+
+  if (strlen(ssidBuf) == 0) {
+    consoleAppendf(out, "%s", "  Not saved: the SSID is empty.");
+    return;
+  }
+
+  // dataMutex for the same reason set_ap takes it: commit() is
+  // prefs.end()+prefs.begin() and is not thread-safe against sensorTask.
+  bool locked = (xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE);
+  nvs->saveWiFi(ssidBuf, passBuf);
+  nvs->commit();
+  if (locked) xSemaphoreGive(*dataMutex);
+
+  consoleAppendf(out, "  Saved. The board will join \"%s\" on boot.", ssidBuf);
+  consoleAppendf(out, "%s",
+                 "  It still broadcasts its own AP, so the phone dashboard keeps working.");
+  requestReboot("  (station WiFi changed - restarting)");
 }
 
 void ConsoleHandler::cmdSetAp(const String &args, String &out) {
@@ -616,29 +665,39 @@ void ConsoleHandler::cmdInfo(String &out) {
 }
 
 void ConsoleHandler::cmdWifi(String &out) {
-  // Was: mode / SSID / RSSI / local IP. All of those described a station link,
-  // which no longer exists. What is left is the network the board publishes -
-  // and the name and password it shows are the LIVE ones (loaded from NVS at
-  // boot, or the compiled defaults), not the factory constants.
-  consoleAppendf(out, "  %-16s%s", "Mode:", "AP ONLY (no station interface)");
-  consoleAppendf(out, "  %-16s\"%s\"", "Network:",
-                 wifiMgr ? wifiMgr->getSSID() : AP_SSID_DEFAULT);
-  consoleAppendf(out, "  %-16s%s", "Password:",
-                 wifiMgr ? wifiMgr->getPass() : AP_PASS_DEFAULT);
-  consoleAppendf(out, "  %-16s%s", "AP IP:", WiFi.softAPIP().toString().c_str());
-  consoleAppendf(out, "  %-16s%s", "Dashboard:", "http://192.168.4.1/");
-  consoleAppendf(out, "  %-16s%d", "Clients:", wifiMgr ? (int)wifiMgr->clientCount() : 0);
+  // STA is the default path; the AP below is fallback-only and usually OFF.
+  const bool up = wifiMgr && wifiMgr->stationUp();
+  const bool ap = wifiMgr && wifiMgr->apActive();
+  consoleAppendf(out, "  %-16s%s", "Mode:",
+                 ap ? "AP FALLBACK (home network failed)"
+                    : (up ? "STA (AP off)" : "STA joining..."));
   consoleAppendf(out, "%s", "");
-  consoleAppendf(out, "%s", "  Change it: set_ap <name> <password>   (reboots)");
-  consoleAppendf(out, "%s", "  Forgot it? reset_ap                    (back to defaults)");
+  consoleAppendf(out, "  Home network:");
+  consoleAppendf(out, "  %-16s%s", "SSID:",
+                 up ? WiFi.SSID().c_str() : (wifiMgr ? wifiMgr->staSSID() : ""));
+  if (up) {
+    consoleAppendf(out, "  %-16s%s", "Status:", "CONNECTED");
+    consoleAppendf(out, "  %-16s%d dBm", "RSSI:", (int)wifiMgr->staRSSI());
+    consoleAppendf(out, "  %-16s%s", "IP:", WiFi.localIP().toString().c_str());
+    consoleAppendf(out, "  %-16shttp://%s/", "Dashboard:", WiFi.localIP().toString().c_str());
+  } else {
+    consoleAppendf(out, "  %-16s%s", "Status:", "not connected");
+    consoleAppendf(out, "%s", "  Change it: setwifi <ssid> <password>  (reboots)");
+    consoleAppendf(out, "%s", "  Forget it: clearwifi");
+  }
 
-  String ssid, pass;
-  nvs->loadWiFi(ssid, pass);
-  if (ssid.length() > 0) {
-    consoleAppendf(out, "%s", "");
-    consoleAppendf(out, "%s",
-                   "  Note: a stale STATION SSID is still stored in NVS but is never used.");
-    consoleAppendf(out, "%s", "  Run 'clearwifi' to erase it.");
+  consoleAppendf(out, "%s", "");
+  if (ap) {
+    consoleAppendf(out, "  Fallback AP: ON");
+    consoleAppendf(out, "  %-16s\"%s\"", "Network:",
+                   wifiMgr ? wifiMgr->getSSID() : AP_SSID_DEFAULT);
+    consoleAppendf(out, "  %-16s%s", "AP IP:", WiFi.softAPIP().toString().c_str());
+    consoleAppendf(out, "  %-16s%s", "Dashboard:", "http://192.168.4.1/");
+    consoleAppendf(out, "  %-16s%d", "Clients:", (int)wifiMgr->clientCount());
+    consoleAppendf(out, "%s", "  Change it: set_ap <name> <password>   (reboots)");
+    consoleAppendf(out, "%s", "  Forgot it? reset_ap                    (back to defaults)");
+  } else {
+    consoleAppendf(out, "%s", "  Fallback AP: OFF (home network is up)");
   }
 }
 
@@ -647,22 +706,24 @@ void ConsoleHandler::cmdHelp(String &out) {
   consoleAppendf(out, "%s", "    help                Show available commands");
   consoleAppendf(out, "%s", "    status              Toggle live status stream (+snapshot)");
   consoleAppendf(out, "%s", "    debug               Toggle debug diagnostics stream");
-  consoleAppendf(out, "%s", "    ch <N>              Channel details (1-6)");
+  consoleAppendf(out, "%s", "    ch <N>              Channel details (1-5)");
   consoleAppendf(out, "%s", "    cal                 Show calibration values");
   consoleAppendf(out, "%s", "    info                Firmware & hardware info");
   consoleAppendf(out, "%s", "    wifi                Show WiFi status");
-  consoleAppendf(out, "%s", "    buzz <N>            Ring buzzer N beeps (1-6)");
+  consoleAppendf(out, "%s", "    buzz <N>            Ring buzzer N beeps (1-5)");
   consoleAppendf(out, "%s", "    inject <ch> <kwh>   Set channel energy (testing)");
-  consoleAppendf(out, "%s", "    reset <N>           Reset counter for channel (1-6)");
+  consoleAppendf(out, "%s", "    reset <N>           Reset counter for channel (1-5)");
   consoleAppendf(out, "%s", "    reset_name [N]      Reset channel name(s) to default");
   consoleAppendf(out, "%s", "    ---");
   consoleAppendf(out, "%s", "    test led            LED color sequence test (non-blocking)");
   consoleAppendf(out, "%s", "    led <normal|rgb>    LED driver type (default: normal, no reboot)");
   consoleAppendf(out, "%s", "    rms_samples <N>     Set RMS samples (100-MAX)");
+  consoleAppendf(out, "%s", "    az_batches <N>      Set auto-zero captures (1-64)");
   consoleAppendf(out, "%s", "    curr_cal <ch> <val> Set current calibration for channel");
   consoleAppendf(out, "%s", "    auto_zero <ch>      Auto-zero noise floor for channel");
   consoleAppendf(out, "%s", "    volt_cal <val>      Set voltage calibration");
-  consoleAppendf(out, "%s", "    clearwifi           Erase stored WiFi creds (unused)");
+  consoleAppendf(out, "%s", "    setwifi <ssid> <pw> Home network to join on boot (reboots)");
+  consoleAppendf(out, "%s", "    clearwifi           Erase the saved home-network creds");
   consoleAppendf(out, "%s", "    set_ap <name> <pw>  Rename the network + set password (reboots)");
   consoleAppendf(out, "%s", "    reset_ap            Restore the default network name (reboots)");
   consoleAppendf(out, "%s", "    nvs_debug           Test NVS write/read cycle");

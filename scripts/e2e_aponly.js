@@ -5,7 +5,8 @@
 // What this actually proves, and what it does not:
 //
 //  PROVES  The device-served page loads with no external scripts, connects a
-//          same-origin WebSocket, renders six channels, lends its clock, and
+//          same-origin WebSocket, renders every channel the board publishes,
+//          lends its clock, and
 //          refuses to send a mutating command without the admin PIN. It also
 //          proves the BOARD rejects an unpinned frame and that the UI drops to
 //          read-only when it does - the frontend-only "admin" flag of the old
@@ -101,7 +102,10 @@ function check(name, cond, detail) {
   // Wait for the socket to open and at least one snapshot to land.
   await page.waitForFunction(() => window.__wsSent && window.__wsSent.length >= 0, null, { timeout: 10000 });
   await page.waitForFunction(
-    () => document.querySelectorAll('.channel-card').length === 6, null, { timeout: 10000 })
+    () => document.querySelectorAll('.channel-card').length >= 1
+          && window.__lastData && Array.isArray(window.__lastData.ch)
+          && document.querySelectorAll('.channel-card').length === window.__lastData.ch.length,
+    null, { timeout: 10000 })
     .catch(() => {});
   await page.waitForTimeout(1200);
 
@@ -114,8 +118,14 @@ function check(name, cond, detail) {
   check('no console errors', consoleErrors.length === 0, consoleErrors.join(' | '));
 
   console.log('\n== dashboard renders ==');
+  // Card count comes from the board's snapshot, not a literal: NUM_CHANNELS
+  // is 5 in src/config.h and frontend/script.js today, and this test must
+  // follow whichever the mock actually publishes.
   const cards = await page.locator('.channel-card').count();
-  check('six channel cards rendered', cards === 6, 'got ' + cards);
+  const snapshotCh = await page.evaluate(
+    () => (window.__lastData && window.__lastData.ch) ? window.__lastData.ch.length : -1);
+  check('one channel card per snapshot channel', cards === snapshotCh && cards > 0,
+        'cards=' + cards + ' snapshot=' + snapshotCh);
 
   const totalP = await page.locator('#totalPower').textContent();
   check('total power populated from snapshot', /\d/.test(totalP), 'got "' + totalP + '"');
@@ -417,6 +427,122 @@ function check(name, cond, detail) {
   const hint = await page.locator('#apHint').textContent();
   check('the panel warns that the board is rebooting',
         /rebooting/i.test(hint), 'hint = "' + (hint || '').slice(0, 80) + '"');
+
+  // ---------------------------------------------------------------------
+  // Home Network (STA) panel.
+  //
+  // Placed after the AP stage because the page has just been told the socket is
+  // going away, but driven over a SEPARATE raw socket: this must be provable
+  // without depending on a live dashboard session.
+  //
+  // What matters here is not the name but the three rules that make the feature
+  // safe: the board must refuse an empty SSID, `Forget` must clear the stored
+  // network, and the status line must follow the board rather than a constant.
+  console.log('\n== Home Network (STA) ==');
+  await page.evaluate(() => window.showPage('settings'));
+  await page.waitForTimeout(300);
+  await page.locator('#staSsid').scrollIntoViewIfNeeded();
+  check('the STA panel exists', await page.locator('#staSaveBtn').count() === 1);
+
+  // Status must read from the snapshot, not a hardcoded string.
+  const staStatus = await page.locator('#staStatus').textContent();
+  const boardUp = await page.evaluate(() => !!(window.__lastData && window.__lastData.wifi));
+  check('the STA status line reflects the board', /not connected/i.test(staStatus) === !boardUp,
+        'status="' + staStatus + '" boardUp=' + boardUp);
+
+  const boardSta = await page.evaluate((pin) => new Promise((resolve) => {
+    const s = new WebSocket('ws://' + location.host + '/ws');
+    const log = [];
+    s.onopen = () => {
+      try {
+        // Board-side negative control: an empty SSID must be refused outright,
+        // because an empty one would silently mean "stop joining anything".
+        s.send(JSON.stringify({ cmd: 'setwifi', ssid: '', pass: 'irrelevant', pin: pin }));
+        setTimeout(() => s.send(JSON.stringify({ cmd: 'setwifi', ssid: 'Home Router', pass: 'homepass1', pin: pin })), 350);
+        setTimeout(() => s.send(JSON.stringify({ cmd: 'clearwifi', pin: pin })), 700);
+        setTimeout(() => s.send(JSON.stringify({ cmd: 'setwifi', ssid: 'Home Router', pass: 'homepass1', pin: pin })), 1000);
+      } catch (e) { /* recorded below */ }
+    };
+    s.onmessage = (e) => {
+      try { log.push(JSON.parse(e.data)); }
+      catch (x) { log.push({ type: 'CORRUPT', out: String(e.data).slice(0, 80) }); }
+    };
+    setTimeout(() => { try { s.close(); } catch (x) {} resolve(log); }, 1600);
+  }), PIN);
+
+  const staTexts = boardSta.filter(m => m.type === 'console').map(m => m.out || '');
+  check('BOARD refuses an empty home-network name',
+        staTexts.some(t => /SSID is empty/i.test(t)),
+        'console replies: ' + JSON.stringify(staTexts));
+  check('BOARD accepts a valid home network',
+        staTexts.some(t => /will join "Home Router"/.test(t)),
+        JSON.stringify(staTexts));
+  check('BOARD clears it again on clearwifi',
+        staTexts.some(t => /credentials cleared/i.test(t)),
+        JSON.stringify(staTexts));
+  check('...and it is still there after the last save',
+        boardSta.filter(m => m.type === 'console' && /will join "Home Router"/.test(m.out || '')).length >= 2,
+        'join replies: ' + JSON.stringify(staTexts));
+
+  // The snapshot must now advertise it, with the password absent.
+  const staSnap = boardSta.filter(m => m.type !== 'console' && m.type !== 'auth' && 'staSsid' in m).pop();
+  check('the board publishes the home-network name', staSnap && staSnap.staSsid === 'Home Router',
+        'staSsid=' + (staSnap ? JSON.stringify(staSnap.staSsid) : 'none'));
+  check('the board NEVER publishes the home-network password',
+        !JSON.stringify(boardSta).includes('homepass1'),
+        'the password appeared in a board frame');
+
+  // The UI path: same rule the AP panel has, no reboot warning (the board's own
+  // AP keeps the page alive), and the status line must catch up.
+  //
+  // The page's own socket is CLOSED here: the AP stage above deliberately called
+  // handleDisconnect() because saving there drops the network the page is on.
+  // So it has to be reopened first - otherwise every click below fails with
+  // "Not connected" and the panel looks broken when it is not. This bit me
+  // once already: the suite reported two FAILs that the same code passed in
+  // isolation, and the cause was this dead socket, not the feature.
+  // `ws` is a script-scope LEXICAL BINDING (let), so window.ws is undefined and
+  // reading it here would report "closed" forever - the same trap this file
+  // already documents for adminPin/pinOk.
+  await page.evaluate(() => {
+    if (typeof ws === 'undefined' || !ws || ws.readyState !== WebSocket.OPEN) connectWS();
+  });
+  await page.waitForFunction(
+    () => (typeof ws !== 'undefined') && !!ws && ws.readyState === WebSocket.OPEN,
+    null, { timeout: 8000 })
+    .catch(() => {});
+  const staSocketOpen = await page.evaluate(
+    () => (typeof ws !== 'undefined') && !!ws && ws.readyState === WebSocket.OPEN);
+  check('the dashboard socket is open again for the STA panel', staSocketOpen);
+
+  // Only frames sent through THIS page socket count. __wsSent also captured the
+  // raw-socket probe above, so counting the whole array would let those frames
+  // satisfy this assertion - which is how a dead socket can look like a pass.
+  const beforeSta = await page.evaluate(() => window.__wsSent.length);
+  await page.fill('#staSsid', '');
+  await page.click('#staSaveBtn');
+  await page.waitForTimeout(300);
+  check('the UI refuses an empty home-network name without sending it',
+        (await page.evaluate(() => window.__wsSent.length)) === beforeSta);
+
+  await page.fill('#staSsid', 'Home Router');
+  await page.fill('#staPass', 'homepass1');
+  await page.click('#staSaveBtn');
+  await page.waitForTimeout(600);
+  const staFrames = (await page.evaluate((n) => window.__wsSent.slice(n), beforeSta))
+    .filter(f => f.indexOf('"setwifi"') >= 0);
+  check('the panel puts a setwifi frame on the wire', staFrames.length >= 1);
+  const staFrame = staFrames[staFrames.length - 1] || '';
+  check('...carrying the network name and password',
+        staFrame.indexOf('"ssid":"Home Router"') >= 0 &&
+        staFrame.indexOf('"pass":"homepass1"') >= 0, staFrame);
+  check('...and the admin PIN', /"pin":"1234"/.test(staFrame), staFrame);
+  check('the password box is cleared afterwards',
+        (await page.inputValue('#staPass')) === '');
+  const staHint = await page.locator('#staHint').textContent();
+  check('the STA hint says the board restarts with the AP staying off',
+        /restart/i.test(staHint) && /AP stays OFF|fallback AP/i.test(staHint),
+        'hint = "' + (staHint || '').slice(0, 90) + '"');
 
   console.log('\n' + checks + ' checks, ' + failures + ' failures');
   await browser.close();

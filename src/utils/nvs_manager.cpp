@@ -74,6 +74,14 @@ bool NVSManager::loadWiFi(String &ssid, String &password) {
   return ssid.length() > 0;
 }
 
+void NVSManager::saveWiFi(const String &ssid, const String &password) {
+  prefs.putString("wifi_ssid", ssid);
+  prefs.putString("wifi_pass", password);
+  // No commit() here: Preferences' own commit is NVSManager::commit(), and the
+  // caller holds dataMutex around it (same rule as saveApCredentials).
+  DEBUG_LOG("  [NVS] station WiFi written: \"%s\"\n", ssid.c_str());
+}
+
 void NVSManager::clearWiFi() {
   prefs.remove("wifi_ssid");
   prefs.remove("wifi_pass");
@@ -203,12 +211,27 @@ void NVSManager::saveRmsSamples(uint16_t value) {
   DEBUG_LOG("  [NVS] RMS samples: %d\n", value);
 }
 
+// --- AZ Batches ---
+
+uint8_t NVSManager::loadAzBatches() {
+  float v = prefs.getFloat("az_batch", 1.0f);
+  int n = (int)v;
+  if (n < 1) n = 1;
+  if (n > 64) n = 64;
+  return (uint8_t)n;
+}
+
+void NVSManager::saveAzBatches(uint8_t value) {
+  prefs.putFloat("az_batch", (float)value);
+  DEBUG_LOG("  [NVS] auto-zero batches: %d\n", value);
+}
+
 // --- Default Names ---
 
 const char *NVSManager::defaultChannelName(uint8_t channel) {
   static const char *names[NUM_CHANNELS] = {
     "Counter 1", "Counter 2", "Counter 3",
-    "Counter 4", "Counter 5", "Counter 6"
+    "Counter 4", "Counter 5"
   };
   if (channel >= NUM_CHANNELS) return "Unknown";
   return names[channel];

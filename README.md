@@ -1,4 +1,4 @@
-# ESP32-S3 6-Channel AC Electricity Counter
+# ESP32 / ESP32-S3 5-Channel AC Electricity Counter
 
 ![Dashboard](docs/screenshots/dashboard.png)
 
@@ -51,26 +51,55 @@ installable on a phone.
 (default `1234`, change it in Settings → Admin PIN). It is checked **on the
 ESP32**, not in the browser.
 
-Heads-up: the ESP32 network has no upstream internet, so phones show "no
-internet" when joined — expected. Forgot the AP password? `reset_ap` over the
-serial console restores the factory network.
+Heads-up: when the fallback AP is up it has no upstream internet, so phones show
+"no internet" when joined — expected. Forgot the AP password? `reset_ap` over
+the serial console restores the factory network.
+
+By default the board joins your home WiFi and the AP stays **OFF** (see **Home
+Network** below) — the AP only appears when the home link fails.
 
 ![Settings](docs/screenshots/settings.png)
 
 ## Build & flash
 
 ```bash
+# ESP32-S3:
 arduino-cli compile --fqbn esp32:esp32:esp32s3:FlashSize=4M,PartitionScheme=no_fs,CDCOnBoot=cdc .
 scripts/patch_async_tcp.py --apply   # if AsyncTCP lacks the lwIP core-lock patches
 esptool --port /dev/ttyACM0 --chip esp32s3 write-flash 0x10000 <sketch>.ino.bin
+
+# ESP32 (classic):
+arduino-cli compile --fqbn esp32:esp32:esp32 .
+esptool --port /dev/ttyUSB0 --chip esp32 write-flash 0x10000 <sketch>.ino.bin
 ```
+
+Both targets run 5 current channels + 1 voltage input, because the classic
+ESP32 only exposes 6 WiFi-safe ADC1 pins. Default pins live in `src/config.h`
+and are selected automatically by the compile target.
 
 Rename/recover the network over serial: `set_ap <name> <pass>` / `reset_ap`.
 
-### Changing the network name and password
+### Changing the fallback AP name and password
 
-From a browser: Settings → Access Point. Or over serial: `set_ap` /
-`reset_ap`. Default is `ESP32-Elec-Counter` / `configure123`.
+From a browser: Settings → Access Point (fallback). Or over serial: `set_ap` /
+`reset_ap`. Default is `ESP32-Elec-Counter` / `configure123`. This network only
+appears when the home link fails — while home WiFi is up the AP stays off.
+
+### Home network (default)
+
+The board joins your home WiFi on boot and the AP stays **OFF**, so the
+dashboard lives at `http://<the board's home IP>/` (printed on the serial
+console at boot).
+
+From a browser: Settings → Home Network. Or over serial:
+`setwifi <ssid> <pass>` / `clearwifi`. `setwifi` saves to flash and reboots;
+`clearwifi` forgets it (the fallback AP comes up on next boot).
+
+Defaults live in `src/config.h` as `STA_SSID_DEFAULT` / `STA_PASS_DEFAULT`;
+while the SSID is the placeholder the board skips straight to the fallback AP.
+If it cannot join within ~10s, the fallback AP comes up instead so the board is
+never headless — and if a working link later drops for 30s, the AP comes up
+then too.
 
 ### Limits
 
@@ -78,8 +107,8 @@ From a browser: Settings → Access Point. Or over serial: `set_ap` /
 - No true PWA install on desktop browsers
 - The board never sleeps
 
-Serial console (`help` for the list): `status`, `wifi`, `set_ap`, `led
-normal|rgb`, `test led`, `cal`, `inject`, `reboot`, …
+Serial console (`help` for the list): `status`, `wifi`, `set_ap`, `setwifi`,
+`led normal|rgb`, `test led`, `cal`, `inject`, `reboot`, …
 
 ---
 

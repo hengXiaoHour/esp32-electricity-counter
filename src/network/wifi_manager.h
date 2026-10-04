@@ -5,23 +5,30 @@
 #include "../config.h"
 #include "ap_creds.h"
 
-// The board is AP-only. There is no station interface, no upstream network,
-// and no cloud: the ESP32 publishes a WiFi network of its own, serves the
-// whole dashboard from it, and the phone's browser talks to
-// ws://192.168.4.1/ws.
+// STA is the default path; the AP is fallback-only and stays OFF unless the
+// home link fails. The board joins your home router, serves the dashboard from
+// there, and only publishes a WiFi network of its own when it has to - so a
+// working board never broadcasts anything.
 //
-// That single decision removed, from this class: the STA connect path, the
-// retry ladder, the connect-timeout reboot failsafe, the RTC boot-failure
-// counter, link-flap detection, RSSI sampling, and modem-sleep eco mode. An AP
-// must keep beaconing, so there was never an eco case to preserve.
+// Boot order: try STA first (up to STA_CONNECT_TIMEOUT_MS), fall back to the AP
+// if it fails or was never configured. Once the fallback AP is up it stays up
+// until reboot; the next reboot tries STA first again.
 //
-// WiFi credentials may still sit in NVS from an older firmware. They are
-// deliberately left untouched (see `clearwifi`) so downgrading to an older
-// build still finds them - but nothing reads them any more. The board's OWN
-// network identity (ap_ssid / ap_pass) is separate and is written at runtime;
-// see WiFiManager::begin.
+// Two credentials, two jobs, two key pairs in NVS. The home router
+// (wifi_ssid / wifi_pass) is only checked for being non-empty: a wrong password
+// there costs internet access, never recovery access. The fallback AP identity
+// (ap_ssid / ap_pass, settable at runtime) IS validated by ap_creds_validate()
+// because an unusable PSK makes softAP() fail and takes the fallback with it.
+//
+// What this file still does not want back: the STA retry ladder, the
+// connect-timeout reboot failsafe, the RTC boot-failure counter, link-flap
+// detection, and modem-sleep eco mode.
 enum WifiState : uint8_t {
   WIFI_INIT = 0,
+  // Home network joined, AP off. The normal running state.
+  WIFI_STA_MODE,
+  // Fallback AP is up (STA failed or unconfigured). STA keeps retrying in the
+  // background so a router that comes back is still joined.
   WIFI_AP_MODE,
 };
 
@@ -29,17 +36,27 @@ class NVSManager;
 
 class WiFiManager {
 public:
-  // Loads the stored AP identity from NVS (falling back to the compiled
-  // defaults) and brings the interface up. Takes the NVS handle because the
-  // network name and password are no longer compile-time constants - they are
-  // settings the user can change from the dashboard.
+  // Loads the stored home-network credentials and the fallback AP identity from
+  // NVS (each falling back to its compiled default), tries STA first, and only
+  // starts the fallback AP if the home link fails. Takes the NVS handle because
+  // neither is a compile-time constant - they are settings the user can change
+  // from the dashboard.
   void begin(NVSManager *nvsRef);
   void loop();
 
-  // True once softAP() has returned and the dashboard server may be started.
-  // Replaces the old `isConnected() || isApMode()` pair: there is only one
-  // state, so a two-way test would be a lie waiting to happen.
-  bool isReady() const { return state == WIFI_AP_MODE; }
+  // True once EITHER path is up and the dashboard server may be started:
+  // STA connected (AP off) or fallback AP up. Replaces the old AP-only test.
+  bool isReady() const { return state == WIFI_STA_MODE || state == WIFI_AP_MODE; }
+
+  // True while the board is a client of the home network. This is the normal
+  // running state; the AP is off when this holds (unless the fallback is up).
+  bool stationUp() const { return WiFi.status() == WL_CONNECTED; }
+  int8_t staRSSI() const { return stationUp() ? WiFi.RSSI() : 0; }
+  const char *staSSID() const { return staSsid_; }
+
+  // True only when the fallback AP is actually broadcasting. The dashboard and
+  // `wifi` use this to say which address to open, instead of assuming the AP.
+  bool apActive() const { return state == WIFI_AP_MODE; }
 
   // The LIVE identity the radio is broadcasting, which is what the serial
   // banner, `wifi` and the dashboard must show. These read the buffers
@@ -49,9 +66,8 @@ public:
   const char *getSSID() const { return apSsid_; }
   const char *getPass() const { return apPass_; }
 
-  // Phones/laptops currently associated with the AP. The AP-mode analogue of
-  // the old STA RSSI + WS client count, and the only "is anyone watching"
-  // signal that still exists.
+  // Phones/laptops currently associated with the fallback AP. Zero whenever the
+  // AP is off (the normal STA running state).
   uint8_t clientCount() const;
 
 private:
@@ -63,7 +79,10 @@ private:
   // handing esp_wifi a truncated string.
   static char apSsid_[AP_MAX_SSID_LEN + 1];
   static char apPass_[AP_MAX_PASS_LEN + 1];
+  static char staSsid_[33];
+  static char staPass_[64];
 
   void loadCredentials(NVSManager *nvsRef);
-  void startAPMode();
+  void startStaMode();
+  void startFallbackAP();
 };

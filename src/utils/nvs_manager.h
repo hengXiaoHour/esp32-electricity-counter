@@ -42,9 +42,12 @@ public:
   void clearApCredentials();
 
   // WiFi credentials. READ-ONLY in practice: nothing writes them any more
-  // (the board is AP-only). loadWiFi() exists so `wifi` can report a stale SSID
-  // left by older firmware; clearWiFi() erases it.
+  // Station-credential keys: `setwifi <ssid> <pass>` writes these and the
+  // board then joins that network on every boot (AP stays up too).
+  // loadWiFi() exists so WiFiManager and `wifi` can read them; clearWiFi()
+  // erases them.
   bool loadWiFi(String &ssid, String &password);
+  void saveWiFi(const String &ssid, const String &password);
   void clearWiFi();
 
   // Per-channel name
@@ -79,6 +82,10 @@ public:
   // RMS samples (runtime tunable)
   uint16_t loadRmsSamples();
   void saveRmsSamples(uint16_t value);
+
+  // Auto-zero captures per channel (runtime tunable, default 1)
+  uint8_t loadAzBatches();
+  void saveAzBatches(uint8_t value);
 
   // Per-channel energy (kWh) — saved periodically to survive power loss
   float loadEnergyKWh(uint8_t channel);
