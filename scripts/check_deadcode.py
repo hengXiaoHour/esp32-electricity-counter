@@ -542,7 +542,10 @@ def main():
             ("Update button wired", 'onclick="startFirmwareUpdate()"' in front_html),
             ("firmware panel exists", 'id="fwRunning"' in front_html),
             ("classic build path kept", "--classic" in build_sh),
-            ("version stamp kept", "--version" in build_sh)]:
+            ("version stamp kept", "--version" in build_sh),
+            ("banner flag spans the download", "cloudActive" in ota_h_s),
+            ("status reports mid-download", "cloudBusy || cloudActive" in ota_cpp_s),
+            ("TCP probe stages the failure", "no route to github.com:443" in ota_cpp_s)]:
         if not present:
             ota_missing.append(what)
     r.add("the cloud-OTA feature is still wired end to end", not ota_missing,

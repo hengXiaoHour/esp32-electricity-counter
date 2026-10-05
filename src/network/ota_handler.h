@@ -23,8 +23,10 @@ public:
   void begin(const char *hostname = "esp32-elec-counter");
   void loop();
 
-  bool isInProgress() const { return inProgress || cloudBusy; }
-  uint8_t getProgress() const { return cloudBusy ? cloudProgress : progress; }
+  bool isInProgress() const { return inProgress || cloudBusy || cloudActive; }
+  uint8_t getProgress() const {
+    return (cloudBusy || cloudActive) ? cloudProgress : progress;
+  }
 
   // Validates `url` (github release .bin shape), refuses when the radio has
   // no STA link or another update is running, otherwise arms the download.
@@ -49,10 +51,14 @@ private:
   // blinks yellow and eco holds the radio awake for the whole download with
   // no extra wiring.
   bool cloudBusy = false;
+  // Stays true for the WHOLE download (cloudBusy is cleared on entry to keep
+  // one-attempt semantics). Without this the ota flag lives for one tick and
+  // the dashboard banner can never show during a ~60 s fetch.
+  bool cloudActive = false;
   bool rebootDue = false;
   uint8_t cloudProgress = 0;
   char cloudUrl[OTA_URL_MAX_LEN + 1] = {0};
-  char cloudErr[96] = {0};
+  char cloudErr[128] = {0};
 
   void loopCloud();
 };

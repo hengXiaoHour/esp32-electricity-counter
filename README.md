@@ -219,5 +219,7 @@ Serial console (`help` for the list): `status`, `wifi`, `set_ap`, `setwifi`,
 
 3.2.2 notes: OTA re-test — same code as 3.2.1 with a version stamp only, to prove the end-to-end Check → Update path again.
 
+3.2.3 notes: diagnoses the 3.2.2 `HTTP -1` (board never connected — DNS/route vs TLS was indistinguishable). The download now probes plain TCP first and a failed TLS names heap + clock state in `ota status`. Also fixes the progress banner: the flag cleared on entry so it never showed during a fetch; `cloudActive` now spans the whole download.
+
 3.0.0 notes: AP-only architecture, NVS-persisted AP name/password, CLI LED
 type switch, pinned-down AsyncTCP patches. Full history: `gh release list`.

@@ -3,14 +3,17 @@
 
 #include <ArduinoOTA.h>
 #include <HTTPClient.h>
+#include <NetworkClient.h>
 #include <NetworkClientSecure.h>
 #include <Update.h>
 #include <WiFi.h>
+#include <time.h>
 
 void OTAHandler::begin(const char *hostname) {
   inProgress = false;
   progress = 0;
   cloudBusy = false;
+  cloudActive = false;
   rebootDue = false;
   cloudProgress = 0;
   cloudUrl[0] = '\0';
@@ -65,7 +68,7 @@ void OTAHandler::startCloudUpdate(const char *url, bool staUp, String &reply) {
   cloudBusy = true;
   const char *base = strrchr(cloudUrl, '/');
   reply = String("  OTA started from \"") + (base ? base + 1 : cloudUrl) +
-          "\" - progress above, `ota status` for detail.";
+          "\" - banner above while it downloads, `ota status` for detail.";
 }
 
 // Downloads the armed URL into the inactive OTA slot, then raises
@@ -78,10 +81,31 @@ void OTAHandler::startCloudUpdate(const char *url, bool staUp, String &reply) {
 void OTAHandler::loopCloud() {
   cloudBusy = false;  // one attempt per arm; startCloudUpdate re-arms
   cloudProgress = 0;
+  cloudActive = true;  // banner + LED for the whole fetch, cleared on exit
 
   if (WiFi.status() != WL_CONNECTED) {
     strncpy(cloudErr, "STA dropped before the download began.", sizeof(cloudErr) - 1);
+    cloudActive = false;
     return;
+  }
+
+  // Stage the failure, don't just print a number. HTTP -1 means "never
+  // connected", which conflates DNS, routing and TLS - so probe plain TCP
+  // first (cheap, no TLS): if it fails the router/DNS is the problem; if it
+  // passes but HTTPS fails, it is TLS (clock or heap). The validator only
+  // ever arms github.com links, so the probe target is fixed.
+  uint32_t heap0 = ESP.getFreeHeap();
+  bool clockOk = time(nullptr) > 1700000000L;
+  {
+    NetworkClient probe;
+    probe.setTimeout(5000);
+    if (!probe.connect("github.com", 443)) {
+      snprintf(cloudErr, sizeof(cloudErr),
+               "no route to github.com:443 (DNS/router?).");
+      cloudActive = false;
+      return;
+    }
+    probe.stop();
   }
 
   NetworkClientSecure client;
@@ -93,25 +117,35 @@ void OTAHandler::loopCloud() {
   http.setTimeout(30000);
   if (!http.begin(client, cloudUrl)) {
     strncpy(cloudErr, "HTTP setup failed (out of memory?).", sizeof(cloudErr) - 1);
+    cloudActive = false;
     return;
   }
 
   int code = http.GET();
   if (code != HTTP_CODE_OK) {
-    snprintf(cloudErr, sizeof(cloudErr), "download refused: HTTP %d.", code);
+    if (code < 0) {
+      snprintf(cloudErr, sizeof(cloudErr),
+               "TLS to github.com failed (heap %lu, clock %s).",
+               (unsigned long)heap0, clockOk ? "ok" : "STALE - NTP?");
+    } else {
+      snprintf(cloudErr, sizeof(cloudErr), "download refused: HTTP %d.", code);
+    }
     http.end();
+    cloudActive = false;
     return;
   }
   int total = http.getSize();
   if (total <= 0) {
     strncpy(cloudErr, "download has no known size - refusing.", sizeof(cloudErr) - 1);
     http.end();
+    cloudActive = false;
     return;
   }
   if ((size_t)total > ESP.getFreeSketchSpace()) {
     snprintf(cloudErr, sizeof(cloudErr), "image %d B does not fit the %u B slot.",
              total, (unsigned)ESP.getFreeSketchSpace());
     http.end();
+    cloudActive = false;
     return;
   }
 
@@ -122,6 +156,7 @@ void OTAHandler::loopCloud() {
     snprintf(cloudErr, sizeof(cloudErr), "Update.begin failed (err %d).",
              (int)Update.getError());
     http.end();
+    cloudActive = false;
     return;
   }
 
@@ -144,21 +179,24 @@ void OTAHandler::loopCloud() {
     snprintf(cloudErr, sizeof(cloudErr), "download stalled (%u B short).",
              (unsigned)remaining);
     Update.abort();
+    cloudActive = false;
     return;
   }
   if (!Update.end(true)) {
     snprintf(cloudErr, sizeof(cloudErr), "image invalid (err %d) - old firmware kept.",
              (int)Update.getError());
+    cloudActive = false;
     return;
   }
 
   cloudProgress = 100;
+  cloudActive = false;  // banner's job is done; the reboot line takes over
   rebootDue = true;  // the sketch reboots via the deferred path (NVS flush)
 }
 
 void OTAHandler::cloudStatus(String &out) const {
   char line[160];
-  if (cloudBusy) {
+  if (cloudBusy || cloudActive) {
     snprintf(line, sizeof(line), "  OTA: downloading %u%%", (unsigned)cloudProgress);
     out += line;
   } else if (rebootDue) {

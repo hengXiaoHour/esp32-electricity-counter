@@ -593,8 +593,8 @@ def main():
 
     # --- firmware version / size ---------------------------------------
     m = re.search(r'#define FIRMWARE_VERSION "([^"]+)"', cfg)
-    c.add("FIRMWARE_VERSION is the 3.2.2 cloud-OTA release",
-          m and m.group(1) == "3.2.2", "found %s" % (m.group(1) if m else "none"))
+    c.add("FIRMWARE_VERSION is the 3.2.3 cloud-OTA release",
+          m and m.group(1) == "3.2.3", "found %s" % (m.group(1) if m else "none"))
 
     # --- cloud OTA: github release .bin -> inactive slot -> reboot --------
     # One code path for serial / dashboard / cloud: the click becomes a
@@ -647,6 +647,18 @@ def main():
           'body += ",\\"time\\":{\\"ok\\":"' in cl_cpp and
           'body += "\\",\\"time\\"' not in cl_cpp,
           "a stray quote makes otaPct invalid JSON and all pushes fail while polls pass")
+    c.add("the OTA banner spans the whole download, not the arm tick",
+          "cloudActive = true" in ota_cpp and "cloudActive = false" in ota_cpp and
+          "return inProgress || cloudBusy || cloudActive;" in ota_h,
+          "the flag clears on entry and the banner can never show")
+    c.add("a failed download names the stage (TCP probe vs TLS)",
+          "no route to github.com:443" in ota_cpp and
+          "TLS to github.com failed" in ota_cpp and "heap %lu" in ota_cpp,
+          "HTTP -1 alone cannot tell DNS from TLS")
+    c.add("the arm reply promises the banner, not live progress",
+          "banner above while it downloads" in ota_cpp and
+          "progress above" not in ota_cpp,
+          "snapshots stall during the blocking fetch, so percent cannot stream")
     c.add("the viewer checks releases and sends the console line, keyed by chip",
           "api.github.com" in js and "checkFirmware" in js and
           "startFirmwareUpdate" in js and "esp32-classic-" in js and
