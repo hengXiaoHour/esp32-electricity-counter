@@ -144,7 +144,7 @@ writes too - unlike a database secret, which would bypass the rules.)
 From a browser: Settings → Remote Monitoring (host + account email +
 password, PIN-gated). Or over serial:
 `setcloud <host> <email> <password>` / `clearcloud`. Saving reboots;
-pushes land at `/devices/<MAC>/latest` every 10 s while home WiFi is up.
+pushes land at `/devices/<MAC>/latest` every second while home WiFi is up.
 The Status line shows the MAC and the last-push age; enabling cloud keeps
 eco off (a napping radio cannot push). Nothing is ever pushed on the
 fallback AP.

@@ -16,8 +16,8 @@
  */
 var CL_ADMIN_EMAIL = 'heng.xiao.hour@gmail.com';
 var CL_DEFAULT_MAC = 'EC64C998B0EC';
-var CL_STALE_MS = 30000;
-var CL_ACK_TIMEOUT_MS = 45000;
+var CL_STALE_MS = 5000;
+var CL_ACK_TIMEOUT_MS = 12000;
 
 var cl_db = null;
 var cl_auth = null;
@@ -132,7 +132,7 @@ function cl_refreshStale() {
   var cs = document.getElementById('connStatus');
   if (cs && cl_mac) {
     cs.textContent = cl_lastRxMs
-      ? (stale ? 'Cloud — STALE (board quiet >30s)' : 'Cloud — live (~10s pushes)')
+      ? (stale ? 'Cloud — STALE (board quiet >5s)' : 'Cloud — live (~1s pushes)')
       : 'Cloud — waiting for data…';
   }
 }
@@ -250,7 +250,7 @@ function cl_selectDevice(mac) {
     .then(function (v) { if (v) cl_onLatest(v); })
     .catch(function () {});
   showDashboard();
-  setConnectStatus('Cloud — live (~10s pushes)', 'connected');
+  setConnectStatus('Cloud — live (~1s pushes)', 'connected');
   var cs2 = document.getElementById('connStatus2');
   if (cs2) cs2.textContent = 'Cloud — ' + mac;
 }
@@ -320,14 +320,14 @@ function sendCommand(obj) {
   var id = String(Date.now()) + '-' + Math.floor(Math.random() * 1000000);
   cl_lastSentId = id;
   cl_lastSentAt = Date.now();
-  cl_status('sent ' + obj.cmd + ' (id ' + id + '), waiting for board (polls every ~10s)…');
+  cl_status('sent ' + obj.cmd + ' (id ' + id + '), waiting for board (polls every ~2s)…');
   var p = {};
   var promise = new Promise(function (resolve, reject) { p.resolve = resolve; p.reject = reject; });
   p.cmd = obj.cmd;
   p.timer = setTimeout(function () {
     if (cl_pending[id]) {
       delete cl_pending[id];
-      cl_status('no reply yet for ' + obj.cmd + ' — the board polls every ~10s; keep waiting or retry');
+      cl_status('no reply yet for ' + obj.cmd + ' — the board polls every ~2s; keep waiting or retry');
       p.resolve({ timeout: true });
     }
   }, CL_ACK_TIMEOUT_MS);
