@@ -686,6 +686,24 @@ def main():
           'id="resetDay"' in html and 'id="resetDayBtn"' in html
           and "data.resetDay" in js and "reset_day " in js,
           "a second JSON verb would split the CLI/UI code paths")
+    # --- rollover fires forward-only -----------------------------------
+    # A marker AHEAD of the computed month means the clock moved backward
+    # (NTP/browser correction) or the marker came from the future. Zeroing
+    # there destroys real accumulation because of a correction, so the
+    # marker is re-anchored down instead. test_force_rollover still forces
+    # a wipe: it sets the marker BACK, which reads as forward progress.
+    c.add("the rollover zeroes only on forward month progress",
+          "if (billingMonth < marker)" in lm_code
+          and "re-anchored, counters kept" in lm_code,
+          "a backward correction would wipe real counters")
+    # --- test_force_rollover is audited ----------------------------------
+    # It moves the marker silently and the wipe lands a cycle later, so an
+    # unaudited arming reads as a causeless "Monthly reset" — exactly the
+    # mystery that presented as a billing-logic bug on 2026-10-05.
+    c.add("arming a test rollover leaves an event-log trail",
+          "auditForceRollover" in strip_comments(cmd)
+          and "auditForceRollover" in lm_h,
+          "the next wipe would have no visible cause")
     # --- RSSI display filter ---------------------------------------------
     # Raw scans jitter several dB and the header icon bounced every push.
     # The filter lives at the single writer (updateSharedData), so the local

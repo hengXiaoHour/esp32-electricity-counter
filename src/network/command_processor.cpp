@@ -504,6 +504,10 @@ bool processCommand(NVSManager *nvs, SystemData *sysData,
 
   } else if (s.indexOf("\"cmd\":\"test_force_rollover\"") >= 0) {
     nvs->saveLastMonth(202607);
+    // Audited: the marker move itself is silent and the wipe lands on the
+    // next sensor cycle, so without this the log shows a causeless
+    // "Monthly reset — counters zeroed". Same pattern as test_inject above.
+    if (limitMgr) limitMgr->auditForceRollover();
     handled = true;
   }
 

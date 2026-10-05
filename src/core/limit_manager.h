@@ -32,6 +32,13 @@ public:
   // event log. Takes dataMutex internally; never call while holding it.
   void logEnergyWrite(uint8_t ch, float v, const char *src);
 
+  // Audit trail for test_force_rollover: it yanks the billing marker back
+  // silently and the NEXT sensor cycle then zeroes every counter for real.
+  // Without this the log reads "Monthly reset — counters zeroed" with no
+  // visible cause, which looks exactly like the billing logic misfiring.
+  // Takes dataMutex internally; never call while holding it.
+  void auditForceRollover();
+
 private:
   NVSManager *nvs;
   PowerCalculator *powerCalc;

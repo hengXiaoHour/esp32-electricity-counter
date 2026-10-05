@@ -431,6 +431,15 @@ new billing month and wipe the counters as a side effect. Every rollover and
 every day change is event-logged (`Monthly reset — counters zeroed` /
 `Billing reset day set to N`), so the trail shows why counters moved.
 
+The fire is forward-only: it zeroes counters only when the computed month is
+AHEAD of the marker. A marker ahead of the computed month means the clock moved
+backward since the marker was written (NTP/browser correction landing) or the
+marker came from the future — wiping there would destroy real accumulation
+because of a correction, so the marker is silently re-anchored down instead
+(`Billing marker moved backward — re-anchored, counters kept`) and nothing is
+zeroed. `test_force_rollover` still forces a wipe: it sets the marker BACK,
+which reads as forward progress.
+
 It waits for a valid clock (`now > 1600000000`, i.e. NTP synced) and is
 re-evaluated every sensor cycle. There is deliberately **no once-per-boot
 latch**: the persisted billing month is the idempotency guard, so once a
@@ -638,7 +647,10 @@ It is a hand-rolled `indexOf` scanner, not a JSON library — which is why the
 code carries hand-written escape handling. Every mutating verb ends with
 `nvs->commit()`. Settings sent as `console` lines (`reset_day <1-28>` from the
 About panel) run the same `consoleHandler.exec` as the serial CLI, so there is
-one code path for both.
+one code path for both. `test_force_rollover` is a live grenade, not a dry run:
+it yanks the billing marker back to July 2026 and the next sensor cycle zeroes
+every real counter (audited as "Rollover test armed" in the event log) — only
+run it when losing the month's accumulation is the point.
 
 ### The admin gate
 

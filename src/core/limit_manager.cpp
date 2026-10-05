@@ -131,7 +131,23 @@ void LimitManager::rolloverIfNeeded() {
   int32_t billingMonth = billingMonthFor(t.tm_year + 1900, t.tm_mon + 1,
                                          t.tm_mday, resetDay());
 
-  if (billingMonth == nvs->loadLastMonth()) return;
+  int32_t marker = nvs->loadLastMonth();
+  if (billingMonth == marker) return;
+
+  // Forward only. A marker AHEAD of the computed month means the clock moved
+  // backward since the marker was written (NTP/browser correction landing) or
+  // the marker came from the future — wiping here would destroy real
+  // accumulation because of a correction, so re-anchor silently instead and
+  // say so in the log. test_force_rollover still works: it sets the marker
+  // BACK, which reads as forward progress and fires below.
+  if (billingMonth < marker) {
+    STATUS_LOG("  [ROLLOVER] billingMonth=%ld behind marker %ld — re-anchoring, counters kept\n",
+               (long)billingMonth, (long)marker);
+    nvs->saveLastMonth(billingMonth);
+    nvs->commit();
+    logForensicEvent(0, STATUS_OK, "Billing marker moved backward — re-anchored, counters kept", 0.0f);
+    return;
+  }
 
   STATUS_LOG("  [ROLLOVER] billingMonth=%ld  (was %ld) — zeroing all counters\n",
                 (long)billingMonth, (long)nvs->loadLastMonth());
@@ -211,6 +227,16 @@ void LimitManager::logEnergyWrite(uint8_t ch, float v, const char *src) {
   char msg[EVENT_MSG_LEN];
   snprintf(msg, sizeof(msg), "%s — energy set", src ? src : "Inject");
   logForensicEvent(ch, STATUS_OK, msg, v);
+
+  xSemaphoreGive(*dataMutex);
+}
+
+void LimitManager::auditForceRollover() {
+  if (!sysData || !dataMutex) return;
+
+  if (xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) != pdTRUE) return;
+
+  logForensicEvent(0, STATUS_OK, "Rollover test armed — next cycle zeroes counters", 0.0f);
 
   xSemaphoreGive(*dataMutex);
 }
