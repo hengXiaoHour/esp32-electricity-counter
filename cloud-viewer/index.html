@@ -14,7 +14,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="style.css?v=12740b67">
+<link rel="stylesheet" href="style.css?v=010357f4">
 <script>
 // The board is always on location.host, so there is no session to restore and
 // nothing to decide before the first paint. This only hides the connect panel
@@ -313,7 +313,7 @@
             <button class="btn-sm" id="cloudSaveBtn" onclick="saveCloudSettings()">Save</button>
             <button class="btn-sm" id="cloudForgetBtn" onclick="clearCloudSettings()">Forget</button>
           </div>
-          <div class="hint" id="cloudHint">Signs into your realtime database and pushes a small reading every 5 seconds, <strong>home WiFi only</strong> (never on the fallback AP). The device path is <strong>/devices/&lt;MAC&gt;/latest</strong> - the Status line shows the MAC. <strong>Save reboots the board.</strong> The password is never shown back, and signing in keeps the radio awake (eco stays off).</div>
+          <div class="hint" id="cloudHint">Signs into your realtime database and pushes a small reading every 10 seconds, <strong>home WiFi only</strong> (never on the fallback AP). The device path is <strong>/devices/&lt;MAC&gt;/latest</strong> - the Status line shows the MAC. <strong>Save reboots the board.</strong> The password is never shown back, and signing in keeps the radio awake (eco stays off).</div>
         </div>
 
         <div class="panel-box admin-only">
@@ -434,8 +434,8 @@
   </div>
 </div>
 
-<script src="script.js?v=12740b67"></script>
-<script src="cloud.js?v=12740b67"></script>
+<script src="script.js?v=010357f4"></script>
+<script src="cloud.js?v=010357f4"></script>
 <script>
 if ('serviceWorker' in navigator && window.isSecureContext) {
   window.addEventListener('load', function () {

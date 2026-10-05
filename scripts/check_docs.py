@@ -262,7 +262,7 @@ def main():
           "firebase" not in strip_comments(cl_h).lower(),
           "an SDK crept back into the pusher")
     # The downlink is the ONE sanctioned read: GET /devices/<id>/cmd.json on
-    # its own 2 s timer over the shared keep-alive session. Scoped to the
+    # its own 10 s timer, never sharing the push connection. Scoped to the
     # poll body (not the file): a bare "GET is present" would also pass for a
     # read smuggled into the push path, which is exactly the old teardown bug.
     _https_get = re.search(r"static int httpsGet\([^)]*\) \{([\s\S]*?)\n\}\n",
@@ -283,9 +283,9 @@ def main():
           _loop is not None and "WL_CONNECTED" in _loop.group(1),
           "loop() can fire without a station link")
     _push_iv = re.search(r"PUSH_INTERVAL_MS\s*=\s*(\d+)", cl_h)
-    c.add("the push cadence is 5 s on the keep-alive session",
-          _push_iv is not None and int(_push_iv.group(1)) == 5000,
-          "interval moved off 5 s")
+    c.add("the push cadence is 10 s, not the old 1 s hot path",
+          _push_iv is not None and int(_push_iv.group(1)) == 10000,
+          "interval moved off 10 s")
     c.add("the device id comes from the radio MAC, formatted by the helper",
           "macAddress()" in cl_cpp and "cloud_formatDeviceId" in cl_cpp,
           "identity no longer tracks the silicon")
@@ -390,8 +390,8 @@ def main():
           'loadCloudCmdId' in nvs_h and 'saveCloudCmdId' in nvs_h,
           "an acked command re-runs after every reboot")
     _poll_iv = re.search(r"POLL_INTERVAL_MS\s*=\s*(\d+)", cl_h)
-    c.add("the downlink polls on its own 2 s timer, wired into loop()",
-          _poll_iv is not None and int(_poll_iv.group(1)) == 2000 and
+    c.add("the downlink polls on its own 10 s timer, wired into loop()",
+          _poll_iv is not None and int(_poll_iv.group(1)) == 10000 and
           _loop is not None and "pollCmd(" in _loop.group(1),
           "poll starves behind the push or never runs")
     # The frame may carry set_pin/set_ap/setwifi passwords, so the poll's own

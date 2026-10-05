@@ -587,11 +587,9 @@ panel's Power row, so the mode is visible, not mysterious.
 
 ### Remote monitoring (cloud), minus the old mistakes
 
-The cloud is back as a push-only realtime-database mirror: every 5 s, STA
-only, one `PATCH /devices/<MAC>/latest.json?auth=...` over a persistent
-keep-alive HTTPS session (a fresh 1-2 s handshake per push outlasted any
-sub-10 s interval, so the session stays open and each push is ~100 ms).
-Auth is the herd's email/password login (Identity
+The cloud is back as a push-only realtime-database mirror: every 10 s, STA
+only, one `PATCH /devices/<MAC>/latest.json?auth=...` over HTTPS REST, then
+the connection closes. Auth is the herd's email/password login (Identity
 Toolkit REST, still no SDK): the board signs in, holds the ID token in RAM,
 refreshes it hourly, and re-logs-in on 401. The token is never stored to
 flash and never rendered - and unlike the secret era, an ID token RESPECTS

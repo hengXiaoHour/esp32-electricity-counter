@@ -13,13 +13,12 @@ class LimitManager;
 // Remote monitoring + remote control over plain HTTPS REST, STA-only.
 //
 // UPLINK: pushes a small snapshot (PATCH /devices/<MAC>/latest.json?auth=...)
-// every PUSH_INTERVAL_MS over one persistent keep-alive TLS session.
+// every PUSH_INTERVAL_MS.
 //
 // DOWNLINK: polls /devices/<MAC>/cmd.json?auth=... every POLL_INTERVAL_MS for
 // a {id, frame, ts} written by the Gmail admin, executes a NEW id once via
 // processCommand(..., skipAuth=true), and acks it at
-// /devices/<MAC>/ack.json. Push and poll share the one keep-alive session
-// (separate timers, never concurrent - loop() is single-threaded). Trust comes from the RTDB rules (only the admin
+// /devices/<MAC>/ack.json. Trust comes from the RTDB rules (only the admin
 // Gmail can write cmd) + TLS + the board's own ID token - the cloud never
 // carries a PIN, so the PIN gate is skipped for cloud frames only. Local
 // WebSocket callers keep the PIN (processCommand default).
@@ -36,9 +35,8 @@ class LimitManager;
 // (doc/opencode_agent/lessons.md, "Archived - cloud era") still hold:
 // STA-only (the fallback AP has no internet), MAC identity (no settable
 // board id, nothing to mistype). The old "never reads" half is superseded:
-// the downlink GETs only the cmd node on its own timer over the same
-// keep-alive session (never a second connection), and a missing node is a
-// quiet no-op, not a teardown.
+// the downlink GETs only the cmd node on its own 10 s timer (never sharing
+// the push connection), and a missing node is a quiet no-op, not a teardown.
 //
 // Cost, stated honestly: auth adds up to two HTTPS round-trips per push
 // interval when the token lapses (typically under 2 s each, timeout 4 s).
@@ -85,12 +83,8 @@ public:
   // briefly: the WS console runs on a different task than loop().
   void diag(String &out, SemaphoreHandle_t *mutex);
 
-  // 5 s pushes stay cheap because the transport below holds one persistent
-  // keep-alive TLS session: a fresh 1-2 s handshake per push would eat any
-  // sub-10 s interval and starve networkTask. The downlink rides the same
-  // connection on its own 2 s timer (commands land in ~2 s).
-  static const uint32_t PUSH_INTERVAL_MS = 5000;
-  static const uint32_t POLL_INTERVAL_MS = 2000;
+  static const uint32_t PUSH_INTERVAL_MS = 10000;
+  static const uint32_t POLL_INTERVAL_MS = 10000;
 
  private:
   NVSManager *nvs = nullptr;
