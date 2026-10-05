@@ -588,15 +588,17 @@ panel's Power row, so the mode is visible, not mysterious.
 ### Remote monitoring (cloud), minus the old mistakes
 
 The cloud is back as a push-only realtime-database mirror: every second, STA
-only, one `PATCH /devices/<MAC>/latest.json?auth=...` over a persistent
-keep-alive HTTPS session (a fresh 1-2 s handshake per push outlasted any
-sub-10 s interval, so the session stays open and each push is ~100 ms).
-Auth is the herd's email/password login (Identity
-Toolkit REST, still no SDK): the board signs in, holds the ID token in RAM,
-refreshes it hourly, and re-logs-in on 401. The token is never stored to
+only, one merge-write to `/devices/<MAC>/latest` through Firebase_ESP_Client
+4.x (the August smooth era's transport). The hand-rolled REST keep-alive
+proved it could wedge a board quiet; the SDK owns the TLS session, the
+ID-token refresh and the retry now. Auth is the herd's email/password login
+through the SDK (auth.user.*) - deliberately NOT the August service-account
+key, so no private key lives on the device. The token is never stored to
 flash and never rendered - and unlike the secret era, an ID token RESPECTS
 the database rules, so the deployed `.validate` shape-check is enforced on
-the board's own writes.
+the board's own writes. Push and poll ride separate SDK sessions (1 s / 2 s
+timers); a 30 KB heap floor and a 60-straight-fail counter reboot instead of
+going silent.
 
 | Decision | Why |
 |---|---|

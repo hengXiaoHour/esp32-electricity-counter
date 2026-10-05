@@ -1,6 +1,9 @@
 #include "cloud_push.h"
 
-#include <WiFiClientSecure.h>
+#include <Firebase_ESP_Client.h>
+#include <addons/TokenHelper.h>  // tokenStatusCallback: logs token lifecycle,
+                                 // never the token itself
+#include <addons/RTDBHelper.h>
 #include <time.h>
 
 #include "../utils/nvs_manager.h"
@@ -9,204 +12,58 @@
 #include "command_processor.h"  // downlink executes cloud frames as commands
 #include "console_handler.h"  // consoleAppendf: diag() reports through it
 
-// Extracts "key": "value" (or "key":123 for numbers when wantStr is false)
-// from a flat JSON object. No JSON library on purpose: the auth responses are
-// ~1-2 KB flat objects and the classic ESP32 is at 69% flash without one.
-static bool extractField(const String &body, const char *key, char *out, size_t outLen) {
-  if (!out || outLen == 0) return false;
-  String needle = "\"";
-  needle += key;
-  needle += "\":";
-  int i = body.indexOf(needle);
-  if (i < 0) return false;
-  i += needle.length();
-  while (i < (int)body.length() && (body[i] == ' ' || body[i] == '"')) {
-    if (body[i] == '"') { i++; break; }
-    i++;
-  }
-  int j = i;
-  while (j < (int)body.length() && body[j] != '"' && body[j] != ',' && body[j] != '}') j++;
-  // Trailing quote consumed: value ran to a closing quote.
-  int len = j - i;
-  if (len <= 0 || (size_t)len >= outLen) return false;
-  memcpy(out, body.c_str() + i, len);
-  out[len] = '\0';
-  return true;
-}
-
-// Persistent TLS session shared by every cloud HTTPS call below.
+// Firebase SDK transport (the August smooth era, minus its one sin).
 //
-// One CloudPush instance exists on this board, so translation-unit state is
-// honest, not a shortcut: a member would say "per instance" what is really
-// "per radio". A fresh handshake costs 1-2 s on this silicon; at 1 push/s a
-// handshake per push outlasts the interval and networkTask never comes up
-// for air. One handshake at boot (plus one more on host switch auth<->db),
-// then each push/poll is a ~100 ms round trip on the hot connection.
-static WiFiClientSecure s_conn;
-static char s_connHost[160] = {0};
-static bool s_connOpen = false;
+// The hand-rolled keep-alive is gone: every HTTPS call below goes through
+// Firebase_ESP_Client 4.x, which owns the TLS session, the ID-token refresh
+// and the retry the way a tested library does instead of ~200 lines of
+// hand framing. Auth is herd email/password (auth.user.*), NOT the old
+// service-account key: no private key lives on this board, and a flash dump
+// yields at most one herd account's password, never project admin keys.
+// Two FirebaseData objects = two dedicated sessions (push vs poll), exactly
+// the "never share the hot path" rule in lessons.md ("Archived - cloud
+// era"). Buffers match the proven August values: the node echoes back
+// ~1.3 KB, so 4096 in / 1024 out with margin.
+static FirebaseData s_pushFbdo;
+static FirebaseData s_pollFbdo;
+static FirebaseAuth s_auth;
+static FirebaseConfig s_cfg;
+static bool s_sdkStarted = false;
+static char s_sdkEmail[CLOUD_MAX_EMAIL_LEN + 1] = {0};
 
-static void cloudDropConn() {
-  s_conn.stop();
-  s_connOpen = false;
-  s_connHost[0] = '\0';
+// Starts the SDK once per boot (setcloud/clearcloud reboot by design, so
+// credentials cannot change under a live session). After WiFi only:
+// Firebase.begin() with no link just fails.
+static void cloudSdkEnsure(const char *host, const char *email,
+                           const char *pass) {
+  if (s_sdkStarted) return;
+  s_cfg.api_key = CLOUD_API_KEY_DEFAULT;
+  String url = "https://";
+  url += host;
+  url += "/";
+  // database_url must outlive begin(): the SDK keeps the pointer, so hold
+  // it in a static, not a local.
+  static char s_dbUrl[192] = {0};
+  strncpy(s_dbUrl, url.c_str(), sizeof(s_dbUrl) - 1);
+  s_dbUrl[sizeof(s_dbUrl) - 1] = '\0';
+  s_cfg.database_url = s_dbUrl;
+  strncpy(s_sdkEmail, email, sizeof(s_sdkEmail) - 1);
+  s_sdkEmail[sizeof(s_sdkEmail) - 1] = '\0';
+  s_auth.user.email = s_sdkEmail;
+  static char s_sdkPass[CLOUD_MAX_PASS_LEN + 1] = {0};
+  strncpy(s_sdkPass, pass, sizeof(s_sdkPass) - 1);
+  s_sdkPass[sizeof(s_sdkPass) - 1] = '\0';
+  s_auth.user.password = s_sdkPass;
+  s_pushFbdo.setBSSLBufferSize(4096, 1024);
+  s_pushFbdo.setResponseSize(4096);
+  s_pollFbdo.setBSSLBufferSize(4096, 1024);
+  s_pollFbdo.setResponseSize(4096);
+  s_cfg.token_status_callback = tokenStatusCallback;
+  Firebase.reconnectNetwork(false);  // WiFi belongs to WiFiManager.
+  Firebase.begin(&s_cfg, &s_auth);
+  s_sdkStarted = true;
 }
 
-// True with a live TLS session to `host`. Reconnects when closed or when the
-// host switched (auth endpoints vs the database host).
-static bool cloudEnsureConn(const char *host) {
-  if (s_connOpen && strcmp(s_connHost, host) == 0 && s_conn.connected()) {
-    return true;
-  }
-  cloudDropConn();
-  s_conn.setInsecure();  // same threat model as before: physical access owns
-                         // the board; cert validation buys nothing here.
-  s_conn.setTimeout(4000);
-  if (!s_conn.connect(host, 443)) {
-    return false;
-  }
-  strncpy(s_connHost, host, sizeof(s_connHost) - 1);
-  s_connHost[sizeof(s_connHost) - 1] = '\0';
-  s_connOpen = true;
-  return true;
-}
-
-// Reads a newline-terminated line before `deadline`, else false.
-static bool cloudReadLine(String &line, unsigned long deadline) {
-  while ((long)(deadline - millis()) > 0) {
-    if (s_conn.available()) {
-      line = s_conn.readStringUntil('\n');
-      return true;
-    }
-    delay(1);
-  }
-  return false;
-}
-
-// One request on the persistent connection. Returns the HTTP status code,
-// 0 on transport failure (connection dropped, next call reconnects).
-// Retried ONCE, and only when the first attempt rode a reused connection:
-// a server idle-close lands exactly there, while a fresh connection failing
-// means the network itself is down and an instant second handshake is spam.
-static int cloudRoundTrip(const char *host, const String &req,
-                          String &respBody, size_t maxLen) {
-  for (int attempt = 0; attempt < 2; attempt++) {
-    bool fresh = !s_connOpen;
-    if (!cloudEnsureConn(host)) {
-      return 0;
-    }
-    s_conn.print(req);
-    unsigned long deadline = millis() + 4000;
-    String status;
-    if (!cloudReadLine(status, deadline)) {
-      cloudDropConn();
-      if (!fresh) continue;
-      return 0;
-    }
-    int code = 0;
-    int sp = status.indexOf(' ');
-    if (sp >= 0) code = status.substring(sp + 1).toInt();
-    if (code <= 0) {
-      cloudDropConn();
-      if (!fresh) continue;
-      return 0;
-    }
-    // Headers: only Content-Length matters. Anything without one
-    // (chunked, close-delimited) cannot be resynced, so the connection is
-    // dropped instead of guessed at - these endpoints always send one.
-    long want = -1;
-    bool hdrFail = false;
-    while (true) {
-      String h;
-      if (!cloudReadLine(h, deadline)) {
-        hdrFail = true;
-        break;
-      }
-      h.trim();
-      if (h.length() == 0) break;
-      if (h.length() > 15 && strncasecmp(h.c_str(), "content-length:", 15) == 0) {
-        want = atol(h.c_str() + 15);
-      }
-    }
-    if (hdrFail) {
-      cloudDropConn();
-      if (!fresh) continue;
-      return 0;
-    }
-    if (want < 0) {
-      cloudDropConn();
-      return 0;
-    }
-    // Bounded body, then the stream is exactly back in sync. A body larger
-    // than maxLen is truncated AND the connection dropped (the unread tail
-    // would otherwise poison the next response).
-    respBody = "";
-    long n = want;
-    bool over = false;
-    if (n > (long)maxLen) {
-      n = maxLen;
-      over = true;
-    }
-    while (n > 0 && (long)(deadline - millis()) > 0) {
-      if (!s_conn.available()) {
-        delay(1);
-        continue;
-      }
-      respBody += (char)s_conn.read();
-      n--;
-    }
-    if (n > 0) {
-      cloudDropConn();
-      if (!fresh) continue;
-      return 0;
-    }
-    if (over) cloudDropConn();
-    return code;
-  }
-  return 0;
-}
-
-// POSTs `path`+body to `host:443` and returns the HTTP status code,
-// 0 on transport failure. Reads the status line plus a bounded body for
-// field extraction; nothing else is parsed, nothing is polled.
-static int httpsPost(const char *host, const String &path, const String &body,
-                     const char *contentType, String &respBody) {
-  String req = String("POST ") + path + " HTTP/1.1\r\nHost: " + host +
-               "\r\nContent-Type: " + contentType + "\r\nContent-Length: " +
-               body.length() + "\r\nConnection: keep-alive\r\n\r\n";
-  req += body;
-  // Auth payloads are ~1-2 KB; the bound is what keeps a lying server from
-  // eating the heap, not what fits a real reply.
-  return cloudRoundTrip(host, req, respBody, 2048);
-}
-
-// GETs `path` from `host:443` and returns the HTTP status code,
-// 0 on transport failure. Reads the status line plus a bounded body (the cmd
-// node is small: {id, frame, ts} where frame is one dashboard command).
-// Downlink-only: the push path above never reads.
-static int httpsGet(const char *host, const String &path, String &respBody,
-                    size_t maxLen) {
-  String req = String("GET ") + path + " HTTP/1.1\r\nHost: " + host +
-               "\r\nConnection: keep-alive\r\n\r\n";
-  return cloudRoundTrip(host, req, respBody, maxLen);
-}
-
-// PATCHes `path`+body to `host:443` and returns the HTTP status code,
-// 0 on transport failure. The ack write (small JSON object) only needs the
-// status line back.
-static int httpsPatch(const char *host, const String &path, const String &body,
-                      String &respBody) {
-  String req = String("PATCH ") + path + " HTTP/1.1\r\nHost: " + host +
-               "\r\nContent-Type: application/json\r\nContent-Length: " +
-               body.length() + "\r\nConnection: keep-alive\r\n\r\n";
-  req += body;
-  // The push reply echoes the whole node back (~1.3 KB and growing with the
-  // event log), so this bound must clear it with margin: anything over the
-  // cap DROPS the keep-alive, and a drop-per-push is a permanent handshake
-  // churn that fragments the heap until the board goes silent (proven at
-  // 1 push/s with a 1024 cap).
-  return cloudRoundTrip(host, req, respBody, 4096);
-}
 
 // Reverses the JSON string escaping on a quoted value (the cmd frame arrives
 // as an escaped JSON string inside the cmd node).
@@ -300,7 +157,8 @@ void CloudPush::begin(NVSManager *nvsRef) {
   // once STA is up, instead of waiting out a full interval after boot.
   lastAttemptMs_ = (uint32_t)(millis() - PUSH_INTERVAL_MS);
   // Same for the downlink timer: the first cmd poll goes out on the first
-  // loop tick (its own 10 s timer, so push and poll TLS never share timing).
+  // loop tick (its own timer on its own SDK session, so push and poll never
+  // share timing).
   lastPollMs_ = (uint32_t)(millis() - POLL_INTERVAL_MS);
   // Dedup across reboots: an acked command id stays executed even if the
   // board restarts before the admin clears the cmd node.
@@ -327,82 +185,22 @@ uint32_t CloudPush::secondsSincePoll() const {
   return (millis() - lastPollMs_) / 1000;
 }
 
-bool CloudPush::signIn() {
-  String path = "/v1/accounts:signInWithPassword?key=";
-  path += CLOUD_API_KEY_DEFAULT;
-  String req = "{\"email\":\"";
-  req += email_;
-  req += "\",\"password\":\"";
-  req += pass_;
-  req += "\",\"returnSecureToken\":true}";
-  String resp;
-  // Host is fixed DNS (googleapis.com), not a setting - no validation needed.
-  int code = httpsPost("identitytoolkit.googleapis.com", path, req,
-                       "application/json", resp);
-  if (code != 200) {
-    // INVALID_LOGIN_CREDENTIALS vs too many attempts vs disabled account are
-    // all actionable WITHOUT the password, which is never printed.
-    DEBUG_LOG("  [CLOUD] sign-in refused (HTTP %d) for \"%s\"\n", code, email_);
-    idToken_[0] = '\0';
-    refreshToken_[0] = '\0';
-    tokenExpiryMs_ = 0;
-    return false;
-  }
-  char idt[sizeof(idToken_)], rft[sizeof(refreshToken_)], exp[16];
-  if (!extractField(resp, "idToken", idt, sizeof(idt)) ||
-      !extractField(resp, "refreshToken", rft, sizeof(rft)) ||
-      !extractField(resp, "expiresIn", exp, sizeof(exp))) {
-    DEBUG_LOG("  [CLOUD] sign-in reply unparseable\n");
-    return false;
-  }
-  memcpy(idToken_, idt, sizeof(idToken_));
-  memcpy(refreshToken_, rft, sizeof(refreshToken_));
-  // Refresh 5 min early: a push must never race expiry mid-PATCH.
-  long ttl = atol(exp);
-  if (ttl < 600) ttl = 600;
-  tokenExpiryMs_ = millis() + (uint32_t)(ttl - 300) * 1000UL;
-  DEBUG_LOG("  [CLOUD] signed in as \"%s\" (token %.0fs)\n", email_, (double)ttl);
-  return true;
-}
-
-bool CloudPush::refresh() {
-  if (refreshToken_[0] == '\0') return false;
-  String path = "/v1/token?key=";
-  path += CLOUD_API_KEY_DEFAULT;
-  String req = "grant_type=refresh_token&refresh_token=";
-  req += refreshToken_;
-  String resp;
-  int code = httpsPost("securetoken.googleapis.com", path, req,
-                       "application/x-www-form-urlencoded", resp);
-  if (code != 200) {
-    DEBUG_LOG("  [CLOUD] token refresh refused (HTTP %d)\n", code);
-    idToken_[0] = '\0';
-    refreshToken_[0] = '\0';
-    tokenExpiryMs_ = 0;
-    return false;
-  }
-  char idt[sizeof(idToken_)], rft[sizeof(refreshToken_)], exp[16];
-  if (!extractField(resp, "id_token", idt, sizeof(idt)) ||
-      !extractField(resp, "refresh_token", rft, sizeof(rft)) ||
-      !extractField(resp, "expires_in", exp, sizeof(exp))) {
-    DEBUG_LOG("  [CLOUD] refresh reply unparseable\n");
-    return false;
-  }
-  memcpy(idToken_, idt, sizeof(idToken_));
-  memcpy(refreshToken_, rft, sizeof(rft));
-  long ttl = atol(exp);
-  if (ttl < 600) ttl = 600;
-  tokenExpiryMs_ = millis() + (uint32_t)(ttl - 300) * 1000UL;
-  return true;
-}
-
+// Auth is the SDK's job now: email/password sign-in with the herd account,
+// ID-token refresh handled internally (same model as the REST era, minus the
+// hand-rolled JWT parsing that could wedge). ensureLogin() only makes sure
+// the SDK was started (after WiFi) and reports readiness; a false return is
+// "not authed yet", never a password problem (passwords are never logged).
 bool CloudPush::ensureLogin() {
-  // Token still fresh: nothing to do (the common path - one comparison).
-  if (idToken_[0] != '\0' && (int32_t)(millis() - tokenExpiryMs_) < 0) return true;
-  // Stale but refreshable: one cheap call, no password involved.
-  if (refreshToken_[0] != '\0' && refresh()) return true;
-  // Otherwise (first boot, expiry lapsed, refresh rejected): full sign-in.
-  return signIn();
+  cloudSdkEnsure(host_, email_, pass_);
+  if (!Firebase.ready()) {
+    static uint32_t lastLog = 0;
+    if (millis() - lastLog > 30000) {
+      lastLog = millis();
+      DEBUG_LOG("  [CLOUD] sdk not ready yet (auth in progress)\n");
+    }
+    return false;
+  }
+  return true;
 }
 
 // Copies the live readings into the cloud payload. Runs UNDER dataMutex
@@ -544,43 +342,26 @@ bool CloudPush::snapshot(SystemData *sysData, SemaphoreHandle_t *mutex, String &
   return true;
 }
 
-// One PATCH over the shared keep-alive session, no fresh handshake. The ID
-// token travels inside the TLS tunnel; it is never logged, never stored
-// anywhere but RAM, and never rendered. Returns the HTTP status so the caller
-// can tell 401 (re-login) from failure (log and forget).
+// One PATCH via the SDK (updateNode = merge, the REST PATCH equivalent).
+// The SDK attaches the ID token itself; it is never logged, never stored
+// anywhere but the SDK's RAM session, and never rendered. Returns the HTTP
+// status so the caller can tell auth problems from transport failure.
 int CloudPush::postStatus(const String &body) {
-  String req = "PATCH /devices/";
-  req += deviceId_;
-  req += "/latest.json?auth=";
-  req += idToken_;
-  req += " HTTP/1.1\r\nHost: ";
-  req += host_;
-  req += "\r\nContent-Type: application/json\r\nContent-Length: ";
-  req += body.length();
-  req += "\r\nConnection: keep-alive\r\n\r\n";
-  req += body;
-
-  String resp;
-  int code = cloudRoundTrip(host_, req, resp, 4096);
-  if (code == 0) {
-    DEBUG_LOG("  [CLOUD] push failed (%s)\n", host_);
+  String path = "/devices/";
+  path += deviceId_;
+  path += "/latest";
+  FirebaseJson payload;
+  payload.setJsonData(body);
+  if (Firebase.RTDB.updateNode(&s_pushFbdo, path, &payload)) {
+    return 200;
   }
-  return code;
+  DEBUG_LOG("  [CLOUD] push failed: %s\n", s_pushFbdo.errorReason().c_str());
+  return 0;
 }
 
 bool CloudPush::post(const String &body) {
   int code = postStatus(body);
-  if (code == 401) {
-    // Token died mid-interval (revoked, or the hour lapsed early). One
-    // fresh sign-in and ONE retry - never a loop: a second 401 means the
-    // account itself is wrong, and retrying is spam.
-    DEBUG_LOG("  [CLOUD] push got 401 - re-login once\n");
-    idToken_[0] = '\0';
-    if (!signIn()) return false;
-    code = postStatus(body);
-  }
   if (code != 200) {
-    DEBUG_LOG("  [CLOUD] push refused (HTTP %d)\n", code);
     return false;
   }
   return true;
@@ -596,7 +377,7 @@ void CloudPush::pollCmd(SystemData *sysData, SemaphoreHandle_t *mutex,
   if (!enabled_) return;
   if (WiFi.status() != WL_CONNECTED) return;  // STA-only: the fallback AP
                                               // has no internet by definition.
-  if (!ensureLogin()) return;  // one sign-in/refresh inside; never loops.
+  if (!ensureLogin()) return;  // SDK auth in progress; never loops.
 
   // Device id: the radio's truth, recomputed when unknown like the push does.
   if (deviceId_[0] == '\0') {
@@ -609,27 +390,14 @@ void CloudPush::pollCmd(SystemData *sysData, SemaphoreHandle_t *mutex,
 
   String getPath = "/devices/";
   getPath += deviceId_;
-  getPath += "/cmd.json?auth=";
-  getPath += idToken_;
+  getPath += "/cmd";
   String cmdBody;
-  int code = httpsGet(host_, getPath, cmdBody, 4096);
-  if (code == 401) {
-    // Token died mid-interval. One fresh sign-in and ONE retry - never a
-    // loop, same rule as post().
-    DEBUG_LOG("  [CLOUD] cmd poll got 401 - re-login once\n");
-    idToken_[0] = '\0';
-    if (!signIn()) return;
-    getPath = "/devices/";
-    getPath += deviceId_;
-    getPath += "/cmd.json?auth=";
-    getPath += idToken_;
-    code = httpsGet(host_, getPath, cmdBody, 4096);
-  }
-  if (code != 200) {
-    if (code == 0) DEBUG_LOG("  [CLOUD] cmd poll connect failed\n");
-    else DEBUG_LOG("  [CLOUD] cmd poll refused (HTTP %d)\n", code);
+  if (!Firebase.RTDB.getJSON(&s_pollFbdo, getPath)) {
+    DEBUG_LOG("  [CLOUD] cmd poll failed: %s\n",
+              s_pollFbdo.errorReason().c_str());
     return;
   }
+  cmdBody = s_pollFbdo.jsonString();
   // "null" (node never written) and {} both mean nothing new: no id parses.
   String cmdId, frame;
   if (!cloudExtractStr(cmdBody, "id", cmdId) || cmdId.length() == 0) return;
@@ -662,22 +430,12 @@ void CloudPush::pollCmd(SystemData *sysData, SemaphoreHandle_t *mutex,
   ackBody += "\"}";
   String ackPath = "/devices/";
   ackPath += deviceId_;
-  ackPath += "/ack.json?auth=";
-  ackPath += idToken_;
-  String ackResp;
-  int ackCode = httpsPatch(host_, ackPath, ackBody, ackResp);
-  if (ackCode == 401) {
-    DEBUG_LOG("  [CLOUD] cmd ack got 401 - re-login once\n");
-    idToken_[0] = '\0';
-    if (!signIn()) return;
-    ackPath = "/devices/";
-    ackPath += deviceId_;
-    ackPath += "/ack.json?auth=";
-    ackPath += idToken_;
-    ackCode = httpsPatch(host_, ackPath, ackBody, ackResp);
-  }
-  if (ackCode != 200) {
-    DEBUG_LOG("  [CLOUD] cmd ack refused (HTTP %d)\n", ackCode);
+  ackPath += "/ack";
+  FirebaseJson ackJson;
+  ackJson.setJsonData(ackBody);
+  if (!Firebase.RTDB.setJSON(&s_pollFbdo, ackPath, &ackJson)) {
+    DEBUG_LOG("  [CLOUD] cmd ack failed: %s\n",
+              s_pollFbdo.errorReason().c_str());
     return;  // id NOT recorded: the next poll retries the same command.
   }
   // Record under the mutex: commit() is prefs.end()+prefs.begin(), which is
@@ -699,13 +457,12 @@ void CloudPush::loop(SystemData *sysData, SemaphoreHandle_t *mutex,
                            // rapid-retry, and a down link must not spam.
     if (WiFi.status() == WL_CONNECTED) {  // STA-only: the fallback AP has
                                            // no internet by definition.
-      // Heap floor: the 1 s death was heap fragmentation from per-push
-      // handshake churn. If the heap ever sags here again, drop the session
-      // and reboot now - a 2 s outage beats a silent hang that needs a
-      // human with a USB cable.
+      // Heap floor: the hand-rolled 1 s death was heap fragmentation from
+      // per-push handshake churn. The SDK owns its session now, but the floor
+      // stays: a 2 s reboot outage beats a silent hang that needs a human
+      // with a USB cable.
       if (ESP.getFreeHeap() < 30000) {
-        DEBUG_LOG("  [CLOUD] heap %lu - drop + reboot\n", (unsigned long)ESP.getFreeHeap());
-        cloudDropConn();
+        DEBUG_LOG("  [CLOUD] heap %lu - reboot\n", (unsigned long)ESP.getFreeHeap());
         delay(100);
         ESP.restart();
       }
@@ -728,15 +485,13 @@ void CloudPush::loop(SystemData *sysData, SemaphoreHandle_t *mutex,
       // creds are in NVS, so nothing is lost.
       if (consecFails_ >= 60) {
         DEBUG_LOG("  [CLOUD] %lu straight fails - reboot\n", (unsigned long)consecFails_);
-        cloudDropConn();
         delay(100);
         ESP.restart();
       }
     }
   }
-  // Downlink on its own 2 s timer so a slow push round trip never starves a
-  // poll (and vice versa). Shares the one keep-alive session; loop() is
-  // single-threaded so the two never overlap. The STA + login gate lives
+  // Downlink on its own 2 s timer on its own FirebaseData session, so a slow
+  // push never starves a poll (and vice versa). The STA + login gate lives
   // inside pollCmd.
   if (now - lastPollMs_ >= POLL_INTERVAL_MS) {
     lastPollMs_ = now;
@@ -745,27 +500,23 @@ void CloudPush::loop(SystemData *sysData, SemaphoreHandle_t *mutex,
 }
 
 void CloudPush::diag(String &out, SemaphoreHandle_t *mutex) {
-  // Snapshot the session under the mutex: the WS console runs on a different
-  // task than loop(), and a torn read here would report a "mangled" token
-  // that is really just bytes mid-write.
-  char tok[sizeof(idToken_)];
-  tok[0] = '\0';
+  // Snapshot the command id under the mutex: the WS console runs on a
+  // different task than loop(), and a torn read here would report a
+  // "mangled" id that is really just bytes mid-write.
   char cmd[sizeof(lastCmdId_)];
   cmd[0] = '\0';
   bool locked = (mutex && xSemaphoreTake(*mutex, pdMS_TO_TICKS(50)) == pdTRUE);
-  if (idToken_[0] != '\0') memcpy(tok, idToken_, sizeof(tok));
   if (lastCmdId_[0] != '\0') memcpy(cmd, lastCmdId_, sizeof(cmd));
-  uint32_t expMs = tokenExpiryMs_;
   if (locked) xSemaphoreGive(*mutex);
   // Single-cycle aligned read like the push age above it.
   uint32_t pollAgeS = secondsSincePoll();
 
   consoleAppendf(out, "  %-10s%s", "Enabled:", enabled_ ? "yes" : "no");
-  consoleAppendf(out, "  %-10s%s (%s)", "Conn:",
-                 s_connOpen ? "hot (keep-alive)" : "cold",
-                 s_connOpen ? s_connHost : "next call dials");
-  consoleAppendf(out, "  %-10s%u straight fails / heap %u", "Health:",
-                 consecFails_, ESP.getFreeHeap());
+  consoleAppendf(out, "  %-10s%s", "Session:",
+                 Firebase.ready() ? "sdk ready (token managed internally)"
+                                   : "auth in progress");
+  consoleAppendf(out, "  %-10s%lu straight fails / heap %lu", "Health:",
+                 (unsigned long)consecFails_, (unsigned long)ESP.getFreeHeap());
   consoleAppendf(out, "  %-10s\"%s\"", "Host:", host_);
   consoleAppendf(out, "  %-10s\"%s\"", "Account:", email_);
   consoleAppendf(out, "  %-10s\"%s\"", "Device:", deviceId_);
@@ -779,27 +530,7 @@ void CloudPush::diag(String &out, SemaphoreHandle_t *mutex) {
   } else {
     consoleAppendf(out, "  %-10s%lus ago", "Poll:", (unsigned long)pollAgeS);
   }
-  if (tok[0] == '\0') {
-    consoleAppendf(out, "%s", "  Session: none (no sign-in yet, or refresh lapsed)");
-    return;
-  }
-  size_t tlen = strlen(tok);
-  char aud[96];
-  aud[0] = '\0';
-  bool audOk = cloud_jwtAud(tok, aud, sizeof(aud));
-  // Length + audience ONLY. A prefix/suffix sample would still leak enough
-  // for correlation, and buys nothing over the length for a mangling check:
-  // a truncated or corrupted token fails the aud parse or shows a wrong/short
-  // length, which is exactly the verdict this command exists to give.
-  consoleAppendf(out, "  %-10s%u chars (%s)", "Token:",
-                 (unsigned)tlen, audOk ? "aud ok" : "aud UNPARSEABLE");
-  if (audOk) consoleAppendf(out, "  %-10s\"%s\"", "Aud:", aud);
-  if (expMs != 0) {
-    int32_t left = (int32_t)(expMs - millis());
-    consoleAppendf(out, "  %-10s%s (%ld s left)", "Expiry:",
-                   left > 0 ? "valid" : "STALE", (long)(left / 1000));
-  }
-  // The token and password are deliberately unprintable here: there is no
-  // code path in this function that formats either. A check_docs rule
-  // asserts that property against the source, not just this comment.
+  // There is deliberately no token or password printable here: the SDK holds
+  // the ID token internally and this function has no accessor for it. A
+  // check_docs rule asserts that property against the source.
 }

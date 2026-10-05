@@ -10,45 +10,44 @@ class NVSManager;
 class PowerCalculator;
 class LimitManager;
 
-// Remote monitoring + remote control over plain HTTPS REST, STA-only.
+// Remote monitoring + remote control over Firebase RTDB, STA-only.
 //
-// UPLINK: pushes a small snapshot (PATCH /devices/<MAC>/latest.json?auth=...)
-// every PUSH_INTERVAL_MS over one persistent keep-alive TLS session.
+// UPLINK: pushes a small snapshot (merge-write /devices/<MAC>/latest)
+// every PUSH_INTERVAL_MS through the Firebase SDK.
 //
-// DOWNLINK: polls /devices/<MAC>/cmd.json?auth=... every POLL_INTERVAL_MS for
+// DOWNLINK: polls /devices/<MAC>/cmd every POLL_INTERVAL_MS for
 // a {id, frame, ts} written by the Gmail admin, executes a NEW id once via
 // processCommand(..., skipAuth=true), and acks it at
-// /devices/<MAC>/ack.json. Trust comes from the RTDB rules (only the admin
+// /devices/<MAC>/ack. Trust comes from the RTDB rules (only the admin
 // Gmail can write cmd) + TLS + the board's own ID token - the cloud never
 // carries a PIN, so the PIN gate is skipped for cloud frames only. Local
 // WebSocket callers keep the PIN (processCommand default).
 //
 // Herd auth: the board signs into Firebase Authentication with an
-// email + password (Identity Toolkit REST, no SDK), holds the ID token in
-// RAM, refreshes it hourly, and re-logs-in on 401. The token is NEVER stored
-// to flash (a boot re-login is one HTTPS call) and NEVER rendered: not in the
-// snapshot, not in logs, not on the dashboard. Unlike the secret era, an ID
-// token RESPECTS the database rules - the deployed .validate shape-check is
-// enforced on the board's own writes, not just on readers.
+// email + password THROUGH the SDK (auth.user.*), which owns the ID token
+// and its hourly refresh internally. No token buffer lives in this code,
+// so there is nothing to log, dump or render: not in the snapshot, not in
+// logs, not on the dashboard. Unlike the secret era, an ID token RESPECTS
+// the database rules - the deployed .validate shape-check is enforced on
+// the board's own writes, not just on readers.
 //
 // The deliberate differences from the removed cloud era
 // (doc/opencode_agent/lessons.md, "Archived - cloud era") still hold:
 // STA-only (the fallback AP has no internet), MAC identity (no settable
-// board id, nothing to mistype). The old "never reads" half is superseded:
-// the downlink GETs only the cmd node on its own timer over the same
-// keep-alive session (never a second connection), and a missing node is a
-// quiet no-op, not a teardown.
+// board id, nothing to mistype), herd account (no service-account private
+// key on the device - the August SDK used one; this one does not). The old
+// "never reads" half is superseded: the downlink reads only the cmd node
+// on its own FirebaseData session, and a missing node is a quiet no-op,
+// not a teardown.
 //
-// Self-healing (the 1 s lesson): the PATCH reply echoes the node (~1.3 KB),
-// so its read cap is 4096 - anything smaller drops the session per push and
-// churns handshakes until the heap dies. Past that, a 30 KB heap floor and a
-// 60-straight-fail counter reboot the board instead of going silent.
+// Self-healing: a 30 KB heap floor and a 60-straight-fail counter reboot
+// the board instead of going silent (the hand-rolled 1 s era proved a
+// quiet board stays quiet until a human brings USB).
 //
-// Cost, stated honestly: auth adds up to two HTTPS round-trips per push
-// interval when the token lapses (typically under 2 s each, timeout 4 s).
-// Broadcasts pause during that window; sensing on Core 1 never notices.
-// Enabling cloud also keeps eco from sleeping (see wantsRadio) - a radio
-// that naps cannot push.
+// Cost, stated honestly: token refresh happens inside the SDK and each
+// push/poll is a short round trip. Broadcasts pause during that window;
+// sensing on Core 1 never notices. Enabling cloud also keeps eco from
+// sleeping (see wantsRadio) - a radio that naps cannot push.
 class CloudPush {
 public:
   void begin(NVSManager *nvsRef);
@@ -104,12 +103,9 @@ public:
   char pass_[CLOUD_MAX_PASS_LEN + 1] = {0};
   char deviceId_[CLOUD_DEVICE_ID_LEN + 1] = {0};
 
-  // Session, RAM-only by design. idToken_ is a JWT (~1 KB); refreshToken_
-  // survives in RAM across pushes but never reaches flash.
-  char idToken_[1200] = {0};
-  char refreshToken_[256] = {0};
-  uint32_t tokenExpiryMs_ = 0;
-
+  // No token buffers live here by design: the SDK owns the ID token and its
+  // refresh internally. Email/password stay (NVS-loaded, used once at SDK
+  // start); the password is never logged, never rendered.
   bool lastOk_ = false;
   uint32_t lastAttemptMs_ = 0;
   uint32_t lastOkMs_ = 0;
@@ -117,19 +113,18 @@ public:
   // Downlink dedup: last executed command id (mirrored to NVS "cloud_cmd").
   char lastCmdId_[48] = {0};
   uint32_t lastPollMs_ = 0;
-  // Self-healing: straight failed pushes with the link up (login fail or
+  // Self-healing: straight failed pushes with the link up (not-authed or
   // post fail). 60 in a row reboots; success resets. RAM-only, like the
   // session - a reboot starts it at zero, which is correct.
   uint32_t consecFails_ = 0;
 
   bool snapshot(SystemData *sysData, SemaphoreHandle_t *mutex, String &body);
-  // POSTs and returns the HTTP status code (0 = transport failure).
-  // Push-only: the body is never parsed beyond the status line.
+  // Merge-writes the snapshot via the SDK; returns HTTP-like status
+  // (200 = written, 0 = transport/auth failure). Push-only: the reply is
+  // never parsed beyond success.
   bool post(const String &body);
   int postStatus(const String &body);
-  // Ensures a usable ID token: refresh when stale, full sign-in when empty
-  // or rejected. Returns false with the reason logged (never the password).
+  // Starts the SDK (once per boot, after WiFi) and reports Firebase.ready().
+  // Returns false with the reason logged (never the password).
   bool ensureLogin();
-  bool signIn();
-  bool refresh();
 };

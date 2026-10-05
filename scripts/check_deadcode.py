@@ -396,16 +396,17 @@ def main():
 
     # --- 8b. the cloud feature must stay wired end to end ------------------
     # Same disease as rule 8: each layer can be deleted one at a time while
-    # every remaining layer looks tidy. The token path gets one extra shape
-    # check (post() must send the auth_ buffer loaded from NVS, not a default
+    # every remaining layer looks tidy. The auth path gets one extra shape
+    # check (the SDK must start from the NVS-loaded buffers, not a default
     # or constant) - the AP rename shipped exactly that bug once (saved the
-    # new name, broadcast the old one), and a token variant would push to the
-    # wrong database while the UI says "Saved".
+    # new name, broadcast the old one), and a credential variant would push
+    # to the wrong database while the UI says "Saved".
     clcpp = strip_cpp(read("src/network/cloud_push.cpp"))
     post_body = body_of(clcpp, "int CloudPush::postStatus")
     begin_body = body_of(clcpp, "void CloudPush::begin")
     cl_loop_body = body_of(clcpp, "void CloudPush::loop")
     cl_poll_body = body_of(clcpp, "void CloudPush::pollCmd")
+    sdk_body = body_of(clcpp, "static void cloudSdkEnsure")
     cloud_missing = []
     for what, present in [
             ("firmware verb (setcloud)", has("setcloud", cmd)),
@@ -427,15 +428,25 @@ def main():
             ("dashboard forget", "cmd: 'clearcloud'" in js),
             ("dashboard panel", 'id="cloudHost"' in read("frontend/index.html")),
             ("begin loads from NVS", bool(begin_body) and "loadFb" in begin_body),
-            ("post sends the session token buffer (never a constant)",
-             bool(post_body) and "idToken_" in post_body),
+            # SDK-shaped, not word-shaped: "Firebase" also appears in comments,
+            # so match the merge call on the push session with the device id
+            # in the path - deleting the device path still "mentions Firebase".
+            ("post merge-writes the device node (never a constant path)",
+             bool(post_body) and "updateNode(" in post_body and
+             "deviceId_" in post_body),
+            ("SDK starts from the NVS-loaded account (never a default)",
+             bool(sdk_body) and "auth.user.email" in sdk_body),
+            ("SDK uses the herd API key (never a service-account key)",
+             bool(sdk_body) and "CLOUD_API_KEY_DEFAULT" in sdk_body and
+             "service_account" not in clcpp.lower()),
             # Downlink: same disease as above - each layer deletable while the
             # rest looks tidy. Shape-scoped, not word-scoped: has("pollCmd")
             # alone passes on the definition after the loop wiring is deleted,
             # and "saveCloudCmdId" alone passes on the NVS definition after the
             # ack path stops calling it (both proven by mutation, not reading).
-            ("downlink fetch (cmd node)", "/cmd.json" in clcpp),
-            ("downlink ack (ack node)", "/ack.json" in clcpp),
+            ("downlink fetch (cmd node, poll session)", "/cmd" in clcpp and
+             bool(cl_poll_body) and "s_pollFbdo" in cl_poll_body),
+            ("downlink ack (ack node)", "/ack" in clcpp),
             ("poll executes cloud frames",
              bool(cl_poll_body) and "processCommand(" in cl_poll_body),
             ("poll skips the PIN (cloud trusts RTDB rules, not a PIN)",

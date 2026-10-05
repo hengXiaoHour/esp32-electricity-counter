@@ -256,25 +256,28 @@ def main():
     # mutation suite proves each one can fail.
     # Comments may NAME the removed SDK (repo convention: strip comments first,
     # like verify_all.sh does) - the rule is about code, not prose.
-    c.add("the pusher uses raw REST PATCH, no SDK include",
-          "PATCH /devices/" in cl_cpp and
-          "firebase" not in strip_comments(cl_cpp).lower() and
-          "firebase" not in strip_comments(cl_h).lower(),
-          "an SDK crept back into the pusher")
-    # The downlink is the ONE sanctioned read: GET /devices/<id>/cmd.json on
-    # its own 2 s timer over the shared keep-alive session. Scoped to the
-    # poll body (not the file): a bare "GET is present" would also pass for a
+    # Transport is the Firebase SDK (the August smooth era, minus its one sin:
+    # herd email/password, never a service-account key on the device). The
+    # hand-rolled REST era is over because it wedged; the rule below pins the
+    # SDK shape instead of the REST shape. Comments may NAME either transport
+    # (repo convention: strip comments first) - the rule is about code.
+    c.add("the pusher writes via the SDK merge call, no service-account key",
+          "updateNode(" in cl_cpp and "Firebase.RTDB" in cl_cpp and
+          "service_account" not in strip_comments(cl_cpp).lower() and
+          "PRIVATE_KEY" not in cl_cpp,
+          "transport left the SDK shape, or an admin key is on the device")
+    # The downlink is the ONE sanctioned read: getJSON on /devices/<id>/cmd
+    # on its own timer and its own FirebaseData session. Scoped to the poll
+    # body (not the file): a bare "getJSON is present" would also pass for a
     # read smuggled into the push path, which is exactly the old teardown bug.
-    _https_get = re.search(r"static int httpsGet\([^)]*\) \{([\s\S]*?)\n\}\n",
-                           strip_comments(cl_cpp))
     _poll = re.search(r"void CloudPush::pollCmd\([^)]*\) \{([\s\S]*?)\n\}\n",
                       strip_comments(cl_cpp))
     _poll_b = _poll.group(1) if _poll else ""
-    c.add("the only read is the downlink cmd poll (GET /cmd.json, own timer)",
-          _https_get is not None and "GET " in _https_get.group(1) and
-          _poll is not None and "/cmd.json" in _poll_b and
-          "httpsGet(" in _poll_b and ".get(" not in strip_comments(cl_cpp),
-          "a read path outside pollCmd, or a non-REST read")
+    c.add("the only read is the downlink cmd poll (getJSON /cmd, own session)",
+          _poll is not None and "/cmd" in _poll_b and
+          "getJSON(" in _poll_b and "s_pollFbdo" in _poll_b and
+          "getJSON(" not in strip_comments(cl_cpp).replace(_poll.group(0), ""),
+          "a read path outside pollCmd, or a non-SDK read")
     # Scoped to loop()'s body, not the file: WL_CONNECTED also appears in
     # wantsRadio(), so a file-wide substring rule passes after the loop's own
     # gate is deleted (proven by mutation, not by reading).
@@ -283,7 +286,7 @@ def main():
           _loop is not None and "WL_CONNECTED" in _loop.group(1),
           "loop() can fire without a station link")
     _push_iv = re.search(r"PUSH_INTERVAL_MS\s*=\s*(\d+)", cl_h)
-    c.add("the push cadence is 1 s on the keep-alive session",
+    c.add("the push cadence is 1 s over the SDK session",
           _push_iv is not None and int(_push_iv.group(1)) == 1000,
           "interval moved off 1 s")
     c.add("the device id comes from the radio MAC, formatted by the helper",
@@ -312,61 +315,67 @@ def main():
     c.add("cloud counts as watched, so cloud-on means eco-off",
           "cloudPush.wantsRadio()" in ino,
           "eco can nap a radio that must push")
-    # Session hygiene: the ID token lives in RAM and is refreshed, never
-    # stored. A prefs.putString in the pusher means the session leaked to
-    # flash; a missing refresh/signIn means the login cannot survive an hour.
+    # Session hygiene: the SDK owns the ID token internally - no token buffer
+    # lives in this code at all, so there is nothing to leak to flash and no
+    # hand-rolled refresh to rot. A prefs.putString in the pusher means
+    # something session-like leaked; auth.user.email/password is the ONE
+    # sanctioned credential use (herd login), and a service-account key must
+    # never appear.
     _sess = strip_comments(cl_cpp)
     c.add("the session never reaches flash (re-login on boot instead)",
           "putString" not in _sess and "putBytes" not in _sess,
           "the pusher persists session material")
-    c.add("expiry refreshes and 401 re-logs-in (one retry, never a loop)",
-          "refresh()" in _sess and "signIn()" in _sess and "401" in _sess,
-          "the session cannot survive its first hour")
-    # ...but "present in the file" is not "wired": 401 also appears in a log
-    # line and signIn() in two places, so deleting any one path still passes
-    # the rule above (proven by mutation). Pin each path to its function body.
+    c.add("herd login through the SDK, never a service-account key",
+          "auth.user.email" in _sess and "auth.user.password" in _sess and
+          "service_account" not in _sess.lower() and
+          "PRIVATE_KEY" not in cl_cpp,
+          "login left the herd shape, or an admin key is on the device")
+    # ...but "present in the file" is not "wired": pin each path to its
+    # function body (proven by mutation, not by reading).
     _ensure = re.search(r"bool CloudPush::ensureLogin\(\) \{([\s\S]*?)\n\}\n", cl_cpp)
     _post = re.search(r"bool CloudPush::post\(const String &body\) \{([\s\S]*?)\n\}\n", cl_cpp)
     _ensure_b = strip_comments(_ensure.group(1)) if _ensure else ""
     _post_b = strip_comments(_post.group(1)) if _post else ""
-    c.add("ensureLogin falls back to a full sign-in, not just a refresh",
-          "refresh()" in _ensure_b and "signIn()" in _ensure_b,
+    c.add("ensureLogin starts the SDK and gates on Firebase.ready()",
+          "cloudSdkEnsure(" in _ensure_b and "Firebase.ready()" in _ensure_b,
           "first boot can never sign in")
-    c.add("a rejected push re-logs-in once inside post()",
-          re.search(r"if\s*\(\s*code\s*==\s*401\s*\)", _post_b) is not None and
-          "signIn()" in _post_b,
-          "a dead token is never replaced")
-    c.add("exactly one retry per push (initial + one, never a loop)",
-          _sess.count("postStatus(") == 3,  # definition + initial + retry
-          "postStatus call count moved off 3")
+    c.add("post() merge-writes through the SDK push session",
+          "postStatus(" in _post_b and "updateNode(" in strip_comments(cl_cpp),
+          "a push path outside the SDK session")
+    c.add("push and poll ride separate SDK sessions (never share the hot path)",
+          "s_pushFbdo" in _sess and "s_pollFbdo" in _sess,
+          "sessions merged back into one")
     # The TLS stack put classic at 103% of the default 1.2 MB app slot;
     # min_spiffs (1.9 MB, OTA kept) is the documented scheme. Reverting the
     # README line to the bare FQBN silently unbuilds the classic board.
     c.add("README pins min_spiffs for the classic ESP32 build",
           "esp32:esp32:esp32:PartitionScheme=min_spiffs" in rdme,
           "classic line reverted to the default scheme (103% overflow)")
-    # The password and both session tokens must never be logged: pull every
-    # DEBUG_LOG/STATUS_LOG call out of the pusher and assert none of them
-    # formats one. A substring rule on the whole file cannot say this - the
-    # buffers legitimately EXIST in the file (stored, sent inside TLS), just
-    # never in a log line. The account email MAY be logged (identifier, and
-    # the user typed it themselves).
+    # The password must never be logged: pull every DEBUG_LOG/STATUS_LOG call
+    # out of the pusher and assert none of them formats one. A substring rule
+    # on the whole file cannot say this - the buffer legitimately EXISTS in
+    # the file (stored, handed to the SDK once at start), just never in a log
+    # line. The account email MAY be logged (identifier, and the user typed it
+    # themselves). There is no local token buffer anymore (the SDK owns it),
+    # which is exactly why the secret list is down to the password alone.
     _log_calls = re.findall(r"(?:DEBUG_LOG|STATUS_LOG)\(([\s\S]*?)\);", cl_cpp)
     _secret_names = ("pass_", "idToken_", "refreshToken_")
     c.add("password and session tokens are never logged (only host/status/email)",
           _log_calls and all(not any(s in call for s in _secret_names)
                              for call in _log_calls),
           "a log line formats a credential")
-    # Same for the diag readout: it may print LENGTH and aud, never bytes.
-    # memcpy(tok, idToken_) is the sanctioned copy (for strlen + aud parse);
-    # any consoleAppendf/out-formatting of the buffers is a leak.
+    # Same for the diag readout: no credential buffer may be formatted. The
+    # SDK holds the token internally and this code has no accessor, so the
+    # strongest true statement is absence - plus the session/health lines
+    # that must exist so a dead board still reports itself.
     _diag = re.search(r"void CloudPush::diag\(String &out[^{]*\{([\s\S]*?)\n\}\n", cl_cpp)
     _diag_b = strip_comments(_diag.group(1)) if _diag else ""
     _diag_outs = re.findall(r"consoleAppendf\(out,([\s\S]*?)\);", _diag_b)
-    c.add("cloud diag prints length/audience, never token bytes",
-          _diag is not None and _diag_outs and
+    c.add("cloud diag exposes session/health, never credential bytes",
+          _diag is not None and _diag_outs and "Session:" in _diag_b and
+          "Health:" in _diag_b and
           all(not any(s in call for s in _secret_names) for call in _diag_outs),
-          "diag() formats credential bytes")
+          "diag() hides the session state or formats credential bytes")
     c.add("cloud diag reports the last executed command and the poll age",
           _diag is not None and "LastCmd" in _diag_b and "Poll:" in _diag_b,
           "diag() hides the downlink state")
