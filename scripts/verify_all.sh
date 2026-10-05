@@ -156,6 +156,28 @@ stage "Documentation"
 python3 scripts/check_docs.py >/tmp/opencode/verify_docs.log 2>&1
 record $? "$(tail -1 /tmp/opencode/verify_docs.log)"
 
+# --- 3d. Cloud viewer is the same dashboard, rebuilt from frontend/ ------
+# cloud-viewer/script.js must stay a byte-exact copy of frontend/script.js
+# (rendering shared; only cloud.js differs by design) and the builder must
+# reproduce cloud-viewer/ from frontend/ + cloud.js. A hand-edit to the
+# generated copy that is never ported back is how the two UIs drift apart.
+stage "Cloud viewer"
+node --check cloud-viewer/script.js 2>/dev/null
+record $? "cloud-viewer/script.js parses"
+node --check cloud-viewer/cloud.js 2>/dev/null
+record $? "cloud-viewer/cloud.js parses"
+cmp -s frontend/script.js cloud-viewer/script.js
+record $? "cloud-viewer/script.js is an exact copy of frontend/script.js"
+python3 scripts/build_cloud_viewer.py >/tmp/opencode/verify_cloudview.log 2>&1
+record $? "cloud-viewer rebuilds from frontend/"
+git diff --quiet -- cloud-viewer/ 2>/dev/null
+if [ $? -eq 0 ]; then
+  record 0 "cloud-viewer/ is up to date (builder is a no-op)"
+else
+  record 1 "cloud-viewer/ is STALE - commit the rebuilt files"
+  git diff --stat -- cloud-viewer/ | head -8 | sed 's/^/      /'
+fi
+
 # --- 4. E2E: real page against a mock board ----------------------------
 stage "End-to-end (real frontend + mock board)"
 PORT=${MOCK_PORT:-8099}

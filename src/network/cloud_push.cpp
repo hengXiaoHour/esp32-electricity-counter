@@ -5,6 +5,7 @@
 
 #include "../utils/nvs_manager.h"
 #include "../utils/log_gate.h"
+#include "time_sync.h"
 #include "command_processor.h"  // downlink executes cloud frames as commands
 #include "console_handler.h"  // consoleAppendf: diag() reports through it
 
@@ -347,9 +348,15 @@ bool CloudPush::ensureLogin() {
   return signIn();
 }
 
-// Copies the live readings into a small cloud payload. Runs UNDER dataMutex
+// Copies the live readings into the cloud payload. Runs UNDER dataMutex
 // (taken here, 50 ms max) so the numbers are mutually consistent; the TLS
 // that follows runs WITHOUT it.
+//
+// Shape is a superset of the local dashboard snapshot's Dashboard+History
+// fields so the cloud viewer can render the SAME cards, totals and event
+// log: per channel n/a/w/pf/kwh/s/mkwh, plus firmware version and the last
+// 10 events. The RTDB .validate only requires dev/epoch/uptime/rssi/v/ch,
+// so older rules still accept this - the extra keys are allowed.
 bool CloudPush::snapshot(SystemData *sysData, SemaphoreHandle_t *mutex, String &body) {
   if (!sysData || !mutex) return false;
   bool locked = (xSemaphoreTake(*mutex, pdMS_TO_TICKS(50)) == pdTRUE);
@@ -359,12 +366,43 @@ bool CloudPush::snapshot(SystemData *sysData, SemaphoreHandle_t *mutex, String &
   int8_t rssi = sysData->wifiRSSI;
   float mcu = sysData->mcuTempC;
   bool eco = sysData->ecoMode;
-  float w[NUM_CHANNELS], kwh[NUM_CHANNELS];
+  bool wifi = sysData->wifiConnected;
+  bool ap = sysData->apMode;
+  bool timeOk = timeSync.isSynced();
+  long timeAge = (long)timeSync.secondsSinceSync();
+  bool cloudEn = sysData->cloudEnabled;
+  bool cloudOk = sysData->cloudOk;
+  long cloudAge = (long)sysData->cloudAgeS;
+  char nm[NUM_CHANNELS][MAX_CHANNEL_NAME_LEN];
+  float a[NUM_CHANNELS], w[NUM_CHANNELS], pf[NUM_CHANNELS], kwh[NUM_CHANNELS],
+      mkwh[NUM_CHANNELS];
   uint8_t st[NUM_CHANNELS];
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {
+    strncpy(nm[ch], sysData->channels[ch].name, MAX_CHANNEL_NAME_LEN - 1);
+    nm[ch][MAX_CHANNEL_NAME_LEN - 1] = '\0';
+    a[ch] = sysData->channels[ch].currentRMS;
     w[ch] = sysData->channels[ch].activePower;
+    pf[ch] = sysData->channels[ch].powerFactor;
     kwh[ch] = sysData->channels[ch].energyKWh;
+    mkwh[ch] = sysData->channels[ch].monthlyKwhLimit;
     st[ch] = (uint8_t)sysData->channels[ch].status;
+  }
+  // Last 10 events, same window as the local snapshot (system_json.cpp).
+  uint8_t evCount = sysData->eventCount;
+  uint8_t evStart = evCount > 10 ? evCount - 10 : 0;
+  uint8_t evN = evCount > evStart ? evCount - evStart : 0;
+  uint32_t evT[10];
+  uint8_t evC[10], evS[10];
+  float evV[10];
+  char evM[10][EVENT_MSG_LEN];
+  for (uint8_t i = 0; i < evN; i++) {
+    const Event &ev = sysData->events[evStart + i];
+    evT[i] = ev.timestamp;
+    evC[i] = ev.channel;
+    evS[i] = (uint8_t)ev.status;
+    evV[i] = ev.value;
+    strncpy(evM[i], ev.message, EVENT_MSG_LEN - 1);
+    evM[i][EVENT_MSG_LEN - 1] = '\0';
   }
 
   if (locked) xSemaphoreGive(*mutex);
@@ -395,16 +433,55 @@ bool CloudPush::snapshot(SystemData *sysData, SemaphoreHandle_t *mutex, String &
   else body += String(mcu, 1);
   body += ",\"eco\":";
   body += eco ? "true" : "false";
-  body += ",\"ch\":[";
+  body += ",\"wifi\":";
+  body += wifi ? "true" : "false";
+  body += ",\"ap\":";
+  body += ap ? "true" : "false";
+  body += ",\"fw\":\"";
+  body += FIRMWARE_VERSION;
+  body += "\",\"time\":{\"ok\":";
+  body += timeOk ? "true" : "false";
+  body += ",\"age\":";
+  body += timeAge;
+  body += "},\"cloud\":{\"en\":";
+  body += cloudEn ? "true" : "false";
+  body += ",\"ok\":";
+  body += cloudOk ? "true" : "false";
+  body += ",\"age\":";
+  body += cloudAge;
+  body += "},\"ch\":[";
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {
-    body += "{\"w\":";
+    body += "{\"n\":\"";
+    body += cloudEscapeOut(String(nm[ch]));
+    body += "\",\"a\":";
+    body += String(a[ch], 2);
+    body += ",\"w\":";
     body += String(w[ch], 1);
+    body += ",\"pf\":";
+    body += String(pf[ch], 3);
     body += ",\"kwh\":";
     body += String(kwh[ch], 3);
     body += ",\"s\":";
     body += st[ch];
+    body += ",\"mkwh\":";
+    body += String(mkwh[ch], 1);
     body += "}";
     if (ch < NUM_CHANNELS - 1) body += ",";
+  }
+  body += "],\"events\":[";
+  for (uint8_t i = 0; i < evN; i++) {
+    body += "{\"t\":";
+    body += evT[i];
+    body += ",\"c\":";
+    body += evC[i];
+    body += ",\"s\":";
+    body += evS[i];
+    body += ",\"v\":";
+    body += String(evV[i], 1);
+    body += ",\"m\":\"";
+    body += cloudEscapeOut(String(evM[i]));
+    body += "\"}";
+    if (i + 1 < evN) body += ",";
   }
   body += "]}";
   return true;

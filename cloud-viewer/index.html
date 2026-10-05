@@ -1,151 +1,448 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Electricity Counter &mdash; Cloud Viewer</title>
-<link rel="stylesheet" href="style.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>ESP32 Counter — Cloud</title>
+<meta name="description" content="5-Channel AC electricity monitor for ESP32 and ESP32-S3">
+<meta name="theme-color" content="#101316">
+<meta name="application-name" content="ESP32 Counter">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ESP32 Counter">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="style.css?v=20261003b">
+<script>
+// The board is always on location.host, so there is no session to restore and
+// nothing to decide before the first paint. This only hides the connect panel
+// while script.js loads, to avoid a flash when the socket opens immediately.
+(function () {
+  document.documentElement.classList.add('has-session');
+})();
+</script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 </head>
 <body>
-<header class="topbar">
-  <div class="brand">
-    <span class="dot" id="liveDot" title="live"></span>
-    <span class="brand-name">ELECTRICITY COUNTER</span>
-    <span class="brand-sub">CLOUD VIEWER</span>
-  </div>
-  <div class="authbox">
-    <span id="userEmail" class="user-email"></span>
-    <span id="adminBadge" class="admin-badge" hidden>ADMIN</span>
-    <button id="authBtn" class="btn">Sign in with Google</button>
-  </div>
-</header>
 
-<main class="wrap">
-  <p id="banner" class="banner" hidden></p>
-
-  <section class="panel">
-    <div class="panel-head">DEVICE</div>
-    <div class="row">
-      <select id="devicePicker" aria-label="device"></select>
-      <button id="refreshBtn" class="btn ghost" title="reload device list">Reload</button>
+<!-- ============ Connection View ============ -->
+<div id="connectPanel">
+  <div class="connect-card">
+    <div class="connect-brand">
+      <span class="connect-led"></span>
+      <h1 class="connect-title">ESP32 Counter</h1>
     </div>
-    <div id="stateLine" class="state-line">Admin via Google &mdash; no PIN in cloud. Local board dashboard keeps its PIN.</div>
-  </section>
 
-  <section class="panel">
-    <div class="panel-head">LIVE READINGS <span id="staleTag" class="stale" hidden>STALE</span></div>
-    <div id="noview" class="muted">Waiting for data&hellip;</div>
-    <div id="readings" hidden>
-      <div class="grid">
-        <div class="kv"><span class="k">Device</span><span class="v mono" id="rDev">&mdash;</span></div>
-        <div class="kv"><span class="k">Time</span><span class="v mono" id="rTime">&mdash;</span></div>
-        <div class="kv"><span class="k">Uptime</span><span class="v mono" id="rUptime">&mdash;</span></div>
-        <div class="kv"><span class="k">RSSI</span><span class="v mono" id="rRssi">&mdash;</span></div>
-        <div class="kv"><span class="k">Voltage</span><span class="v mono" id="rVolt">&mdash;</span></div>
-        <div class="kv"><span class="k">MCU temp</span><span class="v mono" id="rMcu">&mdash;</span></div>
-        <div class="kv"><span class="k">Eco</span><span class="v mono" id="rEco">&mdash;</span></div>
+    <div class="connect-card-note">
+      Cloud mirror of the meter, pushed by the board every ~10&nbsp;s over home WiFi.
+      Pick a device below &mdash; no board WiFi needed.
+    </div>
+
+    <div class="connect-row">
+      <button class="btn-primary btn-launch" onclick="handleConnect()">&#9654; Retry</button>
+    </div>
+
+    <div id="connectStatus" class="connect-status disconnected">Connecting to the board...</div>
+
+    <div class="install-row" id="installRow">
+      <button class="btn-outline" id="installBtn" onclick="promptInstall()">&#8595; Install App</button>
+    </div>
+    <div id="installHint" class="install-hint hidden">
+      Your browser cannot auto-install from a plain unencrypted (http) board address, so add it by hand: Android Chrome &rarr; menu &#8942; &rarr; Add to Home screen &middot; iPhone Safari &rarr; Share &rarr; Add to Home Screen &middot; Desktop Chrome &rarr; install icon in the address bar or menu &rarr; Install.
+    </div>
+  </div>
+</div>
+
+<!-- ============ App Shell ============ -->
+<div id="app" class="hidden side-collapsed">
+
+  <!-- Sidebar (desktop) -->
+  <aside id="sidebar">
+    <div class="side-brand">
+      <button id="menuToggle" class="icon-btn" onclick="toggleSidebar()" title="Expand sidebar">&#9776;</button>
+      <div class="brand-text">
+        <span class="brand-title">ESP32 Counter</span>
       </div>
-      <table class="chtable">
-        <thead>
-          <tr><th>CH</th><th class="num">W</th><th class="num">kWh</th><th>STATE</th></tr>
-        </thead>
-        <tbody id="chBody"></tbody>
-      </table>
     </div>
-  </section>
+    <nav class="side-nav">
+      <button class="nav-item active" data-page="dashboard" onclick="showPage('dashboard')">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <span class="nav-label">Dashboard</span>
+      </button>
+      <button class="nav-item" data-page="analytics" onclick="showPage('analytics')">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/></svg>
+        <span class="nav-label">Analytics</span>
+      </button>
+      <button class="nav-item" data-page="history" onclick="showPage('history')">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+        <span class="nav-label">History</span>
+      </button>
+      <button class="nav-item" data-page="settings" onclick="showPage('settings')">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h0a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h0a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v0a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>
+        <span class="nav-label">Settings</span>
+      </button>
+    </nav>
+    <div class="side-footer">
+      <button class="nav-item" onclick="showPage('settings')">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+        <span class="nav-label">Admin</span>
+      </button>
+      <button class="nav-item" onclick="handleDisconnect()">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+        <span class="nav-label">Sign Out</span>
+      </button>
+    </div>
+  </aside>
 
-  <section class="panel" id="adminPanel" hidden>
-    <div class="panel-head danger">ADMIN &mdash; FULL REMOTE CONTROL</div>
-    <p class="muted small">Commands are written to <span class="mono">/devices/&lt;MAC&gt;/cmd</span>.
-    The board polls about every 10&nbsp;s; the reply appears under <span class="mono">/ack</span>.</p>
-    <div id="cmdStatus" class="cmd-status">No command sent yet.</div>
+  <!-- Main -->
+  <main id="main">
 
-    <h3>Channel</h3>
-    <div class="row">
-      <select id="chSel" aria-label="channel"></select>
-      <input id="chName" class="inp" maxlength="15" placeholder="name" aria-label="channel name">
-      <button class="btn" data-cmd="set_name">Set name</button>
-    </div>
-    <div class="row">
-      <input id="mkwh" class="inp" inputmode="decimal" placeholder="monthly kWh" aria-label="monthly kWh">
-      <button class="btn" data-cmd="set_monthly_kwh">Set monthly kWh</button>
-      <button class="btn danger" data-cmd="reset_counter" data-confirm="Reset CH counter to 0?">Reset counter</button>
-    </div>
-
-    <h3>Calibration</h3>
-    <div class="row">
-      <input id="voltCal" class="inp" inputmode="decimal" placeholder="voltage cal" aria-label="voltage calibration">
-      <button class="btn" data-cmd="set_voltage_cal">Set voltage cal</button>
-    </div>
-    <div class="row">
-      <input id="currCal" class="inp" inputmode="decimal" placeholder="current cal" aria-label="current calibration">
-      <button class="btn" data-cmd="set_current_cal">Set current cal (ch)</button>
-    </div>
-    <div class="row">
-      <input id="nfVal" class="inp" inputmode="decimal" placeholder="noise floor (blank = auto)" aria-label="noise floor">
-      <button class="btn" data-cmd="set_noise_floor">Set noise floor (ch)</button>
-      <button class="btn" data-cmd="autozero">Auto-Zero (ch)</button>
-    </div>
-    <div class="row">
-      <input id="lpfVal" class="inp" inputmode="decimal" placeholder="LPF 0.01&ndash;1" aria-label="LPF alpha">
-      <button class="btn" data-cmd="set_lpf">Set LPF (ch)</button>
-    </div>
-    <div class="row">
-      <input id="rmsVal" class="inp" inputmode="numeric" placeholder="RMS samples 100&ndash;2000" aria-label="RMS samples">
-      <button class="btn" data-cmd="set_rms_samples">Set RMS samples</button>
-      <input id="azVal" class="inp" inputmode="numeric" placeholder="AZ batches 1&ndash;64" aria-label="auto-zero batches">
-      <button class="btn" data-cmd="set_az_batches">Set AZ batches</button>
-    </div>
-    <div class="row">
-      <button class="btn danger" data-cmd="reset_ch_cal" data-confirm="Reset CH calibration to defaults?">Reset CH cal</button>
-      <button class="btn danger" data-cmd="reset_ch_to_default" data-confirm="Reset CH name + limit to defaults?">Reset CH to default</button>
-      <button class="btn danger" data-cmd="reset_nvs_defaults" data-confirm="Reset ALL NVS settings to defaults?">Reset NVS defaults</button>
+    <!-- Cloud bar: device picker + Google auth + freshness. The only
+         chrome that differs from the board-served dashboard. -->
+    <div id="cloudBar" class="panel-box cloud-bar">
+      <div class="cloud-row">
+        <span id="cloudDot" class="led" title="cloud freshness"></span>
+        <select id="devicePicker" class="cloud-select" aria-label="device"></select>
+        <button class="btn-sm" id="cloudReloadBtn" title="reload device list">Reload</button>
+        <span id="staleTag" class="stale-tag hidden">STALE</span>
+      </div>
+      <div class="cloud-row">
+        <span id="userEmail" class="mono dim"></span>
+        <span id="adminBadge" class="role-badge role-admin hidden">ADMIN</span>
+        <button class="btn-sm" id="authBtn">Sign in with Google</button>
+      </div>
+      <div id="cloudCmdStatus" class="mono dim cloud-status">No command sent yet.</div>
     </div>
 
-    <h3>Board identity &amp; network</h3>
-    <div class="row">
-      <input id="pinNew" class="inp" inputmode="numeric" maxlength="8" placeholder="new LAN PIN" aria-label="new LAN PIN">
-      <button class="btn danger" data-cmd="set_pin" data-confirm="Change the board LAN PIN?">Set LAN PIN</button>
-    </div>
-    <div class="row">
-      <input id="apSsid" class="inp" maxlength="32" placeholder="AP name" aria-label="AP SSID">
-      <input id="apPass" class="inp" maxlength="63" placeholder="AP password (8-63 chars)" aria-label="AP password">
-      <button class="btn danger" data-cmd="set_ap" data-confirm="Rename the fallback AP? The board will REBOOT.">Set AP + reboot</button>
-      <button class="btn danger" data-cmd="reset_ap" data-confirm="Reset AP to defaults? The board will REBOOT.">Reset AP</button>
-    </div>
-    <div class="row">
-      <input id="staSsid" class="inp" maxlength="32" placeholder="home WiFi name" aria-label="home WiFi SSID">
-      <input id="staPass" class="inp" maxlength="63" placeholder="home WiFi password" aria-label="home WiFi password">
-      <button class="btn danger" data-cmd="setwifi" data-confirm="Change home WiFi? The board will REBOOT.">Set home WiFi</button>
-      <button class="btn danger" data-cmd="clearwifi" data-confirm="Forget home WiFi? Falls back to AP.">Clear home WiFi</button>
+    <!-- Status Bar -->
+    <header id="statusBar">
+      <div class="conn-group">
+        <span id="sysLed" class="led led-ok"></span>
+        <span id="connStatus" class="mono conn-txt">Connected</span>
+        <svg class="wifi lv0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle class="bar" cx="12" cy="20" r="1.2" fill="currentColor" stroke="none"/><path class="bar" d="M9.4 16.4a4.7 4.7 0 0 1 5.2 0"/><path class="bar" d="M6.5 13.2a8.5 8.5 0 0 1 11 0"/><path class="bar" d="M3.5 9.5C7 5.7 17 5.7 20.5 9.5"/></svg>
+      </div>
+      <div class="stat-right">
+        <div class="stat"><span class="stat-label">V</span><span id="headerVoltage" class="stat-value mono">--.-</span></div>
+        <div class="stat"><span class="stat-label">P</span><span id="totalPower" class="stat-value mono">0 W</span></div>
+        <div class="stat"><span class="stat-label">I</span><span id="totalCurrent" class="stat-value mono">0.00 A</span></div>
+        <div class="stat stat-clock"><span id="todayDate" class="mono stat-sub">--</span><span id="deviceTime" class="mono stat-sub">--</span></div>
+      </div>
+    </header>
+
+    <!-- OTA Upgrade Progress -->
+    <div id="otaPanel" class="hidden">
+      <div class="ota-head">OTA FIRMWARE UPDATE IN PROGRESS</div>
+      <div class="ota-track"><div id="otaProgress" class="ota-fill"></div></div>
+      <div class="ota-meta mono">
+        <span id="otaPercent">0%</span>
+        <span id="otaVersion">v1.0.0</span>
+      </div>
     </div>
 
-    <h3>Cloud account on the board</h3>
-    <div class="row">
-      <input id="clHost" class="inp" placeholder="database host" aria-label="database host">
-      <input id="clEmail" class="inp" inputmode="email" placeholder="account email" aria-label="cloud account email">
-      <input id="clPass" class="inp" placeholder="account password" aria-label="cloud account password">
-      <button class="btn danger" data-cmd="setcloud" data-confirm="Change the board cloud account? The board will REBOOT.">Set cloud</button>
-      <button class="btn danger" data-cmd="clearcloud" data-confirm="Stop cloud pushes from this board?">Clear cloud</button>
+    <!-- Pages -->
+    <div id="pages">
+
+      <!-- Dashboard -->
+      <section id="page-dashboard" class="page active">
+        <div id="channels"></div>
+      </section>
+
+      <!-- Analytics -->
+      <section id="page-analytics" class="page">
+        <div class="panel-box">
+          <div class="panel-header">
+            <h3>Live Totals</h3>
+            <span id="chartRange" class="mono dim">--</span>
+          </div>
+          <div id="summaryCharts" class="chart-grid"></div>
+        </div>
+        <div class="panel-box">
+          <div class="panel-header">
+            <h3>Per-Channel Power (W)</h3>
+            <span class="mono dim">live</span>
+          </div>
+          <div id="channelCharts" class="chart-grid ch"></div>
+        </div>
+      </section>
+
+      <!-- History -->
+      <section id="page-history" class="page">
+        <div class="panel-box">
+          <div class="panel-header">
+            <h3>Event Log</h3>
+            <span class="mono dim" id="eventCount">0 events</span>
+          </div>
+          <div id="eventList">
+            <div class="event-item empty">No events logged yet.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Settings -->
+      <section id="page-settings" class="page">
+                <div class="panel-box">
+          <div class="panel-header"><h3>Admin</h3></div>
+          <div class="pin-badge-row">
+            <span id="roleBadge" class="role-badge role-guest">Viewer &mdash; read-only</span>
+          </div>
+          <div class="cal-row-single">
+            <label>Google:</label>
+            <div class="cal-field">
+              <span class="mono" id="googleWho">not signed in</span>
+            </div>
+            <button class="btn-sm" id="authBtn2">Sign in</button>
+          </div>
+          <p id="guestHint" class="hint">Live readings are public. Changing limits, calibration, counters or the console needs the admin Google account &mdash; the database rules check every write, so hiding a button here is not what protects them.</p>
+        </div>
+
+
+        <div class="panel-box">
+          <div class="panel-header"><h3>Connection</h3></div>
+          <div class="cal-row-single">
+            <label>Board:</label>
+            <span id="connectedIp" class="mono conn-ip">--</span>
+          </div>
+          <div class="cal-row-single">
+            <label>Status:</label>
+            <span id="connStatus2" class="mono conn-txt">Connected</span>
+          </div>
+          <div class="cal-row-single">
+            <label>Clock:</label>
+            <span id="timeStatus" class="mono conn-txt">--</span>
+            <button class="btn-sm" onclick="sendTime()">Sync now</button>
+          </div>
+          <div class="cal-row-single">
+            <label>MCU:</label>
+            <span id="mcuTemp" class="mono conn-txt">--</span>
+          </div>
+          <div class="cal-row-single">
+            <label>Power:</label>
+            <span id="ecoStatus" class="mono conn-txt">--</span>
+          </div>
+          <div class="cal-row-single" id="installRow2">
+            <label>App:</label>
+            <button class="btn-sm" id="installBtn2" onclick="promptInstall()">&#8595; Install App</button>
+          </div>
+          <div id="installHint2" class="hint hidden">Your browser cannot auto-install from a plain unencrypted (http) board address, so add it by hand: Android Chrome &rarr; menu &#8942; &rarr; Add to Home screen &middot; iPhone Safari &rarr; Share &rarr; Add to Home Screen &middot; Desktop Chrome &rarr; install icon in the address bar or menu &rarr; Install. Then it opens full-screen like a native app.</div>
+          <div style="margin-top:12px;">
+            <button class="btn-outline" onclick="handleDisconnect()">Disconnect</button>
+          </div>
+        </div>
+
+        <div class="panel-box admin-only">
+          <div class="panel-header"><h3>Access Point (fallback)</h3></div>
+          <div class="cal-row-single">
+            <label for="apSsid">Network name:</label>
+            <div class="cal-field">
+              <input type="text" id="apSsid" placeholder="Loading…" autocomplete="off" spellcheck="false" oninput="this.dataset.userSet='true'">
+            </div>
+          </div>
+          <div class="cal-row-single">
+            <label for="apPass">Password:</label>
+            <div class="cal-field">
+              <input type="password" id="apPass" placeholder="Loading…" autocomplete="off" oninput="this.dataset.userSet='true'">
+              <span class="hint-inline">(8-63)</span>
+            </div>
+          </div>
+          <div class="cal-actions">
+            <button class="btn-sm" id="apSaveBtn" onclick="saveApSettings()">Save</button>
+            <button class="btn-sm" id="apResetBtn" onclick="resetApSettings()">Defaults</button>
+          </div>
+          <div class="hint" id="apHint">Fallback-only: this network appears <strong>only when the home network fails</strong> (the AP stays OFF while home WiFi is up). Renaming saves to flash and <strong>reboots to apply it</strong>. Forgot the password? <strong>Defaults</strong> puts it back on the name and password printed in the README.</div>
+        </div>
+
+        <div class="panel-box admin-only">
+          <div class="panel-header"><h3>Home Network (default)</h3></div>
+          <div class="cal-row-single">
+            <label for="staStatus">Status:</label>
+            <div class="cal-field">
+              <span class="mono" id="staStatus">Loading&hellip;</span>
+            </div>
+          </div>
+          <div class="cal-row-single">
+            <label for="staSsid">Network:</label>
+            <div class="cal-field">
+              <input type="text" id="staSsid" placeholder="Your home WiFi name" autocomplete="off" spellcheck="false" oninput="this.dataset.userSet='true'">
+            </div>
+          </div>
+          <div class="cal-row-single">
+            <label for="staPass">Password:</label>
+            <div class="cal-field">
+              <input type="password" id="staPass" placeholder="Your home WiFi password" autocomplete="off" oninput="this.dataset.userSet='true'">
+            </div>
+          </div>
+          <div class="cal-actions">
+            <button class="btn-sm" id="staSaveBtn" onclick="saveStaSettings()">Save</button>
+            <button class="btn-sm" id="staForgetBtn" onclick="clearStaSettings()">Forget</button>
+          </div>
+          <div class="hint" id="staHint">The DEFAULT path: the board joins this network on boot and the AP stays <strong>OFF</strong>. <strong>Save reboots the board.</strong> If it cannot join, the fallback AP above comes up instead so the board is never headless.</div>
+        </div>
+
+        <div class="panel-box admin-only">
+          <div class="panel-header"><h3>Remote Monitoring (cloud)</h3></div>
+          <div class="cal-row-single">
+            <label for="cloudStatus">Status:</label>
+            <div class="cal-field">
+              <span class="mono" id="cloudStatus">Loading&hellip;</span>
+            </div>
+          </div>
+          <div class="cal-row-single">
+            <label for="cloudHost">Database:</label>
+            <div class="cal-field">
+              <input type="text" id="cloudHost" placeholder="your-project-database-host" autocomplete="off" spellcheck="false" oninput="this.dataset.userSet='true'">
+            </div>
+          </div>
+          <div class="cal-row-single">
+            <label for="cloudEmail">Account:</label>
+            <div class="cal-field">
+              <input type="text" id="cloudEmail" placeholder="board account email" autocomplete="off" spellcheck="false" oninput="this.dataset.userSet='true'">
+            </div>
+          </div>
+          <div class="cal-row-single">
+            <label for="cloudAuth">Password:</label>
+            <div class="cal-field">
+              <input type="password" id="cloudAuth" placeholder="Account password" autocomplete="off" oninput="this.dataset.userSet='true'">
+            </div>
+          </div>
+          <div class="cal-actions">
+            <button class="btn-sm" id="cloudSaveBtn" onclick="saveCloudSettings()">Save</button>
+            <button class="btn-sm" id="cloudForgetBtn" onclick="clearCloudSettings()">Forget</button>
+          </div>
+          <div class="hint" id="cloudHint">Signs into your realtime database and pushes a small reading every 10 seconds, <strong>home WiFi only</strong> (never on the fallback AP). The device path is <strong>/devices/&lt;MAC&gt;/latest</strong> - the Status line shows the MAC. <strong>Save reboots the board.</strong> The password is never shown back, and signing in keeps the radio awake (eco stays off).</div>
+        </div>
+
+        <div class="panel-box admin-only">
+          <div class="panel-header"><h3>System Calibration</h3></div>
+          <div class="cal-row-single">
+            <label for="voltCal">Voltage Cal:</label>
+            <div class="cal-field">
+              <input type="number" id="voltCal" step="0.1" value="260" oninput="this.dataset.userSet='true'">
+            </div>
+            <button class="btn-sm" onclick="sendVoltageCal()">Set</button>
+          </div>
+          <div class="cal-row-single">
+            <label for="rmsSamples">RMS Samples:</label>
+            <div class="cal-field">
+              <input type="number" id="rmsSamples" step="50" min="100" max="2000" value="1000" placeholder="100-2000" oninput="this.dataset.userSet='true'">
+              <span class="hint-inline">(100-2000)</span>
+            </div>
+            <button class="btn-sm" onclick="setRmsSamples()">Set</button>
+          </div>
+          <div class="cal-row-single">
+            <label for="azBatches">Auto-Zero Batches:</label>
+            <div class="cal-field">
+              <input type="number" id="azBatches" step="1" min="1" max="64" value="1" placeholder="1-64" oninput="this.dataset.userSet='true'">
+              <span class="hint-inline">(1-64)</span>
+            </div>
+            <button class="btn-sm" onclick="setAzBatches()">Set</button>
+          </div>
+          <div class="cal-section-title">Channel Calibration</div>
+          <div id="azStatus" class="az-status hidden"></div>
+          <div id="calibrationRows" class="cal-grid"></div>
+          <div class="cal-reset-row">
+            <button id="resetNvsBtn" class="btn-sm btn-danger" onclick="handleResetNvs()">&#8634; Reset NVS to Defaults</button>
+          </div>
+        </div>
+
+        <div class="panel-box admin-only">
+          <div class="panel-header">
+            <h3>Device Console</h3>
+            <button class="btn-sm" onclick="clearConsole()">Clear</button>
+          </div>
+          <div id="consoleOutput" class="console-output mono"></div>
+          <div class="console-row">
+            <span class="console-prompt mono">&gt;</span>
+            <input type="text" id="consoleInput" class="console-input mono" placeholder="Type a command (help)"
+                   spellcheck="false" autocomplete="off" autocapitalize="off"
+                   onkeydown="onConsoleKey(event)">
+            <button class="btn-sm" onclick="sendConsoleCommand()">Send</button>
+          </div>
+          <div class="hint">Runs the device's diagnostic commands remotely. Type <span class="mono">help</span> for the list. The board holds back nothing dangerous from here that the serial port would allow.</div>
+        </div>
+
+        <div class="panel-box">
+          <div class="panel-header"><h3>About</h3></div>
+          <div class="cal-row-single">
+            <label>Firmware:</label>
+            <span id="fwVersion2" class="mono conn-ip">--</span>
+          </div>
+          <div class="cal-row-single">
+            <label>Month:</label>
+            <span id="lastMonth" class="mono conn-ip">--</span>
+          </div>
+          <div class="hint">ESP32 Counter dashboard &middot; ESP32-S3 6-channel electricity monitor &middot; cloud mirror &middot; pushed by the board every ~10&nbsp;s</div>
+        </div>
+      </section>
+
     </div>
+  </main>
 
-    <h3>Console &amp; diagnostics</h3>
-    <div class="row">
-      <input id="consoleLine" class="inp grow" placeholder="console line (e.g. status)" aria-label="console line">
-      <button class="btn" data-cmd="console">Send</button>
-      <button class="btn danger" data-cmd="test_force_rollover" data-confirm="Force a billing rollover on the board?">Force rollover</button>
+  <!-- Mobile Bottom Nav -->
+  <nav id="mobileNav">
+    <button class="mnav-item active" data-page="dashboard" onclick="showPage('dashboard')">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      <span>Dashboard</span>
+    </button>
+    <button class="mnav-item" data-page="analytics" onclick="showPage('analytics')">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/></svg>
+      <span>Charts</span>
+    </button>
+    <button class="mnav-item" data-page="history" onclick="showPage('history')">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+      <span>History</span>
+    </button>
+    <button class="mnav-item" data-page="settings" onclick="showPage('settings')">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h0a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h0a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v0a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>
+      <span>Settings</span>
+    </button>
+  </nav>
+
+</div>
+
+<!-- ============ Edit Limits Modal ============ -->
+<div id="editModal" class="modal-overlay hidden" onclick="if(event.target === this) closeEditModal()">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3 id="modalTitle">Configure Channel</h3>
+      <button class="modal-close" onclick="closeEditModal()">&times;</button>
     </div>
-    <pre id="consoleOut" class="console" aria-live="polite"></pre>
-  </section>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Channel</label>
+        <select id="modalChSelect" onchange="onModalChannelChange()"></select>
+      </div>
+      <div class="form-group" id="modalNameGroup">
+        <label>Channel Name</label>
+        <input type="text" id="modalChName" placeholder="e.g. Living Room AC">
+      </div>
+      <div class="form-group" id="modalMkwhGroup">
+        <label>Monthly kWh Budget</label>
+        <input type="number" id="modalChMkwh" step="1" placeholder="48">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-sm" onclick="closeEditModal()">Cancel</button>
+      <button class="btn-sm" id="modalResetDefaultBtn" onclick="resetModalToDefaults()" style="color:#e74c3c;">Reset to Default</button>
+      <button class="btn-sm btn-danger" id="modalResetCounterBtn" onclick="confirmModalReset()" style="display:none;">&#8634; Reset Counter</button>
+      <button class="btn-primary btn-inline" id="modalSaveBtn" onclick="saveModalSettings()">Save Settings</button>
+    </div>
+  </div>
+</div>
 
-  <footer class="foot muted small">
-    Public read-only mirror of the meter. Pushed by the board every ~10&nbsp;s over home WiFi.
-  </footer>
-</main>
-
-<script src="app.js"></script>
+<script src="script.js"></script>
+<script src="cloud.js"></script>
+<script>
+if ('serviceWorker' in navigator && window.isSecureContext) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('./sw.js').catch(function (err) {
+      console.warn('SW registration failed:', err);
+    });
+  });
+}
+</script>
 </body>
 </html>
