@@ -192,5 +192,7 @@ Serial console (`help` for the list): `status`, `wifi`, `set_ap`, `setwifi`,
 
 ---
 
+3.1.0 notes: local-midnight billing (UTC+7), reboot no longer wipes counters, forward-only rollover with unset-marker anchoring, execute-once cloud downlink, guarded `test_force_rollover CONFIRM`.
+
 3.0.0 notes: AP-only architecture, NVS-persisted AP name/password, CLI LED
 type switch, pinned-down AsyncTCP patches. Full history: `gh release list`.

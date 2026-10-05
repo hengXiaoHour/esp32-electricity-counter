@@ -67,11 +67,10 @@
 // ==============================
 // Firmware Version
 // ==============================
-// 3.0.0 = STA-first architecture: the board joins home WiFi (fallback AP
-// only), serves its own dashboard from flash, disciplines its clock by NTP
-// (browser lend on the fallback AP), pushes an opt-in cloud mirror, and gates
-// every mutating command behind an admin PIN.
-#define FIRMWARE_VERSION "3.0.0"
+// 3.1.0 = local-midnight billing (UTC+7), reboot-safe NVS (no more
+// reboot wipes), forward-only rollover with unset-marker anchoring,
+// execute-once cloud downlink, guarded test_force_rollover CLI.
+#define FIRMWARE_VERSION "3.1.0"
 
 // ==============================
 // Station WiFi (STA) - the DEFAULT path. The board joins this home network on

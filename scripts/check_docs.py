@@ -588,8 +588,8 @@ def main():
 
     # --- firmware version / size ---------------------------------------
     m = re.search(r'#define FIRMWARE_VERSION "([^"]+)"', cfg)
-    c.add("FIRMWARE_VERSION is the 3.0.0 AP-only release",
-          m and m.group(1) == "3.0.0", "found %s" % (m.group(1) if m else "none"))
+    c.add("FIRMWARE_VERSION is the 3.1.0 local-midnight release",
+          m and m.group(1) == "3.1.0", "found %s" % (m.group(1) if m else "none"))
 
     # --- frontend ------------------------------------------------------
     c.add("index.html loads NO external scripts",
