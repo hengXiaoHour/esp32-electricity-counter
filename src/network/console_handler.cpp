@@ -263,6 +263,27 @@ void ConsoleHandler::exec(const String &line, String &out) {
     pendingCmd = cmd;
     pendingOutput = "";
 
+  } else if (cmd.startsWith("test_force_rollover")) {
+    // Guarded CLI form of the JSON test verb: the bare verb is a dry run
+    // that only describes what WOULD happen. Only the exact word CONFIRM
+    // arms it — same marker yank + audit as {"cmd":"test_force_rollover"}.
+    String args = cmd.length() > 19 ? cmd.substring(19) : "";
+    args.trim();
+    if (args == "CONFIRM") {
+      if (!nvs) {
+        consoleAppendf(out, "%s", "  NVS not available");
+      } else {
+        nvs->saveLastMonth(202607);
+        nvs->commit();
+        if (limitMgr) limitMgr->auditForceRollover();
+        consoleAppendf(out, "%s", "  Rollover test ARMED — next sensor cycle zeroes all counters");
+      }
+    } else {
+      consoleAppendf(out, "%s", "  DRY RUN — would yank the billing marker to 202607 and the");
+      consoleAppendf(out, "%s", "  next sensor cycle would zero every counter. Nothing done.");
+      consoleAppendf(out, "%s", "  To fire for real: test_force_rollover CONFIRM");
+    }
+
   } else {
     consoleAppendf(out, "%s", "  Unknown command. Type 'help'.");
   }
@@ -824,5 +845,6 @@ void ConsoleHandler::cmdHelp(String &out) {
   consoleAppendf(out, "%s", "    reset_ap            Restore the default network name (reboots)");
   consoleAppendf(out, "%s", "    reset_day <1-28>    Billing reset day (counters zero at 00:00 UTC)");
   consoleAppendf(out, "%s", "    nvs_debug           Test NVS write/read cycle");
+  consoleAppendf(out, "%s", "    test_force_rollover CONFIRM  Arm a billing wipe for real (bare = dry run)");
   consoleAppendf(out, "%s", "    reboot              Restart the device");
 }

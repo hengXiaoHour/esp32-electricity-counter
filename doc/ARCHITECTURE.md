@@ -650,7 +650,10 @@ About panel) run the same `consoleHandler.exec` as the serial CLI, so there is
 one code path for both. `test_force_rollover` is a live grenade, not a dry run:
 it yanks the billing marker back to July 2026 and the next sensor cycle zeroes
 every real counter (audited as "Rollover test armed" in the event log) — only
-run it when losing the month's accumulation is the point.
+run it when losing the month's accumulation is the point. The raw JSON verb
+fires immediately; the typed CLI form needs the guard word
+(`test_force_rollover CONFIRM`) and the bare verb is a dry run that changes
+nothing, so it can sit in `help` without endangering real counters.
 
 ### The admin gate
 

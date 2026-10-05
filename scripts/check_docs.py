@@ -687,6 +687,19 @@ def main():
     c.add("the CLI spells reset_day <1-28> and documents it in help",
           'startsWith("reset_day")' in ch and "cmdResetDay" in ch
           and "reset_day <1-28>" in ch)
+    # The test wipe is one typo away on every console, so the bare verb must
+    # be a dry run and only the exact guard word arms it. Scoped to the
+    # dispatch block (not help text): the single firing call must sit under
+    # the CONFIRM comparison, and the dry-run message must exist.
+    _force_cli = re.search(r'startsWith\("test_force_rollover"\)([\s\S]*?)\n  \} else',
+                           strip_comments(ch))
+    _force_cli_b = _force_cli.group(1) if _force_cli else ""
+    c.add("the CLI rollover test needs CONFIRM (bare is a dry run)",
+          _force_cli is not None and
+          '== "CONFIRM"' in _force_cli_b and
+          _force_cli_b.count("saveLastMonth") == 1 and
+          "Nothing done" in _force_cli_b,
+          "typing the bare verb would wipe a month of counters")
     c.add("factory reset restores the default reset day too",
           "saveResetDay(MONTHLY_RESET_DAY)" in cmd)
     c.add("both snapshots publish the enforced reset day",
