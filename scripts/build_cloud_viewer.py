@@ -48,6 +48,7 @@ CLOUD_BAR = """    <!-- Cloud bar: device picker + Google auth + freshness. The 
         <button class="btn-sm" id="authBtn">Sign in with Google</button>
       </div>
       <div id="cloudCmdStatus" class="mono dim cloud-status">No command sent yet.</div>
+      <div id="cloudDbg" class="mono dim cloud-status"></div>
     </div>
 """
 

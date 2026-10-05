@@ -86,6 +86,17 @@ function cl_googleToggle() {
 // Push sends fw (not firmwareVersion) and mcu (not mcuTemp); map both.
 // Anything the push does not carry (calibration, AP/STA names, lastMonth)
 // is simply absent and the dashboard's typeof guards skip it.
+// RTDB may hand arrays back as keyed objects after a delete; normalise.
+function cl_toArray(x) {
+  if (Array.isArray(x)) return x;
+  if (x && typeof x === 'object') {
+    var keys = Object.keys(x).filter(function (k) { return String(parseInt(k, 10)) === k; });
+    keys.sort(function (a, b) { return parseInt(a, 10) - parseInt(b, 10); });
+    return keys.map(function (k) { return x[k]; });
+  }
+  return x;
+}
+
 function cl_adapt(latest, mac) {
   if (!latest) return null;
   var d = {};
@@ -99,8 +110,8 @@ function cl_adapt(latest, mac) {
   d.eco = !!latest.eco;
   d.firmwareVersion = latest.fw;
   d.time = latest.time;
-  d.ch = latest.ch;
-  d.events = latest.events;
+  d.ch = cl_toArray(latest.ch);
+  d.events = cl_toArray(latest.events);
   d.cloud = {
     en: !!(latest.cloud && latest.cloud.en),
     ok: !!(latest.cloud && latest.cloud.ok),
@@ -133,7 +144,22 @@ function cl_onLatest(val) {
     return;
   }
   var d = cl_adapt(val, cl_mac);
-  updateDashboard(d);
+  try {
+    updateDashboard(d);
+  } catch (err) {
+    cl_status('RENDER ERROR: ' + ((err && err.message) || err) +
+      ' | keys=' + Object.keys(val).join(',') +
+      ' | ch=' + (Array.isArray(val.ch) ? val.ch.length : typeof val.ch));
+    return;
+  }
+  var n = 0;
+  try { n = document.querySelectorAll('.channel-card').length; } catch (e) {}
+  var dbg = document.getElementById('cloudDbg');
+  if (dbg) {
+    dbg.textContent = 'rendered ' + new Date().toLocaleTimeString() +
+      ' · ch=' + (d && d.ch ? d.ch.length : '?') + ' cards=' + n +
+      ' · errs=' + (window.__cl_errs || []).length;
+  }
   cl_refreshStale();
 }
 
