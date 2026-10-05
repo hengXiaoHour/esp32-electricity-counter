@@ -196,6 +196,18 @@ def patch_index(src: str) -> str:
         "&#9654; Reconnect", "&#9654; Retry",
     )
     # (Sidebar footer went away entirely - no Admin PIN / Sign Out buttons.)
+    # Connection panel: Board and Status said the same thing twice (the Status
+    # row even printed the raw uppercase MAC). The Board row stays, the Status
+    # row goes - board copy keeps both. All JS writes to connStatus2 are
+    # null-guarded, so nothing else changes.
+    html = html.replace(
+        """          <div class="cal-row-single">
+            <label>Status:</label>
+            <span id="connStatus2" class="mono conn-txt">Connected</span>
+          </div>
+""",
+        "",
+    )
     # Cloud device panel at the top of Settings (NOT above the status bar:
     # the header stays identical to the board-served dashboard).
     if 'id="cloudBar"' not in html:

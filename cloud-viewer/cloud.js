@@ -208,11 +208,19 @@ function cl_onAck(ack) {
   }
   delete cl_pending[ack.id];
   if (p.timer) clearTimeout(p.timer);
-  var age = Math.round((Date.now() - cl_lastSentAt) / 1000);
-  var line = 'board replied in ~' + age + 's: ok=' + ack.ok;
-  if (ack.out !== undefined && ack.out !== '') line += ' out=' + ack.out;
-  cl_setCmdDone(line);
-  if (p.cmd === 'console' && ack.out) appendConsoleOutput(String(ack.out));
+  // The reply IS the console content - no wrapper line around it. The old
+  // "board replied in ~Ns: ok=.. out=.." line duplicated every output and
+  // its wrap destroyed the help table's columns, which is why it is gone.
+  // Failures still print: silence would hide a rejected command.
+  var out = (ack.out !== undefined && ack.out !== null) ? String(ack.out) : '';
+  if (out) {
+    cl_status(p.cmd + ': ok=' + ack.ok);
+    appendConsoleOutput(out);
+  } else if (ack.ok) {
+    cl_setCmdDone('ok (' + p.cmd + ')');
+  } else {
+    cl_setCmdDone('board error: ok=' + ack.ok + ' (' + p.cmd + ')');
+  }
   p.resolve(ack);
 }
 
@@ -292,8 +300,8 @@ function cl_selectDevice(mac) {
     .catch(function () {});
   showDashboard();
   setConnectStatus('Connecting…', 'connected');
-  var cs2 = document.getElementById('connStatus2');
-  if (cs2) cs2.textContent = 'Cloud — ' + mac;
+  // (No connStatus2 write: the cloud copy drops that row - the Board row
+  // above already names the device, formatted. Board copy keeps both.)
 }
 
 // ---- Transport overrides (redeclarations win over script.js) ----

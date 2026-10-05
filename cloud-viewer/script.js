@@ -805,7 +805,7 @@ function updateDashboard(data) {
   if (staStatusEl) {
     const up = !!data.wifi;
     staStatusEl.textContent = up
-      ? 'CONNECTED' + (typeof data.rssi === 'number' ? ' — ' + data.rssi + ' dBm' : '')
+      ? 'Connected' + (typeof data.rssi === 'number' ? ' ' + Math.abs(data.rssi) + ' dB' : '')
       : 'not connected';
     staStatusEl.style.color = up ? 'var(--ok, #4ade80)' : 'var(--muted, #8a8a8a)';
   }

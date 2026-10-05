@@ -366,6 +366,9 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
    wraps cleanly instead of overflowing the field in big text. The MAC after
    the middle dot is formatted aa:bb:cc:dd:ee:ff by macFmt (display only). */
 #cloudStatus { font-size: 0.72rem; line-height: 1.5; word-break: break-word; }
+/* Home-network status reads the same as the cloud one (see staStatus in
+   script.js): same small green theme size, not the body's mono size. */
+#staStatus { font-size: 0.72rem; line-height: 1.5; }
 /* Password reveal is an eye icon, not a text button: narrow fixed column so
    the three password rows still share one button x with the text buttons. */
 .cal-row-single .btn-sm.pw-eye { flex: 0 0 40px; padding: 0; }
