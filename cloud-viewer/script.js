@@ -156,6 +156,16 @@ function toggleSidebar() {
 // location.host is the board - there is no IP to type, no mode dropdown, and
 // no cloud to fall back to. Connect, or do not.
 function deviceWSUrl() {
+  // The board serves plain http, so the socket is ws:// there. On an https
+  // origin (cloud hosting, or an https preview) a ws:// constructor THROWS
+  // synchronously (mixed content) instead of failing async - and because
+  // init() runs during this file's own evaluation, that throw aborts the
+  // whole script before its later `let` bindings initialise, so every later
+  // render dies with a TDZ ReferenceError. wss:// merely fails async, which
+  // onclose already handles.
+  if (typeof location !== 'undefined' && location.protocol === 'https:') {
+    return 'wss://' + location.host + '/ws';
+  }
   return 'ws://' + location.host + '/ws';
 }
 
@@ -498,7 +508,17 @@ function sendTime() {
 function connectWS() {
   if (ws) { ws.close(); ws = null; }
 
-  ws = new WebSocket(deviceWSUrl());
+  // Never let a blocked constructor kill this file: init() calls this during
+  // evaluation, so a synchronous throw would leave every later `let` in TDZ.
+  // (deviceWSUrl already prefers wss:// on https origins; this is the net.)
+  let url = deviceWSUrl();
+  try {
+    ws = new WebSocket(url);
+  } catch (err) {
+    setConnectStatus('Connection blocked by the browser', 'disconnected');
+    showConnectPanel();
+    return;
+  }
 
   ws.onopen = () => {
     setConnectStatus('Connected', 'connected');
