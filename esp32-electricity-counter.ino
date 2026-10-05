@@ -218,7 +218,7 @@ void networkTask(void *pvParameters) {
     timeSync.pollNTP();
 
     // Remote monitoring + remote control, STA-only. Pushes the snapshot every
-    // 1 s and polls the admin's cmd node (downlink) every 2 s over one
+    // 5 s and polls the admin's cmd node (downlink) every 2 s over one
     // keep-alive session. Runs on
     // the network task so a slow round trip stalls broadcasts, never
     // sensing.
@@ -503,7 +503,7 @@ void setup() {
   // Two tasks on two cores. The firebaseTask that used to sit at priority 1
   // on Core 0 to keep its blocking TLS work away from the broadcast loop is
   // gone with the old cloud SDK: the small REST push + cmd poll run inline on
-  // networkTask instead (STA-only, 1 s push / 2 s poll over one keep-alive),
+  // networkTask instead (STA-only, 5 s push / 2 s poll over one keep-alive),
   // so there is still exactly
   // one Core 0 task.
   xTaskCreatePinnedToCore(networkTask, "network", 8192, NULL, 2, NULL, 0);

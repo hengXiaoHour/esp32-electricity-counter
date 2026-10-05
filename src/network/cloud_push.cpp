@@ -202,7 +202,11 @@ static int httpsPatch(const char *host, const String &path, const String &body,
                "\r\nContent-Type: application/json\r\nContent-Length: " +
                body.length() + "\r\nConnection: keep-alive\r\n\r\n";
   req += body;
-  return cloudRoundTrip(host, req, respBody, 1024);
+  // The push reply echoes the whole node back (~1.3 KB and growing with the
+  // event log), so this bound must clear it with margin: anything over the
+  // cap DROPS the keep-alive, and at 1 push/s a drop-per-push is a permanent
+  // handshake churn that fragments the heap until the board goes silent.
+  return cloudRoundTrip(host, req, respBody, 4096);
 }
 
 // Reverses the JSON string escaping on a quoted value (the cmd frame arrives

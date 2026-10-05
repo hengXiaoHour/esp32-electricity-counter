@@ -16,7 +16,7 @@
  */
 var CL_ADMIN_EMAIL = 'heng.xiao.hour@gmail.com';
 var CL_DEFAULT_MAC = 'EC64C998B0EC';
-var CL_STALE_MS = 5000;
+var CL_STALE_MS = 15000;
 var CL_ACK_TIMEOUT_MS = 12000;
 
 var cl_db = null;
@@ -31,12 +31,6 @@ var cl_userEmail = null;
 var cl_isAdmin = false;
 var cl_staleTimer = null;
 var cl_pending = {}; // id -> {resolve, reject, cmd, timer}
-// True once a push carrying the `fw` marker arrives: only the 1 s firmware
-// sends it, so the stale threshold can tighten. Until then the board is on
-// the 10 s cadence and 5 s would cry wolf between pushes.
-var cl_fast = false;
-
-function cl_staleMs() { return cl_fast ? 5000 : 30000; }
 
 // Stash page errors where the admin can read them (Settings -> console).
 window.__cl_errs = [];
@@ -130,8 +124,7 @@ function cl_adapt(latest, mac) {
 }
 
 function cl_refreshStale() {
-  var ms = cl_staleMs();
-  var stale = !cl_lastRxMs || (Date.now() - cl_lastRxMs > ms);
+  var stale = !cl_lastRxMs || (Date.now() - cl_lastRxMs > CL_STALE_MS);
   var tag = document.getElementById('staleTag');
   if (tag) tag.classList.toggle('hidden', !stale);
   var dot = document.getElementById('cloudDot');
@@ -139,8 +132,7 @@ function cl_refreshStale() {
   var cs = document.getElementById('connStatus');
   if (cs && cl_mac) {
     cs.textContent = cl_lastRxMs
-      ? (stale ? 'Cloud — STALE (board quiet >' + Math.round(ms / 1000) + 's)'
-               : 'Cloud — live (~' + (cl_fast ? '1' : '10') + 's pushes)')
+      ? (stale ? 'Cloud — STALE (board quiet >15s)' : 'Cloud — live (~5s pushes)')
       : 'Cloud — waiting for data…';
   }
 }
@@ -151,7 +143,6 @@ function cl_onLatest(val) {
     cl_refreshStale();
     return;
   }
-  if (!cl_fast && val.fw) cl_fast = true;
   var d = cl_adapt(val, cl_mac);
   try {
     updateDashboard(d);

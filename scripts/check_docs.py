@@ -283,9 +283,9 @@ def main():
           _loop is not None and "WL_CONNECTED" in _loop.group(1),
           "loop() can fire without a station link")
     _push_iv = re.search(r"PUSH_INTERVAL_MS\s*=\s*(\d+)", cl_h)
-    c.add("the push cadence is 1 s on the keep-alive session (fresh TLS made this impossible before)",
-          _push_iv is not None and int(_push_iv.group(1)) == 1000,
-          "interval moved off 1 s")
+    c.add("the push cadence is 5 s on the keep-alive session",
+          _push_iv is not None and int(_push_iv.group(1)) == 5000,
+          "interval moved off 5 s")
     c.add("the device id comes from the radio MAC, formatted by the helper",
           "macAddress()" in cl_cpp and "cloud_formatDeviceId" in cl_cpp,
           "identity no longer tracks the silicon")

@@ -587,7 +587,7 @@ panel's Power row, so the mode is visible, not mysterious.
 
 ### Remote monitoring (cloud), minus the old mistakes
 
-The cloud is back as a push-only realtime-database mirror: every 1 s, STA
+The cloud is back as a push-only realtime-database mirror: every 5 s, STA
 only, one `PATCH /devices/<MAC>/latest.json?auth=...` over a persistent
 keep-alive HTTPS session (a fresh 1-2 s handshake per push outlasted any
 sub-10 s interval, so the session stays open and each push is ~100 ms).

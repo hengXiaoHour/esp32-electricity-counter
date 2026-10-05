@@ -85,11 +85,11 @@ public:
   // briefly: the WS console runs on a different task than loop().
   void diag(String &out, SemaphoreHandle_t *mutex);
 
-  // 1 s pushes are affordable ONLY because the transport below holds one
-  // persistent keep-alive TLS session: a fresh 1-2 s handshake per push
-  // outlasted the interval and starved networkTask. The downlink rides the
-  // same connection on its own 2 s timer (commands land in ~2 s).
-  static const uint32_t PUSH_INTERVAL_MS = 1000;
+  // 5 s pushes stay cheap because the transport below holds one persistent
+  // keep-alive TLS session: a fresh 1-2 s handshake per push would eat any
+  // sub-10 s interval and starve networkTask. The downlink rides the same
+  // connection on its own 2 s timer (commands land in ~2 s).
+  static const uint32_t PUSH_INTERVAL_MS = 5000;
   static const uint32_t POLL_INTERVAL_MS = 2000;
 
  private:

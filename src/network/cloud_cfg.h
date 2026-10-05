@@ -4,7 +4,7 @@
 //
 // What this is: the board pushes a small JSON snapshot to a Firebase Realtime
 // Database over plain HTTPS REST (PATCH) on one keep-alive TLS session,
-// every 1 s, STA-only. There is no
+// every 5 s, STA-only. There is no
 // Firebase SDK on the board - the old SDK's blocking TLS handshake was one of
 // the reasons the cloud was ripped out (doc/opencode_agent/lessons.md,
 // "Archived - cloud era").
