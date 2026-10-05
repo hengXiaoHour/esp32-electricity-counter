@@ -17,7 +17,23 @@
 var CL_ADMIN_EMAIL = 'heng.xiao.hour@gmail.com';
 var CL_DEFAULT_MAC = 'EC64C998B0EC';
 var CL_STALE_MS = 30000;
-var CL_ACK_TIMEOUT_MS = 45000;
+var CL_ACK_TIMEOUT_MS = 12000;
+// Observed cadence: the threshold follows the board instead of assuming it.
+// Starts at 30 s (10 s board safe); once pushes arrive ~1 s apart it
+// tightens to 5 s. A fixed 5 s from boot would cry wolf on every 10 s board.
+var cl_lastGapMs = 0;
+var cl_prevRxMs = 0;
+
+function cl_staleMs() {
+  if (cl_lastGapMs > 0 && cl_lastGapMs < 3000) return 5000;
+  return CL_STALE_MS;
+}
+
+function cl_cadenceLabel() {
+  if (cl_lastGapMs > 0 && cl_lastGapMs < 3000) return '~1s';
+  if (cl_lastGapMs > 0) return '~' + Math.max(1, Math.round(cl_lastGapMs / 1000)) + 's';
+  return '~10s';
+}
 
 var cl_db = null;
 var cl_auth = null;
@@ -124,7 +140,8 @@ function cl_adapt(latest, mac) {
 }
 
 function cl_refreshStale() {
-  var stale = !cl_lastRxMs || (Date.now() - cl_lastRxMs > CL_STALE_MS);
+  var ms = cl_staleMs();
+  var stale = !cl_lastRxMs || (Date.now() - cl_lastRxMs > ms);
   var tag = document.getElementById('staleTag');
   if (tag) tag.classList.toggle('hidden', !stale);
   var dot = document.getElementById('cloudDot');
@@ -132,13 +149,16 @@ function cl_refreshStale() {
   var cs = document.getElementById('connStatus');
   if (cs && cl_mac) {
     cs.textContent = cl_lastRxMs
-      ? (stale ? 'Cloud — STALE (board quiet >30s)' : 'Cloud — live (~10s pushes)')
+      ? (stale ? 'Cloud — STALE (board quiet >' + Math.round(ms / 1000) + 's)'
+               : 'Cloud — live (' + cl_cadenceLabel() + ' pushes)')
       : 'Cloud — waiting for data…';
   }
 }
 
 function cl_onLatest(val) {
-  cl_lastRxMs = Date.now();
+  var now = Date.now();
+  if (cl_lastRxMs) cl_lastGapMs = now - cl_lastRxMs;
+  cl_lastRxMs = now;
   if (!val) {
     cl_refreshStale();
     return;
@@ -250,7 +270,7 @@ function cl_selectDevice(mac) {
     .then(function (v) { if (v) cl_onLatest(v); })
     .catch(function () {});
   showDashboard();
-  setConnectStatus('Cloud — live (~10s pushes)', 'connected');
+  setConnectStatus('Cloud — connecting…', 'connected');
   var cs2 = document.getElementById('connStatus2');
   if (cs2) cs2.textContent = 'Cloud — ' + mac;
 }
@@ -320,14 +340,14 @@ function sendCommand(obj) {
   var id = String(Date.now()) + '-' + Math.floor(Math.random() * 1000000);
   cl_lastSentId = id;
   cl_lastSentAt = Date.now();
-  cl_status('sent ' + obj.cmd + ' (id ' + id + '), waiting for board (polls every ~10s)…');
+  cl_status('sent ' + obj.cmd + ' (id ' + id + '), waiting for board (polls every ~2s)…');
   var p = {};
   var promise = new Promise(function (resolve, reject) { p.resolve = resolve; p.reject = reject; });
   p.cmd = obj.cmd;
   p.timer = setTimeout(function () {
     if (cl_pending[id]) {
       delete cl_pending[id];
-      cl_status('no reply yet for ' + obj.cmd + ' — the board polls every ~10s; keep waiting or retry');
+      cl_status('no reply yet for ' + obj.cmd + ' — the board polls every ~2s; keep waiting or retry');
       p.resolve({ timeout: true });
     }
   }, CL_ACK_TIMEOUT_MS);

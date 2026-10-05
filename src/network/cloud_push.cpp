@@ -34,44 +34,150 @@ static bool extractField(const String &body, const char *key, char *out, size_t 
   return true;
 }
 
+// Persistent TLS session shared by every cloud HTTPS call below.
+//
+// One CloudPush instance exists on this board, so translation-unit state is
+// honest, not a shortcut: a member would say "per instance" what is really
+// "per radio". A fresh handshake costs 1-2 s on this silicon; at 1 push/s a
+// handshake per push outlasts the interval and networkTask never comes up
+// for air. One handshake at boot (plus one more on host switch auth<->db),
+// then each push/poll is a ~100 ms round trip on the hot connection.
+static WiFiClientSecure s_conn;
+static char s_connHost[160] = {0};
+static bool s_connOpen = false;
+
+static void cloudDropConn() {
+  s_conn.stop();
+  s_connOpen = false;
+  s_connHost[0] = '\0';
+}
+
+// True with a live TLS session to `host`. Reconnects when closed or when the
+// host switched (auth endpoints vs the database host).
+static bool cloudEnsureConn(const char *host) {
+  if (s_connOpen && strcmp(s_connHost, host) == 0 && s_conn.connected()) {
+    return true;
+  }
+  cloudDropConn();
+  s_conn.setInsecure();  // same threat model as before: physical access owns
+                         // the board; cert validation buys nothing here.
+  s_conn.setTimeout(4000);
+  if (!s_conn.connect(host, 443)) {
+    return false;
+  }
+  strncpy(s_connHost, host, sizeof(s_connHost) - 1);
+  s_connHost[sizeof(s_connHost) - 1] = '\0';
+  s_connOpen = true;
+  return true;
+}
+
+// Reads a newline-terminated line before `deadline`, else false.
+static bool cloudReadLine(String &line, unsigned long deadline) {
+  while ((long)(deadline - millis()) > 0) {
+    if (s_conn.available()) {
+      line = s_conn.readStringUntil('\n');
+      return true;
+    }
+    delay(1);
+  }
+  return false;
+}
+
+// One request on the persistent connection. Returns the HTTP status code,
+// 0 on transport failure (connection dropped, next call reconnects).
+// Retried ONCE, and only when the first attempt rode a reused connection:
+// a server idle-close lands exactly there, while a fresh connection failing
+// means the network itself is down and an instant second handshake is spam.
+static int cloudRoundTrip(const char *host, const String &req,
+                          String &respBody, size_t maxLen) {
+  for (int attempt = 0; attempt < 2; attempt++) {
+    bool fresh = !s_connOpen;
+    if (!cloudEnsureConn(host)) {
+      return 0;
+    }
+    s_conn.print(req);
+    unsigned long deadline = millis() + 4000;
+    String status;
+    if (!cloudReadLine(status, deadline)) {
+      cloudDropConn();
+      if (!fresh) continue;
+      return 0;
+    }
+    int code = 0;
+    int sp = status.indexOf(' ');
+    if (sp >= 0) code = status.substring(sp + 1).toInt();
+    if (code <= 0) {
+      cloudDropConn();
+      if (!fresh) continue;
+      return 0;
+    }
+    // Headers: only Content-Length matters. Anything without one
+    // (chunked, close-delimited) cannot be resynced, so the connection is
+    // dropped instead of guessed at - these endpoints always send one.
+    long want = -1;
+    bool hdrFail = false;
+    while (true) {
+      String h;
+      if (!cloudReadLine(h, deadline)) {
+        hdrFail = true;
+        break;
+      }
+      h.trim();
+      if (h.length() == 0) break;
+      if (h.length() > 15 && strncasecmp(h.c_str(), "content-length:", 15) == 0) {
+        want = atol(h.c_str() + 15);
+      }
+    }
+    if (hdrFail) {
+      cloudDropConn();
+      if (!fresh) continue;
+      return 0;
+    }
+    if (want < 0) {
+      cloudDropConn();
+      return 0;
+    }
+    // Bounded body, then the stream is exactly back in sync. A body larger
+    // than maxLen is truncated AND the connection dropped (the unread tail
+    // would otherwise poison the next response).
+    respBody = "";
+    long n = want;
+    bool over = false;
+    if (n > (long)maxLen) {
+      n = maxLen;
+      over = true;
+    }
+    while (n > 0 && (long)(deadline - millis()) > 0) {
+      if (!s_conn.available()) {
+        delay(1);
+        continue;
+      }
+      respBody += (char)s_conn.read();
+      n--;
+    }
+    if (n > 0) {
+      cloudDropConn();
+      if (!fresh) continue;
+      return 0;
+    }
+    if (over) cloudDropConn();
+    return code;
+  }
+  return 0;
+}
+
 // POSTs `path`+body to `host:443` and returns the HTTP status code,
 // 0 on transport failure. Reads the status line plus a bounded body for
 // field extraction; nothing else is parsed, nothing is polled.
 static int httpsPost(const char *host, const String &path, const String &body,
                      const char *contentType, String &respBody) {
-  WiFiClientSecure client;
-  client.setInsecure();  // same threat model as before: physical access owns
-                         // the board; cert validation buys nothing here.
-  client.setTimeout(4000);
-  if (!client.connect(host, 443)) return 0;
-
-  client.print(String("POST ") + path + " HTTP/1.1\r\nHost: " + host +
+  String req = String("POST ") + path + " HTTP/1.1\r\nHost: " + host +
                "\r\nContent-Type: " + contentType + "\r\nContent-Length: " +
-               body.length() + "\r\nConnection: close\r\n\r\n");
-  client.print(body);
-
-  String status = client.readStringUntil('\n');
-  int code = 0;
-  int sp = status.indexOf(' ');
-  if (sp >= 0) code = status.substring(sp + 1).toInt();
-
-  // Skip headers, then read a bounded body (auth payloads are ~1-2 KB).
-  respBody = "";
-  unsigned long deadline = millis() + 4000;
-  bool inBody = false;
-  while (client.connected() && millis() < deadline && respBody.length() < 2048) {
-    if (!inBody) {
-      String line = client.readStringUntil('\n');
-      if (line == "\r" || line.length() == 0) inBody = true;
-      continue;
-    }
-    while (client.available() && respBody.length() < 2048) {
-      respBody += (char)client.read();
-    }
-    if (!client.available()) break;
-  }
-  client.stop();
-  return code;
+               body.length() + "\r\nConnection: keep-alive\r\n\r\n";
+  req += body;
+  // Auth payloads are ~1-2 KB; the bound is what keeps a lying server from
+  // eating the heap, not what fits a real reply.
+  return cloudRoundTrip(host, req, respBody, 2048);
 }
 
 // GETs `path` from `host:443` and returns the HTTP status code,
@@ -80,37 +186,9 @@ static int httpsPost(const char *host, const String &path, const String &body,
 // Downlink-only: the push path above never reads.
 static int httpsGet(const char *host, const String &path, String &respBody,
                     size_t maxLen) {
-  WiFiClientSecure client;
-  client.setInsecure();  // same threat model as the auth calls above.
-  client.setTimeout(4000);
-  if (!client.connect(host, 443)) return 0;
-
-  client.print(String("GET ") + path + " HTTP/1.1\r\nHost: " + host +
-               "\r\nConnection: close\r\n\r\n");
-
-  String status = client.readStringUntil('\n');
-  int code = 0;
-  int sp = status.indexOf(' ');
-  if (sp >= 0) code = status.substring(sp + 1).toInt();
-
-  // Skip headers, then read a bounded body (the cmd node is one small
-  // object; maxLen caps a runaway while leaving real commands room).
-  respBody = "";
-  unsigned long deadline = millis() + 4000;
-  bool inBody = false;
-  while (client.connected() && millis() < deadline && respBody.length() < maxLen) {
-    if (!inBody) {
-      String line = client.readStringUntil('\n');
-      if (line == "\r" || line.length() == 0) inBody = true;
-      continue;
-    }
-    while (client.available() && respBody.length() < maxLen) {
-      respBody += (char)client.read();
-    }
-    if (!client.available()) break;
-  }
-  client.stop();
-  return code;
+  String req = String("GET ") + path + " HTTP/1.1\r\nHost: " + host +
+               "\r\nConnection: keep-alive\r\n\r\n";
+  return cloudRoundTrip(host, req, respBody, maxLen);
 }
 
 // PATCHes `path`+body to `host:443` and returns the HTTP status code,
@@ -118,37 +196,16 @@ static int httpsGet(const char *host, const String &path, String &respBody,
 // status line back.
 static int httpsPatch(const char *host, const String &path, const String &body,
                       String &respBody) {
-  WiFiClientSecure client;
-  client.setInsecure();  // same threat model as the auth calls above.
-  client.setTimeout(4000);
-  if (!client.connect(host, 443)) return 0;
-
-  client.print(String("PATCH ") + path + " HTTP/1.1\r\nHost: " + host +
+  String req = String("PATCH ") + path + " HTTP/1.1\r\nHost: " + host +
                "\r\nContent-Type: application/json\r\nContent-Length: " +
-               body.length() + "\r\nConnection: close\r\n\r\n");
-  client.print(body);
-
-  String status = client.readStringUntil('\n');
-  int code = 0;
-  int sp = status.indexOf(' ');
-  if (sp >= 0) code = status.substring(sp + 1).toInt();
-
-  respBody = "";
-  unsigned long deadline = millis() + 4000;
-  bool inBody = false;
-  while (client.connected() && millis() < deadline && respBody.length() < 1024) {
-    if (!inBody) {
-      String line = client.readStringUntil('\n');
-      if (line == "\r" || line.length() == 0) inBody = true;
-      continue;
-    }
-    while (client.available() && respBody.length() < 1024) {
-      respBody += (char)client.read();
-    }
-    if (!client.available()) break;
-  }
-  client.stop();
-  return code;
+               body.length() + "\r\nConnection: keep-alive\r\n\r\n";
+  req += body;
+  // The push reply echoes the whole node back (~1.3 KB and growing with the
+  // event log), so this bound must clear it with margin: anything over the
+  // cap DROPS the keep-alive, and a drop-per-push is a permanent handshake
+  // churn that fragments the heap until the board goes silent (proven at
+  // 1 push/s with a 1024 cap).
+  return cloudRoundTrip(host, req, respBody, 4096);
 }
 
 // Reverses the JSON string escaping on a quoted value (the cmd frame arrives
@@ -487,20 +544,11 @@ bool CloudPush::snapshot(SystemData *sysData, SemaphoreHandle_t *mutex, String &
   return true;
 }
 
-// One PATCH, one fresh connection, no reads beyond the status line. The ID
+// One PATCH over the shared keep-alive session, no fresh handshake. The ID
 // token travels inside the TLS tunnel; it is never logged, never stored
 // anywhere but RAM, and never rendered. Returns the HTTP status so the caller
 // can tell 401 (re-login) from failure (log and forget).
 int CloudPush::postStatus(const String &body) {
-  WiFiClientSecure client;
-  client.setInsecure();  // same threat model as the auth calls above.
-  client.setTimeout(4000);
-
-  if (!client.connect(host_, 443)) {
-    DEBUG_LOG("  [CLOUD] connect failed (%s)\n", host_);
-    return 0;
-  }
-
   String req = "PATCH /devices/";
   req += deviceId_;
   req += "/latest.json?auth=";
@@ -509,14 +557,15 @@ int CloudPush::postStatus(const String &body) {
   req += host_;
   req += "\r\nContent-Type: application/json\r\nContent-Length: ";
   req += body.length();
-  req += "\r\nConnection: close\r\n\r\n";
-  client.print(req);
-  client.print(body);
+  req += "\r\nConnection: keep-alive\r\n\r\n";
+  req += body;
 
-  String status = client.readStringUntil('\n');
-  client.stop();
-  int sp = status.indexOf(' ');
-  return (sp >= 0) ? status.substring(sp + 1).toInt() : 0;
+  String resp;
+  int code = cloudRoundTrip(host_, req, resp, 4096);
+  if (code == 0) {
+    DEBUG_LOG("  [CLOUD] push failed (%s)\n", host_);
+  }
+  return code;
 }
 
 bool CloudPush::post(const String &body) {
@@ -650,22 +699,45 @@ void CloudPush::loop(SystemData *sysData, SemaphoreHandle_t *mutex,
                            // rapid-retry, and a down link must not spam.
     if (WiFi.status() == WL_CONNECTED) {  // STA-only: the fallback AP has
                                            // no internet by definition.
-      if (!ensureLogin()) { lastOk_ = false; }
+      // Heap floor: the 1 s death was heap fragmentation from per-push
+      // handshake churn. If the heap ever sags here again, drop the session
+      // and reboot now - a 2 s outage beats a silent hang that needs a
+      // human with a USB cable.
+      if (ESP.getFreeHeap() < 30000) {
+        DEBUG_LOG("  [CLOUD] heap %lu - drop + reboot\n", (unsigned long)ESP.getFreeHeap());
+        cloudDropConn();
+        delay(100);
+        ESP.restart();
+      }
+      if (!ensureLogin()) { lastOk_ = false; consecFails_++; }
       else {
         String body;
         if (snapshot(sysData, mutex, body)) {
           if (post(body)) {
             lastOk_ = true;
             lastOkMs_ = now;
+            consecFails_ = 0;
           } else {
             lastOk_ = false;
+            consecFails_++;
           }
         }
       }
+      // 60 straight failures (~60 s at 1 s cadence) with the link up means
+      // the session is wedged, not the network. Reboot; the counters and
+      // creds are in NVS, so nothing is lost.
+      if (consecFails_ >= 60) {
+        DEBUG_LOG("  [CLOUD] %lu straight fails - reboot\n", (unsigned long)consecFails_);
+        cloudDropConn();
+        delay(100);
+        ESP.restart();
+      }
     }
   }
-  // Downlink on its own 10 s timer so a slow push TLS never starves a poll
-  // (and vice versa). The STA + login gate lives inside pollCmd.
+  // Downlink on its own 2 s timer so a slow push round trip never starves a
+  // poll (and vice versa). Shares the one keep-alive session; loop() is
+  // single-threaded so the two never overlap. The STA + login gate lives
+  // inside pollCmd.
   if (now - lastPollMs_ >= POLL_INTERVAL_MS) {
     lastPollMs_ = now;
     pollCmd(sysData, mutex, powerCalc, limitMgr, nvs);
@@ -689,6 +761,11 @@ void CloudPush::diag(String &out, SemaphoreHandle_t *mutex) {
   uint32_t pollAgeS = secondsSincePoll();
 
   consoleAppendf(out, "  %-10s%s", "Enabled:", enabled_ ? "yes" : "no");
+  consoleAppendf(out, "  %-10s%s (%s)", "Conn:",
+                 s_connOpen ? "hot (keep-alive)" : "cold",
+                 s_connOpen ? s_connHost : "next call dials");
+  consoleAppendf(out, "  %-10s%u straight fails / heap %u", "Health:",
+                 consecFails_, ESP.getFreeHeap());
   consoleAppendf(out, "  %-10s\"%s\"", "Host:", host_);
   consoleAppendf(out, "  %-10s\"%s\"", "Account:", email_);
   consoleAppendf(out, "  %-10s\"%s\"", "Device:", deviceId_);

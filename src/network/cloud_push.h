@@ -13,7 +13,7 @@ class LimitManager;
 // Remote monitoring + remote control over plain HTTPS REST, STA-only.
 //
 // UPLINK: pushes a small snapshot (PATCH /devices/<MAC>/latest.json?auth=...)
-// every PUSH_INTERVAL_MS.
+// every PUSH_INTERVAL_MS over one persistent keep-alive TLS session.
 //
 // DOWNLINK: polls /devices/<MAC>/cmd.json?auth=... every POLL_INTERVAL_MS for
 // a {id, frame, ts} written by the Gmail admin, executes a NEW id once via
@@ -35,8 +35,14 @@ class LimitManager;
 // (doc/opencode_agent/lessons.md, "Archived - cloud era") still hold:
 // STA-only (the fallback AP has no internet), MAC identity (no settable
 // board id, nothing to mistype). The old "never reads" half is superseded:
-// the downlink GETs only the cmd node on its own 10 s timer (never sharing
-// the push connection), and a missing node is a quiet no-op, not a teardown.
+// the downlink GETs only the cmd node on its own timer over the same
+// keep-alive session (never a second connection), and a missing node is a
+// quiet no-op, not a teardown.
+//
+// Self-healing (the 1 s lesson): the PATCH reply echoes the node (~1.3 KB),
+// so its read cap is 4096 - anything smaller drops the session per push and
+// churns handshakes until the heap dies. Past that, a 30 KB heap floor and a
+// 60-straight-fail counter reboot the board instead of going silent.
 //
 // Cost, stated honestly: auth adds up to two HTTPS round-trips per push
 // interval when the token lapses (typically under 2 s each, timeout 4 s).
@@ -83,8 +89,12 @@ public:
   // briefly: the WS console runs on a different task than loop().
   void diag(String &out, SemaphoreHandle_t *mutex);
 
-  static const uint32_t PUSH_INTERVAL_MS = 10000;
-  static const uint32_t POLL_INTERVAL_MS = 10000;
+  // 1 s pushes stay cheap ONLY because the transport below holds one
+  // persistent keep-alive TLS session: a fresh 1-2 s handshake per push
+  // outlasted the interval and starved networkTask. The downlink rides the
+  // same connection on its own 2 s timer (commands land in ~2 s).
+  static const uint32_t PUSH_INTERVAL_MS = 1000;
+  static const uint32_t POLL_INTERVAL_MS = 2000;
 
  private:
   NVSManager *nvs = nullptr;
@@ -107,6 +117,10 @@ public:
   // Downlink dedup: last executed command id (mirrored to NVS "cloud_cmd").
   char lastCmdId_[48] = {0};
   uint32_t lastPollMs_ = 0;
+  // Self-healing: straight failed pushes with the link up (login fail or
+  // post fail). 60 in a row reboots; success resets. RAM-only, like the
+  // session - a reboot starts it at zero, which is correct.
+  uint32_t consecFails_ = 0;
 
   bool snapshot(SystemData *sysData, SemaphoreHandle_t *mutex, String &body);
   // POSTs and returns the HTTP status code (0 = transport failure).

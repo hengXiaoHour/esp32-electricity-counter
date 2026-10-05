@@ -12,7 +12,7 @@ Join `ESP32-Elec-Counter` (password `configure123`), open
 
 Optional: give it your home WiFi plus a realtime-database account (email +
 password) and it mirrors readings to
-`/devices/<MAC>/latest` every 10 s for checking from anywhere. The password
+`/devices/<MAC>/latest` every second for checking from anywhere. The password
 never leaves the board except inside that connection; the dashboard shows
 push health but never the password.
 
@@ -144,7 +144,7 @@ writes too - unlike a database secret, which would bypass the rules.)
 From a browser: Settings → Remote Monitoring (host + account email +
 password, PIN-gated). Or over serial:
 `setcloud <host> <email> <password>` / `clearcloud`. Saving reboots;
-pushes land at `/devices/<MAC>/latest` every 10 s while home WiFi is up.
+pushes land at `/devices/<MAC>/latest` every second while home WiFi is up.
 The Status line shows the MAC and the last-push age; enabling cloud keeps
 eco off (a napping radio cannot push). Nothing is ever pushed on the
 fallback AP.

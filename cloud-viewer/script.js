@@ -326,7 +326,7 @@ function saveCloudSettings() {
     const hint = document.getElementById('cloudHint');
     if (hint) {
       hint.innerHTML = '<strong>The board is restarting.</strong> Pushes land at ' +
-        '<span class="mono">/devices/&lt;MAC&gt;/latest</span> every 10 s while home WiFi is up.';
+        '<span class="mono">/devices/&lt;MAC&gt;/latest</span> every second while home WiFi is up.';
     }
     setTimeout(() => handleDisconnect(), 1500);
     return true;
