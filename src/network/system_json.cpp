@@ -115,6 +115,18 @@ void buildSystemJson(const SystemData &data, PowerCalculator *powerCalc,
   // panel edits this instead of showing a dead value.
   json += ",\"resetDay\":";
   json += nvs->loadResetDay();
+  // Cloud-OTA state: drives the dashboard's progress banner (which was dead
+  // until this key existed - the renderer checks data.ota and nothing ever
+  // sent it). Chip tells the viewer which release asset fits this board.
+  json += ",\"ota\":";
+  json += data.otaInProgress ? "true" : "false";
+  json += ",\"otaProgress\":";
+  json += (int)data.otaProgress;
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+  json += ",\"chip\":\"esp32s3\"";
+#else
+  json += ",\"chip\":\"esp32\"";
+#endif
   // The AP identity actually in effect, so the dashboard can show the user what
   // to edit instead of a placeholder. Without this the Access Point panel always
   // looked like a fresh board, whatever was stored - you could rename the

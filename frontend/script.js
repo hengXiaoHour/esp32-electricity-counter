@@ -765,7 +765,11 @@ function updateDashboard(data) {
     const fw = 'v' + data.firmwareVersion;
     const fw2El = document.getElementById('fwVersion2');
     if (fw2El) fw2El.textContent = fw;
+    fwRunningVer = String(data.firmwareVersion);
+    const frEl = document.getElementById('fwRunning');
+    if (frEl) frEl.textContent = fw;
   }
+  if (typeof data.chip === 'string' && data.chip) fwChip = data.chip;
 
   const lmEl = document.getElementById('lastMonth');
   if (lmEl && typeof data.lastMonth === 'number') {
@@ -1502,6 +1506,70 @@ function setResetDay() {
   delete inp.dataset.userSet;
   sendCommand({ cmd: 'console', line: 'reset_day ' + val }).then(() => {
     showToast(`Billing reset day set to ${val}`);
+  }).catch(() => {});
+}
+
+// ============ Firmware update (cloud OTA) ============
+// Release files live on the public GitHub repo; the board downloads the
+// matching .bin straight from github.com and flashes its inactive OTA slot,
+// then reboots. Same console-line path as setResetDay above, so the local
+// and cloud viewers share it with zero transport code: the admin's click
+// becomes `ota <url>` on the board, progress rides the OTA banner, and the
+// About card changes when the new binary reports its version.
+const FW_REPO = 'hengXiaoHour/esp32-electricity-counter';
+let fwRunningVer = '';
+let fwChip = '';
+let fwAssetUrl = null;
+
+function fwPickAsset(rel, chip) {
+  if (!rel || !Array.isArray(rel.assets)) return null;
+  const want = chip === 'esp32s3' ? 'esp32-s3-' : 'esp32-classic-';
+  const hit = rel.assets.find(a => typeof a.name === 'string' &&
+    a.name.indexOf(want) === 0 && a.name.slice(-4) === '.bin' &&
+    typeof a.browser_download_url === 'string');
+  return hit ? hit.browser_download_url : null;
+}
+
+function fwTagOf(rel) {
+  const t = (rel && rel.tag_name) ? String(rel.tag_name) : '';
+  return t.replace(/^v/, '');
+}
+
+function checkFirmware() {
+  const latestEl = document.getElementById('fwLatest');
+  const row = document.getElementById('fwUpdateRow');
+  const nameEl = document.getElementById('fwUpdateName');
+  if (row) row.classList.add('hidden');
+  fwAssetUrl = null;
+  if (latestEl) latestEl.textContent = 'checking…';
+  fetch('https://api.github.com/repos/' + FW_REPO + '/releases/latest')
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(rel => {
+      const tag = fwTagOf(rel);
+      const url = fwPickAsset(rel, fwChip);
+      if (!tag) {
+        if (latestEl) latestEl.textContent = 'check failed';
+      } else if (fwRunningVer && tag === fwRunningVer) {
+        if (latestEl) latestEl.textContent = 'v' + tag + ' — up to date';
+      } else if (!url) {
+        if (latestEl) latestEl.textContent = 'v' + tag + ' (no file for this board)';
+      } else {
+        if (latestEl) latestEl.textContent = 'v' + tag;
+        fwAssetUrl = url;
+        if (nameEl) nameEl.textContent = url.split('/').pop();
+        if (row) row.classList.remove('hidden');
+      }
+    })
+    .catch(() => { if (latestEl) latestEl.textContent = 'check failed'; });
+}
+
+function startFirmwareUpdate() {
+  if (!fwAssetUrl) return showToast('Check for an update first');
+  const btn = document.getElementById('fwUpdateBtn');
+  if (btn) btn.disabled = true;
+  setTimeout(() => { if (btn) btn.disabled = false; }, 8000);
+  sendCommand({ cmd: 'console', line: 'ota ' + fwAssetUrl }).then(() => {
+    showToast('Update started — progress shows at the top', 6000);
   }).catch(() => {});
 }
 

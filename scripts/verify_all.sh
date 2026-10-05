@@ -110,6 +110,22 @@ else
   record $? "$(tail -1 /tmp/opencode/verify_jsonesc.log)"
 fi
 
+# --- 2e. Cloud-OTA download URL rules (host build, no hardware) ----------
+# The board flashes whatever .bin the admin points it at, so the URL check
+# is the only thing standing between a pasted tag page (HTML, not firmware)
+# and a bricked OTA slot. Same host-test pattern as the suites above.
+stage "Cloud-OTA URL rules (unit)"
+gcc -std=c11 -Wall -Wextra -Isrc/network -x c \
+    scripts/test_ota_url.c src/network/ota_url.cpp \
+    -o /tmp/opencode/ota_url_test 2>/tmp/opencode/verify_otaurl_build.log
+if [ $? -ne 0 ]; then
+  record 1 "ota_url compiles"
+else
+  record 0 "ota_url compiles"
+  /tmp/opencode/ota_url_test >/tmp/opencode/verify_otaurl.log 2>&1
+  record $? "$(tail -1 /tmp/opencode/verify_otaurl.log)"
+fi
+
 # --- 3. Frontend syntax + no LEGACY cloud code ---------------------------
 # The pattern below names the REMOVED era only (Firebase SDK tags, the old
 # cloudDb/device-picker plumbing, ntfy). The current push-only remote-

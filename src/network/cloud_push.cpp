@@ -231,6 +231,8 @@ bool CloudPush::snapshot(SystemData *sysData, SemaphoreHandle_t *mutex, String &
   bool cloudEn = sysData->cloudEnabled;
   bool cloudOk = sysData->cloudOk;
   long cloudAge = (long)sysData->cloudAgeS;
+  bool otaRun = sysData->otaInProgress;
+  uint8_t otaPct = sysData->otaProgress;
   char nm[NUM_CHANNELS][MAX_CHANNEL_NAME_LEN];
   float a[NUM_CHANNELS], w[NUM_CHANNELS], pf[NUM_CHANNELS], kwh[NUM_CHANNELS],
       mkwh[NUM_CHANNELS];
@@ -322,6 +324,19 @@ bool CloudPush::snapshot(SystemData *sysData, SemaphoreHandle_t *mutex, String &
   }
   body += ",\"fw\":\"";
   body += FIRMWARE_VERSION;
+  body += "\",\"chip\":\"";
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+  body += "esp32s3";
+#else
+  body += "esp32";
+#endif
+  // Cloud-OTA state for the remote progress banner (same keys as the local
+  // snapshot's ota/otaProgress, renamed: the cloud payload favours explicit
+  // names because cl_adapt maps them onto the shared renderer).
+  body += "\",\"otaRun\":";
+  body += otaRun ? "true" : "false";
+  body += ",\"otaPct\":";
+  body += (int)otaPct;
   body += "\",\"time\":{\"ok\":";
   body += timeOk ? "true" : "false";
   body += ",\"age\":";

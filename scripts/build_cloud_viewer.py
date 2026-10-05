@@ -100,6 +100,7 @@ PANEL_ORDER = [
     "System Calibration",
     "Device Console",
     "About",
+    "Firmware",
 ]
 
 # Explanatory paragraphs stripped from the cloud copy (minimalist settings;

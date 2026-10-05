@@ -149,6 +149,25 @@ The Status line shows the MAC and the last-push age; enabling cloud keeps
 eco off (a napping radio cannot push). Nothing is ever pushed on the
 fallback AP.
 
+### Updating the firmware over the air
+
+Needs home WiFi (the fallback AP has no internet). Each release attaches
+ready-to-flash files named `esp32-classic-X.Y.Z.bin` /
+`esp32-s3-X.Y.Z.bin` under `.../releases/download/X.Y.Z/`.
+
+From a browser: Settings → Firmware → Check, then Update. The click sends
+one console line (`ota <url>`) — serial, dashboard and cloud console share
+that single path, so there is no second verb to keep in step. The board
+downloads the file straight from github.com into its inactive OTA slot,
+verifies it, reboots, and the About card shows the new version (the card
+renders the compiled `FIRMWARE_VERSION`, so a release binary is stamped
+with `./scripts/build.sh --version X.Y.Z` before compiling — flashing a
+`.bin` still stamped with the old number shows the old number forever).
+
+Or over serial: `ota <url>` / `ota status`. A tag page or any non-release
+link is refused before anything is armed. A failed or oversize download
+keeps the old firmware running; counters and settings survive the reboot.
+
 ### Status LED
 
 | LED | Meaning |
@@ -193,6 +212,8 @@ Serial console (`help` for the list): `status`, `wifi`, `set_ap`, `setwifi`,
 ---
 
 3.1.0 notes: local-midnight billing (UTC+7), reboot no longer wipes counters, forward-only rollover with unset-marker anchoring, execute-once cloud downlink, guarded `test_force_rollover CONFIRM`.
+
+3.2.0 notes: cloud OTA — `ota <url>` console verb (serial / dashboard / cloud), github release `.bin` into the inactive slot with TLS chain validation, progress banner + chip-aware Firmware panel, `--classic` + `--version` build flags.
 
 3.0.0 notes: AP-only architecture, NVS-persisted AP name/password, CLI LED
 type switch, pinned-down AsyncTCP patches. Full history: `gh release list`.

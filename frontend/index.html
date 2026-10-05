@@ -372,6 +372,29 @@
           </div>
           <div class="hint">ESP32 Counter dashboard &middot; ESP32-S3 6-channel electricity monitor &middot; served by the board itself, over its own WiFi</div>
         </div>
+
+        <div class="panel-box admin-only">
+          <div class="panel-header"><h3>Firmware</h3></div>
+          <div class="cal-row-single">
+            <label>Running:</label>
+            <span id="fwRunning" class="mono conn-ip">--</span>
+          </div>
+          <div class="cal-row-single">
+            <label>Latest:</label>
+            <div class="cal-field">
+              <span id="fwLatest" class="mono conn-ip">not checked</span>
+            </div>
+            <button class="btn-sm" id="fwCheckBtn" onclick="checkFirmware()">Check</button>
+          </div>
+          <div class="cal-row-single hidden" id="fwUpdateRow">
+            <label>Update:</label>
+            <div class="cal-field">
+              <span id="fwUpdateName" class="mono conn-ip"></span>
+            </div>
+            <button class="btn-sm" id="fwUpdateBtn" onclick="startFirmwareUpdate()">Update</button>
+          </div>
+          <div class="hint">Update flashes the matching release file over your network and reboots. Counters and settings survive. Progress shows at the top of the page.</div>
+        </div>
       </section>
 
     </div>

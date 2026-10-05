@@ -14,7 +14,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="style.css?v=fe746e69">
+<link rel="stylesheet" href="style.css?v=eda02073">
 <script>
 // The board is always on location.host, so there is no session to restore and
 // nothing to decide before the first paint. This only hides the connect panel
@@ -367,6 +367,28 @@
           </div>
           
         </div>
+<div class="panel-box admin-only">
+          <div class="panel-header"><h3>Firmware</h3></div>
+          <div class="cal-row-single">
+            <label>Running:</label>
+            <span id="fwRunning" class="mono conn-ip">--</span>
+          </div>
+          <div class="cal-row-single">
+            <label>Latest:</label>
+            <div class="cal-field">
+              <span id="fwLatest" class="mono conn-ip">not checked</span>
+            </div>
+            <button class="btn-sm" id="fwCheckBtn" onclick="checkFirmware()">Check</button>
+          </div>
+          <div class="cal-row-single hidden" id="fwUpdateRow">
+            <label>Update:</label>
+            <div class="cal-field">
+              <span id="fwUpdateName" class="mono conn-ip"></span>
+            </div>
+            <button class="btn-sm" id="fwUpdateBtn" onclick="startFirmwareUpdate()">Update</button>
+          </div>
+          <div class="hint">Update flashes the matching release file over your network and reboots. Counters and settings survive. Progress shows at the top of the page.</div>
+        </div>
 </section>
 
     </div>
@@ -424,8 +446,8 @@
   </div>
 </div>
 
-<script src="script.js?v=fe746e69"></script>
-<script src="cloud.js?v=fe746e69"></script>
+<script src="script.js?v=eda02073"></script>
+<script src="cloud.js?v=eda02073"></script>
 <script>
 if ('serviceWorker' in navigator && window.isSecureContext) {
   window.addEventListener('load', function () {

@@ -102,6 +102,11 @@ def main():
     cl_cpp = read("src/network/cloud_push.cpp")
     cl_test = read("scripts/test_cloud_cfg.c")
     verify_sh = read("scripts/verify_all.sh")
+    ota_url_cpp = read("src/network/ota_url.cpp")
+    ota_h = read("src/network/ota_handler.h")
+    ota_cpp = read("src/network/ota_handler.cpp")
+    cloudjs = read("cloud-viewer/cloud.js")
+    build_sh = read("scripts/build.sh")
 
     # --- task layout ---------------------------------------------------
     task_calls = ino.count("xTaskCreatePinnedToCore")
@@ -588,8 +593,68 @@ def main():
 
     # --- firmware version / size ---------------------------------------
     m = re.search(r'#define FIRMWARE_VERSION "([^"]+)"', cfg)
-    c.add("FIRMWARE_VERSION is the 3.1.0 local-midnight release",
-          m and m.group(1) == "3.1.0", "found %s" % (m.group(1) if m else "none"))
+    c.add("FIRMWARE_VERSION is the 3.2.0 cloud-OTA release",
+          m and m.group(1) == "3.2.0", "found %s" % (m.group(1) if m else "none"))
+
+    # --- cloud OTA: github release .bin -> inactive slot -> reboot --------
+    # One code path for serial / dashboard / cloud: the click becomes a
+    # console line (`ota <url>`), the download runs on the network task, and
+    # the reboot goes through the deferred path so the counters flush first.
+    _ota_verb = re.search(r"void ConsoleHandler::cmdOta\([^)]*\) \{([\s\S]*?)\n\}\n", ch)
+    _ota_verb_b = _ota_verb.group(1) if _ota_verb else ""
+    c.add("the console offers ota <url> and ota status, documented in help",
+          _ota_verb is not None and 'startsWith("ota ")' in ch and
+          '"ota status"' in ch and "ota <url>" in ch,
+          "the click would have no verb to land on")
+    c.add("the OTA verb validates the link shape through the host-tested helper",
+          _ota_verb is not None and "startCloudUpdate" in _ota_verb_b,
+          "a tag page (HTML) would be flashed as firmware")
+    c.add("the OTA shape helper is unit-tested and the suite runs in verify_all",
+          "test_ota_url" in verify_sh and "OTA_URL_MAX_LEN" in read("scripts/test_ota_url.c"),
+          "validation without a runner")
+    c.add("cloud OTA refuses without a home link (fallback AP has no internet)",
+          _ota_verb is not None and "stationUp()" in _ota_verb_b,
+          "a download would be armed with nowhere to go")
+    c.add("the download validates the TLS chain (no setInsecure shortcut)",
+          "useBuiltinCACertBundle()" in ota_cpp and "setInsecure" not in ota_cpp,
+          "a radio-link attacker could serve any image")
+    c.add("the download follows the release redirect to the CDN",
+          "setFollowRedirects(" in ota_cpp,
+          "github.com answers 302 and the fetch would die there")
+    c.add("the image must fit the inactive slot before flashing",
+          "getFreeSketchSpace()" in ota_cpp and "Update.begin(" in ota_cpp,
+          "an oversize write bricks the slot")
+    c.add("the image is verified before boot, aborted otherwise",
+          "Update.end(" in ota_cpp and "Update.abort()" in ota_cpp,
+          "a corrupt download would boot")
+    c.add("the download yields so the watchdog survives a minute-long fetch",
+          "vTaskDelay(" in ota_cpp,
+          "the task watchdog would reboot mid-flash")
+    c.add("a verified image reboots through the deferred path (counters flush)",
+          "cloudRebootDue()" in ino and "consumeCloudReboot()" in ino and
+          "requestReboot" in ino,
+          "the reboot would lose unflushed counters")
+    c.add("both snapshots publish the OTA state and the chip for asset picking",
+          re.search(r'\\?"ota\\?"', sysjson) is not None and
+          re.search(r'\\?"chip\\?"', sysjson) is not None and
+          "otaRun" in cl_cpp and "otaPct" in cl_cpp and
+          re.search(r'\\?"chip\\?"', cl_cpp) is not None,
+          "the banner and the asset picker read dead keys")
+    c.add("the cloud adapter maps the OTA state onto the shared banner",
+          "otaRun" in cloudjs and "otaProgress" in cloudjs,
+          "remote progress would never render")
+    c.add("the viewer checks releases and sends the console line, keyed by chip",
+          "api.github.com" in js and "checkFirmware" in js and
+          "startFirmwareUpdate" in js and "esp32-classic-" in js and
+          "esp32-s3-" in js and "'ota ' +" in js,
+          "the Update button has no release to offer")
+    c.add("build.sh builds the classic target on min_spiffs with a version stamp",
+          "--classic" in build_sh and "PartitionScheme=min_spiffs" in build_sh and
+          "--version" in build_sh and "FIRMWARE_VERSION" in build_sh,
+          "no reproducible path to a stamped classic binary")
+    c.add("the README documents the over-the-air update flow",
+          "`ota <url>`" in rdme and "releases/download" in rdme,
+          "the feature exists only in code")
 
     # --- frontend ------------------------------------------------------
     c.add("index.html loads NO external scripts",

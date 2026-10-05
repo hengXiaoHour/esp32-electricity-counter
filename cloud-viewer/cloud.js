@@ -132,6 +132,9 @@ function cl_adapt(latest, mac) {
   d.mcuTemp = (latest.mcu === undefined || latest.mcu === null) ? null : latest.mcu;
   d.eco = !!latest.eco;
   d.firmwareVersion = latest.fw;
+  d.chip = (typeof latest.chip === 'string') ? latest.chip : undefined;
+  d.ota = (latest.otaRun === true);
+  d.otaProgress = (typeof latest.otaPct === 'number') ? latest.otaPct : 0;
   d.time = latest.time;
   d.ch = cl_toArray(latest.ch);
   d.events = cl_toArray(latest.events);

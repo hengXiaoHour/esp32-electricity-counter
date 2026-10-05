@@ -244,6 +244,17 @@ void ConsoleHandler::exec(const String &line, String &out) {
   } else if (cmd == "cloud diag") {
     cmdCloudDiag(out);
 
+  } else if (cmd == "ota status") {
+    if (otaHandler) otaHandler->cloudStatus(out);
+    else consoleAppendf(out, "%s", "  OTA not available");
+
+  } else if (cmd.startsWith("ota ")) {
+    cmdOta(cmd.substring(4), out);
+
+  } else if (cmd == "ota") {
+    consoleAppendf(out, "%s", "  Usage: ota <https://github.com/.../releases/download/.../*.bin>");
+    consoleAppendf(out, "%s", "         ota status   (download state this boot)");
+
   } else if (cmd == "led" || cmd.startsWith("led ")) {
     cmdLed(cmd.length() > 3 ? cmd.substring(4) : "", out);
 
@@ -557,6 +568,25 @@ void ConsoleHandler::cmdLed(const String &args, String &out) {
                  wantRgb ? "rgb" : "normal");
 }
 
+void ConsoleHandler::cmdOta(const String &args, String &out) {
+  // Cloud firmware update, STA-only. The URL is validated before anything is
+  // armed (a tag page is HTML, not firmware); the download itself runs from
+  // OTAHandler::loop on the network task and reboots through the deferred
+  // path so the counters are flushed first. Safe to call from any console:
+  // serial, dashboard, or the cloud downlink (which skips the PIN, trusting
+  // the admin-only /cmd rules instead).
+  if (!otaHandler) {
+    consoleAppendf(out, "%s", "  OTA not available");
+    return;
+  }
+  String url = args;
+  url.trim();
+  String reply;
+  otaHandler->startCloudUpdate(url.c_str(),
+                              wifiMgr ? wifiMgr->stationUp() : false, reply);
+  consoleAppendf(out, "%s", reply.c_str());
+}
+
 void ConsoleHandler::cmdClearWifi(String &out) {
   // Nothing reads WiFi credentials any more, so this only scrubs leftovers
   // from an older firmware in NVS. It is kept deliberately: it is the one way
@@ -845,6 +875,8 @@ void ConsoleHandler::cmdHelp(String &out) {
   consoleAppendf(out, "%s", "    clearwifi           Erase the saved home-network creds");
   consoleAppendf(out, "%s", "    setcloud <host> <email> <pass> Sign in + push to realtime DB (reboots)");
   consoleAppendf(out, "%s", "    cloud diag            Show cloud session (account, token age/length/aud)");
+  consoleAppendf(out, "%s", "    ota <url>             Download + flash a github release .bin (STA only, reboots)");
+  consoleAppendf(out, "%s", "    ota status            Cloud-download state this boot");
   consoleAppendf(out, "%s", "    clearcloud          Stop remote monitoring (no reboot)");
   consoleAppendf(out, "%s", "    set_ap <name> <pw>  Rename the network + set password (reboots)");
   consoleAppendf(out, "%s", "    reset_ap            Restore the default network name (reboots)");

@@ -464,6 +464,53 @@ def main():
     r.add("the cloud monitoring feature is still wired end to end", not cloud_missing,
           "disconnected at: " + ", ".join(cloud_missing))
 
+    # --- 8c. the cloud-OTA path must stay wired end to end ----------------
+    # Same disease as rules 8/8b: the console verb, the validator, the
+    # download, the reboot hook, the snapshot keys and the viewer panel can
+    # each be deleted while everything left looks tidy. Dispatch-shaped where
+    # a bare word would also match help text or comments.
+    ota_cpp_s = strip_cpp(read("src/network/ota_handler.cpp"))
+    ota_h_s = strip_cpp(read("src/network/ota_handler.h"))
+    ota_url_s = strip_cpp(read("src/network/ota_url.cpp"))
+    sysjson_s = strip_cpp(read("src/network/system_json.cpp"))
+    clcpp_s = strip_cpp(read("src/network/cloud_push.cpp"))
+    cloudjs_s = strip_js(read("cloud-viewer/cloud.js"))
+    front_html = read("frontend/index.html")
+    build_sh = read("scripts/build.sh")
+    ota_missing = []
+    for what, present in [
+            ("console dispatch (ota <url>)", 'startsWith("ota ")' in ch),
+            ("console dispatch (ota status)", '== "ota status"' in ch),
+            ("console help lists ota", "ota <url>" in ch),
+            ("console calls the handler", has("startCloudUpdate", ch)),
+            ("URL validator validates", has("ota_url_validate", ota_url_s)),
+            ("handler arms from the validator",
+             "ota_url_validate" in ota_cpp_s),
+            ("download runs from loop", "loopCloud()" in ota_cpp_s),
+            ("verified image raises the reboot flag",
+             has("cloudRebootDue", ota_h_s)),
+            ("sketch consumes the flag into a deferred reboot",
+             "cloudRebootDue()" in ino_txt and "consumeCloudReboot()" in ino_txt),
+            ("local snapshot publishes ota + chip",
+             has("otaInProgress", sysjson_s) and
+             re.search(r'\\?"chip\\?"', sysjson_s) is not None),
+            ("cloud snapshot publishes otaRun + chip",
+             "otaRun" in clcpp_s and
+             re.search(r'\\?"chip\\?"', clcpp_s) is not None),
+            ("cloud adapter maps ota onto the banner",
+             "otaRun" in cloudjs_s and "otaProgress" in cloudjs_s),
+            ("viewer checks releases", has("checkFirmware", js)),
+            ("viewer starts the update", has("startFirmwareUpdate", js)),
+            ("Check button wired", 'onclick="checkFirmware()"' in front_html),
+            ("Update button wired", 'onclick="startFirmwareUpdate()"' in front_html),
+            ("firmware panel exists", 'id="fwRunning"' in front_html),
+            ("classic build path kept", "--classic" in build_sh),
+            ("version stamp kept", "--version" in build_sh)]:
+        if not present:
+            ota_missing.append(what)
+    r.add("the cloud-OTA feature is still wired end to end", not ota_missing,
+          "disconnected at: " + ", ".join(ota_missing))
+
     # --- 9. the defaults the docs quote must be the ones the code uses ------
     # Two copies of "ESP32-Elec-Counter" exist on purpose (config.h for the
     # firmware, mock_device.py for the E2E harness) precisely because the harness

@@ -318,6 +318,9 @@ class State:
                           "acct": self.cloud_email},
                 "mcuTemp": 51.2,
                 "eco": False,
+                "ota": False,
+                "otaProgress": 0,
+                "chip": "esp32",
                 "time": {"ok": self.time_synced, "age": 0 if self.time_synced else 4294967295},
                 "ch": ch,
                 "events": [
@@ -419,6 +422,20 @@ class State:
                         self.applied.append(("reset_day", day))
                         return True, ("  Billing reset day set to %d — counters zero"
                                        " at 00:00 local time (UTC+7) on day %d each month (NVS level)" % (day, day)), False
+                # Cloud OTA, same shape as ConsoleHandler::cmdOta: `ota status`
+                # reports, `ota <url>` validates the release-link shape and
+                # arms (the mock never downloads - it records the arm).
+                if parts[:1] == ["ota"] and len(parts) == 2 and parts[1] == "status":
+                    return True, "  OTA: idle (no cloud download yet this boot).", False
+                if parts[:1] == ["ota"] and len(parts) == 2:
+                    url = parts[1]
+                    if (url.startswith("https://github.com/")
+                            and "/releases/download/" in url
+                            and url.endswith(".bin")):
+                        self.applied.append(("ota", url))
+                        return True, ("  OTA started from \"%s\" - progress above,"
+                                       " `ota status` for detail." % url.rsplit("/", 1)[-1]), False
+                    return True, "  Not started: not a release download link.", False
                 return True, "  Unknown command. Type 'help'.", False
 
             if verb == "set_ap":

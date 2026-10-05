@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Build the firmware. This is the ONLY supported build entry point.
 #
-#   ./scripts/build.sh                    # compile to ./.build-out
+#   ./scripts/build.sh                    # compile to ./.build-out (ESP32-S3)
+#   ./scripts/build.sh --classic         # ESP32 classic (min_spiffs, keeps OTA)
+#   ./scripts/build.sh --version X.Y.Z   # stamp FIRMWARE_VERSION first
 #   ./scripts/build.sh --clean            # full rebuild, no cache
 #   ./scripts/build.sh --output-dir DIR   # where to put the .bin
 #
@@ -25,13 +27,19 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.." || exit 2
 
-FQBN="esp32:esp32:esp32s3:FlashSize=4M,PartitionScheme=no_fs,CDCOnBoot=cdc"
+FQBN_S3="esp32:esp32:esp32s3:FlashSize=4M,PartitionScheme=no_fs,CDCOnBoot=cdc"
+FQBN_CLASSIC="esp32:esp32:esp32:PartitionScheme=min_spiffs"
+FQBN="$FQBN_S3"
+CLASSIC=0
+NEWVER=""
 ARDUINO_CLI="${ARDUINO_CLI:-$HOME/.local/bin/arduino-cli}"
 OUTDIR="./.build-out"
 CLEAN=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
+    --classic) CLASSIC=1; FQBN="$FQBN_CLASSIC"; shift ;;
+    --version) NEWVER="$2"; shift 2 ;;
     --clean) CLEAN="--clean"; shift ;;
     --output-dir) OUTDIR="$2"; shift 2 ;;
     -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
@@ -40,6 +48,25 @@ while [ $# -gt 0 ]; do
 done
 
 step() { printf '\n\033[1m==> %s\033[0m\n' "$1"; }
+
+# --- 0. Version stamp ----------------------------------------------------
+# The About card and the cloud viewer show the COMPILED version, so a release
+# binary must carry its own number: flashing a .bin still stamped 3.1.0 shows
+# 3.1.0 forever, and the viewer would offer the "update" again. This edits
+# exactly one line in src/config.h (asserted below) - the bump IS the commit.
+if [ -n "$NEWVER" ]; then
+  case "$NEWVER" in
+    [0-9]*.[0-9]*.[0-9]*) ;;
+    *) echo "bad version '$NEWVER' (want X.Y.Z)" >&2; exit 2 ;;
+  esac
+  grep -q '^#define FIRMWARE_VERSION "' src/config.h || {
+    echo "FIRMWARE_VERSION line not found in src/config.h" >&2; exit 2; }
+  sed -i "s/^#define FIRMWARE_VERSION \".*\"/#define FIRMWARE_VERSION \"$NEWVER\"/" src/config.h
+  [ "$(grep -c '^#define FIRMWARE_VERSION "' src/config.h)" -eq 1 ] || {
+    echo "version stamp hit != 1 line - refusing" >&2; exit 2; }
+  step "Stamped FIRMWARE_VERSION $NEWVER"
+  grep '^#define FIRMWARE_VERSION "' src/config.h
+fi
 
 # --- 1. Regenerate the embedded dashboard assets ------------------------
 # Always, unconditionally. Never "only if frontend/ changed" - that is the
@@ -90,13 +117,18 @@ fi
 step "Built"
 ls -1 "$OUTDIR"/*.bin 2>/dev/null || true
 echo
+if [ "$CLASSIC" -eq 1 ]; then
+  PORT_HINT="/dev/ttyUSB0"; CHIP="esp32"
+else
+  PORT_HINT="/dev/ttyACM0"; CHIP="esp32s3"
+fi
 echo "Flash it with (app only - this keeps the NVS partition, and with it your"
 echo "counters, the admin PIN and any access-point name you have set):"
-echo "  esptool --port /dev/ttyACM0 --chip esp32s3 --baud 460800 \\"
+echo "  esptool --port $PORT_HINT --chip $CHIP --baud 460800 \\"
 echo "          write-flash 0x10000 $OUTDIR/esp32-electricity-counter.ino.bin"
 echo
 echo "Only when the bootloader or the partition table changed, flash those too:"
-echo "  esptool --port /dev/ttyACM0 --chip esp32s3 --baud 460800 write-flash \\"
+echo "  esptool --port $PORT_HINT --chip $CHIP --baud 460800 write-flash \\"
 echo "          0x0 $OUTDIR/esp32-electricity-counter.ino.bootloader.bin \\"
 echo "          0x8000 $OUTDIR/esp32-electricity-counter.ino.partitions.bin"
 echo
