@@ -8,8 +8,9 @@ The cloud dashboard is the local dashboard with a different transport:
 
 To keep the look identical without drifting, this script COPIES the
 rendering files verbatim and applies only small cloud patches:
-  index.html : + Firebase SDK, + cloud bar (device picker / Google sign-in /
-               stale tag), PIN panel -> Google panel, script.js + cloud.js
+  index.html : + Firebase SDK, + Cloud device panel first in Settings
+               (picker / freshness / Google sign-in; header is "Connected"),
+               Admin panel dropped, hints stripped, panels reordered;
   style.css  : frontend verbatim + cloud-bar additions appended
   script.js  : exact copy of frontend/script.js (rendering, cards, charts,
                events, settings, console). cloud.js overrides the TRANSPORT
@@ -38,6 +39,9 @@ CLOUD_BAR = """    <!-- Cloud device panel: lives in Settings so the header stat
          stays identical to the board-served dashboard ("Connected"). -->
     <div id="cloudBar" class="panel-box cloud-bar">
       <div class="panel-header"><h3>Cloud device</h3></div>
+      <div class="pin-badge-row">
+        <span id="roleBadge" class="role-badge role-guest">Viewer &mdash; read-only</span>
+      </div>
       <div class="cal-row-single">
         <label for="devicePicker">Device:</label>
         <div class="cal-field">
@@ -61,25 +65,94 @@ CLOUD_BAR = """    <!-- Cloud device panel: lives in Settings so the header stat
         <button class="btn-sm" id="authBtn">Sign in with Google</button>
       </div>
       <div id="cloudCmdStatus" class="mono dim cloud-status">No command sent yet.</div>
-      <div id="cloudDbg" class="mono dim cloud-status"></div>
     </div>
 """
 
-GOOGLE_PIN_PANEL = """        <div class="panel-box">
-          <div class="panel-header"><h3>Admin</h3></div>
-          <div class="pin-badge-row">
-            <span id="roleBadge" class="role-badge role-guest">Viewer &mdash; read-only</span>
-          </div>
-          <div class="cal-row-single">
-            <label>Google:</label>
-            <div class="cal-field">
-              <span class="mono" id="googleWho">not signed in</span>
-            </div>
-            <button class="btn-sm" id="authBtn2">Sign in</button>
-          </div>
-          <p id="guestHint" class="hint">Live readings are public. Changing limits, calibration, counters or the console needs the admin Google account &mdash; the database rules check every write, so hiding a button here is not what protects them.</p>
-        </div>
-"""
+def _panel_spans(text):
+    """Spans of every top-level <div class="panel-box..."> in `text`."""
+    spans = []
+    for m in re.finditer(r'<div[^>]*class="panel-box', text):
+        oi = m.start()
+        depth = 0
+        end = -1
+        for n in re.finditer(r'</?div\b', text[oi:]):
+            if n.group(0) == '<div':
+                depth += 1
+            else:
+                depth -= 1
+                if depth == 0:
+                    gt = text.find('>', oi + n.end() - 1)
+                    end = gt + 1
+                    break
+        if end > 0:
+            spans.append((oi, end))
+    return spans
+
+
+# Settings order for the cloud copy: identity first, then link, uplink
+# account, networks, tuning, console, about. The board-PIN Admin panel is
+# dropped (its role badge moved into the Cloud device panel above).
+PANEL_ORDER = [
+    "Cloud device",
+    "Connection",
+    "Remote Monitoring (cloud)",
+    "Home Network (default)",
+    "Access Point (fallback)",
+    "System Calibration",
+    "Device Console",
+    "About",
+]
+
+# Explanatory paragraphs stripped from the cloud copy (minimalist settings;
+# the board-served dashboard keeps them). Id-based hints plus the two long
+# hint divs without ids, matched by their opening words.
+HINT_IDS = ("installHint2", "apHint", "staHint", "cloudHint")
+HINT_TEXT_PREFIXES = (
+    "Runs the device's diagnostic commands remotely.",
+    "ESP32 Counter dashboard",
+)
+
+
+def _reorder_settings(html):
+    sec_open = html.find('<section id="page-settings"')
+    if sec_open < 0:
+        return html
+    sec_tag_end = html.find('>', sec_open) + 1
+    sec_close = html.find('</section>', sec_tag_end)
+    if sec_close < 0:
+        return html
+    head, body, tail = html[:sec_tag_end], html[sec_tag_end:sec_close], html[sec_close:]
+    spans = _panel_spans(body)
+    if not spans:
+        return html
+    panels = []
+    for oi, end in spans:
+        block = body[oi:end]
+        t = re.search(r'<h3>(.*?)</h3>', block)
+        panels.append((t.group(1) if t else '', block))
+    # Fill gaps (whitespace/comments between panels) stays with the head.
+    ordered = []
+    by_title = {}
+    for title, block in panels:
+        by_title.setdefault(title, []).append(block)
+    for want in PANEL_ORDER:
+        ordered.extend(by_title.pop(want, []))
+    # Anything unrecognized (future panels, the dropped Admin PIN last):
+    # drop the board-PIN Admin panel, keep anything else in place.
+    for title, blocks in by_title.items():
+        if title == 'Admin PIN':
+            continue
+        ordered.extend(blocks)
+    new_body = '\n'.join(ordered) + '\n'
+    html = head + new_body + tail
+    # Strip the explanatory hint paragraphs (cloud copy only). Attribute
+    # order varies (installHint2 puts id first), so match by id alone.
+    for hid in HINT_IDS:
+        html = re.sub(r'<div[^>]*id="%s"[^>]*>[\s\S]*?</div>' % hid, '', html)
+    for prefix in HINT_TEXT_PREFIXES:
+        html = re.sub(r'<div class="hint">%s[\s\S]*?</div>' % re.escape(prefix),
+                      '', html)
+    return html
 
 CLOUD_CSS = """
 /* ---- Cloud-only additions (device bar, auth, freshness). Everything above
@@ -135,31 +208,9 @@ def patch_index(src: str) -> str:
             '<section id="page-settings" class="page">\n' + CLOUD_BAR,
             1,
         )
-    # Admin PIN panel -> Google admin panel (keep roleBadge + guestHint ids:
-    # script.js/cloud.js drive the badge from those).
-    start = html.find('          <div class="panel-header"><h3>Admin PIN</h3></div>')
-    if start >= 0:
-        # The PIN panel-box runs from its opening div to the matching close:
-        # find the opening <div class="panel-box"> just before the header.
-        open_idx = html.rfind('<div class="panel-box">', 0, start)
-        # Walk forward counting divs to the panel-box close.
-        depth = 0
-        i = open_idx
-        end = -1
-        for m in re.finditer(r"</?div\b", html[open_idx:]):
-            tag = m.group(0)
-            if tag == "<div":
-                depth += 1
-            else:
-                depth -= 1
-                if depth == 0:
-                    end = open_idx + m.end()
-                    # include the rest of the closing tag '>'
-                    gt = html.find(">", end - 1)
-                    end = gt + 1
-                    break
-        if end > 0:
-            html = html[:open_idx] + GOOGLE_PIN_PANEL.rstrip("\n") + "\n" + html[end:]
+    # Minimalist settings for the cloud copy: fixed panel order, board-PIN
+    # Admin panel dropped (badge lives in Cloud device), hint paragraphs out.
+    html = _reorder_settings(html)
     # About hint: served from Firebase, not the board.
     html = html.replace(
         "served by the board itself, over its own WiFi",

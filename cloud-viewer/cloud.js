@@ -441,7 +441,10 @@ function saveCloudSettings() {
   cl_auth = firebase.auth();
 
   document.getElementById('authBtn').addEventListener('click', cl_googleToggle);
-  document.getElementById('authBtn2').addEventListener('click', cl_googleToggle);
+  // authBtn2 lived in the old Admin panel (dropped; its badge+button moved
+  // into the Cloud device panel). Guarded: the cloud copy no longer has it.
+  var ab2 = document.getElementById('authBtn2');
+  if (ab2) ab2.addEventListener('click', cl_googleToggle);
   document.getElementById('devicePicker').addEventListener('change', function (e) {
     cl_selectDevice(e.target.value);
   });

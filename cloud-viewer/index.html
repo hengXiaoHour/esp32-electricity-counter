@@ -14,7 +14,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="style.css?v=942dfe8c">
+<link rel="stylesheet" href="style.css?v=6c262133">
 <script>
 // The board is always on location.host, so there is no session to restore and
 // nothing to decide before the first paint. This only hides the connect panel
@@ -166,11 +166,11 @@
       </section>
 
       <!-- Settings -->
-      <section id="page-settings" class="page">
-    <!-- Cloud device panel: lives in Settings so the header status bar
-         stays identical to the board-served dashboard ("Connected"). -->
-    <div id="cloudBar" class="panel-box cloud-bar">
+      <section id="page-settings" class="page"><div id="cloudBar" class="panel-box cloud-bar">
       <div class="panel-header"><h3>Cloud device</h3></div>
+      <div class="pin-badge-row">
+        <span id="roleBadge" class="role-badge role-guest">Viewer &mdash; read-only</span>
+      </div>
       <div class="cal-row-single">
         <label for="devicePicker">Device:</label>
         <div class="cal-field">
@@ -194,26 +194,8 @@
         <button class="btn-sm" id="authBtn">Sign in with Google</button>
       </div>
       <div id="cloudCmdStatus" class="mono dim cloud-status">No command sent yet.</div>
-      <div id="cloudDbg" class="mono dim cloud-status"></div>
     </div>
-
-                <div class="panel-box">
-          <div class="panel-header"><h3>Admin</h3></div>
-          <div class="pin-badge-row">
-            <span id="roleBadge" class="role-badge role-guest">Viewer &mdash; read-only</span>
-          </div>
-          <div class="cal-row-single">
-            <label>Google:</label>
-            <div class="cal-field">
-              <span class="mono" id="googleWho">not signed in</span>
-            </div>
-            <button class="btn-sm" id="authBtn2">Sign in</button>
-          </div>
-          <p id="guestHint" class="hint">Live readings are public. Changing limits, calibration, counters or the console needs the admin Google account &mdash; the database rules check every write, so hiding a button here is not what protects them.</p>
-        </div>
-
-
-        <div class="panel-box">
+<div class="panel-box">
           <div class="panel-header"><h3>Connection</h3></div>
           <div class="cal-row-single">
             <label>Board:</label>
@@ -240,62 +222,12 @@
             <label>App:</label>
             <button class="btn-sm" id="installBtn2" onclick="promptInstall()">&#8595; Install App</button>
           </div>
-          <div id="installHint2" class="hint hidden">Your browser cannot auto-install from a plain unencrypted (http) board address, so add it by hand: Android Chrome &rarr; menu &#8942; &rarr; Add to Home screen &middot; iPhone Safari &rarr; Share &rarr; Add to Home Screen &middot; Desktop Chrome &rarr; install icon in the address bar or menu &rarr; Install. Then it opens full-screen like a native app.</div>
+          
           <div style="margin-top:12px;">
             <button class="btn-outline" onclick="handleDisconnect()">Disconnect</button>
           </div>
         </div>
-
-        <div class="panel-box admin-only">
-          <div class="panel-header"><h3>Access Point (fallback)</h3></div>
-          <div class="cal-row-single">
-            <label for="apSsid">Network name:</label>
-            <div class="cal-field">
-              <input type="text" id="apSsid" placeholder="Loading…" autocomplete="off" spellcheck="false" oninput="this.dataset.userSet='true'">
-            </div>
-          </div>
-          <div class="cal-row-single">
-            <label for="apPass">Password:</label>
-            <div class="cal-field">
-              <input type="password" id="apPass" placeholder="Loading…" autocomplete="off" oninput="this.dataset.userSet='true'">
-              <span class="hint-inline">(8-63)</span>
-            </div>
-          </div>
-          <div class="cal-actions">
-            <button class="btn-sm" id="apSaveBtn" onclick="saveApSettings()">Save</button>
-            <button class="btn-sm" id="apResetBtn" onclick="resetApSettings()">Defaults</button>
-          </div>
-          <div class="hint" id="apHint">Fallback-only: this network appears <strong>only when the home network fails</strong> (the AP stays OFF while home WiFi is up). Renaming saves to flash and <strong>reboots to apply it</strong>. Forgot the password? <strong>Defaults</strong> puts it back on the name and password printed in the README.</div>
-        </div>
-
-        <div class="panel-box admin-only">
-          <div class="panel-header"><h3>Home Network (default)</h3></div>
-          <div class="cal-row-single">
-            <label for="staStatus">Status:</label>
-            <div class="cal-field">
-              <span class="mono" id="staStatus">Loading&hellip;</span>
-            </div>
-          </div>
-          <div class="cal-row-single">
-            <label for="staSsid">Network:</label>
-            <div class="cal-field">
-              <input type="text" id="staSsid" placeholder="Your home WiFi name" autocomplete="off" spellcheck="false" oninput="this.dataset.userSet='true'">
-            </div>
-          </div>
-          <div class="cal-row-single">
-            <label for="staPass">Password:</label>
-            <div class="cal-field">
-              <input type="password" id="staPass" placeholder="Your home WiFi password" autocomplete="off" oninput="this.dataset.userSet='true'">
-            </div>
-          </div>
-          <div class="cal-actions">
-            <button class="btn-sm" id="staSaveBtn" onclick="saveStaSettings()">Save</button>
-            <button class="btn-sm" id="staForgetBtn" onclick="clearStaSettings()">Forget</button>
-          </div>
-          <div class="hint" id="staHint">The DEFAULT path: the board joins this network on boot and the AP stays <strong>OFF</strong>. <strong>Save reboots the board.</strong> If it cannot join, the fallback AP above comes up instead so the board is never headless.</div>
-        </div>
-
-        <div class="panel-box admin-only">
+<div class="panel-box admin-only">
           <div class="panel-header"><h3>Remote Monitoring (cloud)</h3></div>
           <div class="cal-row-single">
             <label for="cloudStatus">Status:</label>
@@ -325,10 +257,56 @@
             <button class="btn-sm" id="cloudSaveBtn" onclick="saveCloudSettings()">Save</button>
             <button class="btn-sm" id="cloudForgetBtn" onclick="clearCloudSettings()">Forget</button>
           </div>
-          <div class="hint" id="cloudHint">Signs into your realtime database and pushes a small reading every second, <strong>home WiFi only</strong> (never on the fallback AP). The device path is <strong>/devices/&lt;MAC&gt;/latest</strong> - the Status line shows the MAC. <strong>Save reboots the board.</strong> The password is never shown back, and signing in keeps the radio awake (eco stays off).</div>
+          
         </div>
-
-        <div class="panel-box admin-only">
+<div class="panel-box admin-only">
+          <div class="panel-header"><h3>Home Network (default)</h3></div>
+          <div class="cal-row-single">
+            <label for="staStatus">Status:</label>
+            <div class="cal-field">
+              <span class="mono" id="staStatus">Loading&hellip;</span>
+            </div>
+          </div>
+          <div class="cal-row-single">
+            <label for="staSsid">Network:</label>
+            <div class="cal-field">
+              <input type="text" id="staSsid" placeholder="Your home WiFi name" autocomplete="off" spellcheck="false" oninput="this.dataset.userSet='true'">
+            </div>
+          </div>
+          <div class="cal-row-single">
+            <label for="staPass">Password:</label>
+            <div class="cal-field">
+              <input type="password" id="staPass" placeholder="Your home WiFi password" autocomplete="off" oninput="this.dataset.userSet='true'">
+            </div>
+          </div>
+          <div class="cal-actions">
+            <button class="btn-sm" id="staSaveBtn" onclick="saveStaSettings()">Save</button>
+            <button class="btn-sm" id="staForgetBtn" onclick="clearStaSettings()">Forget</button>
+          </div>
+          
+        </div>
+<div class="panel-box admin-only">
+          <div class="panel-header"><h3>Access Point (fallback)</h3></div>
+          <div class="cal-row-single">
+            <label for="apSsid">Network name:</label>
+            <div class="cal-field">
+              <input type="text" id="apSsid" placeholder="Loading…" autocomplete="off" spellcheck="false" oninput="this.dataset.userSet='true'">
+            </div>
+          </div>
+          <div class="cal-row-single">
+            <label for="apPass">Password:</label>
+            <div class="cal-field">
+              <input type="password" id="apPass" placeholder="Loading…" autocomplete="off" oninput="this.dataset.userSet='true'">
+              <span class="hint-inline">(8-63)</span>
+            </div>
+          </div>
+          <div class="cal-actions">
+            <button class="btn-sm" id="apSaveBtn" onclick="saveApSettings()">Save</button>
+            <button class="btn-sm" id="apResetBtn" onclick="resetApSettings()">Defaults</button>
+          </div>
+          
+        </div>
+<div class="panel-box admin-only">
           <div class="panel-header"><h3>System Calibration</h3></div>
           <div class="cal-row-single">
             <label for="voltCal">Voltage Cal:</label>
@@ -360,8 +338,7 @@
             <button id="resetNvsBtn" class="btn-sm btn-danger" onclick="handleResetNvs()">&#8634; Reset NVS to Defaults</button>
           </div>
         </div>
-
-        <div class="panel-box admin-only">
+<div class="panel-box admin-only">
           <div class="panel-header">
             <h3>Device Console</h3>
             <button class="btn-sm" onclick="clearConsole()">Clear</button>
@@ -374,10 +351,9 @@
                    onkeydown="onConsoleKey(event)">
             <button class="btn-sm" onclick="sendConsoleCommand()">Send</button>
           </div>
-          <div class="hint">Runs the device's diagnostic commands remotely. Type <span class="mono">help</span> for the list. The board holds back nothing dangerous from here that the serial port would allow.</div>
+          
         </div>
-
-        <div class="panel-box">
+<div class="panel-box">
           <div class="panel-header"><h3>About</h3></div>
           <div class="cal-row-single">
             <label>Firmware:</label>
@@ -387,9 +363,9 @@
             <label>Month:</label>
             <span id="lastMonth" class="mono conn-ip">--</span>
           </div>
-          <div class="hint">ESP32 Counter dashboard &middot; ESP32-S3 6-channel electricity monitor &middot; cloud mirror &middot; pushed by the board every ~10&nbsp;s</div>
+          
         </div>
-      </section>
+</section>
 
     </div>
   </main>
@@ -446,8 +422,8 @@
   </div>
 </div>
 
-<script src="script.js?v=942dfe8c"></script>
-<script src="cloud.js?v=942dfe8c"></script>
+<script src="script.js?v=6c262133"></script>
+<script src="cloud.js?v=6c262133"></script>
 <script>
 if ('serviceWorker' in navigator && window.isSecureContext) {
   window.addEventListener('load', function () {
