@@ -108,6 +108,19 @@ void OTAHandler::loopCloud() {
     probe.stop();
   }
 
+  // Raw-TLS probe: handshake WITHOUT validation, then stop. Sends no HTTP
+  // and moves no firmware bytes - it only splits "TLS cannot handshake here
+  // at all (memory/protocol)" from "handshake works, validation rejects the
+  // chain (bundle/root)". The real download below always uses `client`.
+  bool rawTlsOk = false;
+  {
+    NetworkClientSecure probe;
+    probe.setInsecure();
+    probe.setTimeout(8000);
+    rawTlsOk = probe.connect("github.com", 443);
+    probe.stop();
+  }
+
   NetworkClientSecure client;
   client.useBuiltinCACertBundle();  // full chain validation, no PEM to maintain
   client.setTimeout(30000);
@@ -125,8 +138,9 @@ void OTAHandler::loopCloud() {
   if (code != HTTP_CODE_OK) {
     if (code < 0) {
       snprintf(cloudErr, sizeof(cloudErr),
-               "TLS to github.com failed (heap %lu, clock %s).",
-               (unsigned long)heap0, clockOk ? "ok" : "STALE - NTP?");
+               "TLS failed (heap %lu/max %lu, clock %s, raw-TLS %s).",
+               (unsigned long)heap0, (unsigned long)ESP.getMaxAllocHeap(),
+               clockOk ? "ok" : "STALE?", rawTlsOk ? "ok" : "NO");
     } else {
       snprintf(cloudErr, sizeof(cloudErr), "download refused: HTTP %d.", code);
     }

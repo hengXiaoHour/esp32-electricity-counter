@@ -223,5 +223,7 @@ Serial console (`help` for the list): `status`, `wifi`, `set_ap`, `setwifi`,
 
 3.2.4 notes: version-stamp re-test from the USB-flashed 3.2.3 board — same code, proving Check → Update end to end.
 
+3.2.5 notes: splits the 3.2.4 `TLS failed` (TCP ok, clock ok, 78 KB heap) — reports the largest contiguous block plus a handshake-only raw-TLS probe, so `ota status` tells fragmentation apart from chain validation. The probe never sends HTTP or firmware; the download stays validated.
+
 3.0.0 notes: AP-only architecture, NVS-persisted AP name/password, CLI LED
 type switch, pinned-down AsyncTCP patches. Full history: `gh release list`.

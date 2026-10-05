@@ -593,8 +593,8 @@ def main():
 
     # --- firmware version / size ---------------------------------------
     m = re.search(r'#define FIRMWARE_VERSION "([^"]+)"', cfg)
-    c.add("FIRMWARE_VERSION is the 3.2.4 cloud-OTA release",
-          m and m.group(1) == "3.2.4", "found %s" % (m.group(1) if m else "none"))
+    c.add("FIRMWARE_VERSION is the 3.2.5 cloud-OTA release",
+          m and m.group(1) == "3.2.5", "found %s" % (m.group(1) if m else "none"))
 
     # --- cloud OTA: github release .bin -> inactive slot -> reboot --------
     # One code path for serial / dashboard / cloud: the click becomes a
@@ -615,8 +615,9 @@ def main():
     c.add("cloud OTA refuses without a home link (fallback AP has no internet)",
           _ota_verb is not None and "stationUp()" in _ota_verb_b,
           "a download would be armed with nowhere to go")
-    c.add("the download validates the TLS chain (no setInsecure shortcut)",
-          "useBuiltinCACertBundle()" in ota_cpp and "setInsecure" not in ota_cpp,
+    c.add("the download validates the TLS chain (setInsecure lives only on the fenced probe)",
+          "useBuiltinCACertBundle()" in ota_cpp and
+          ota_cpp.count("setInsecure") == 1 and "probe.setInsecure()" in ota_cpp,
           "a radio-link attacker could serve any image")
     c.add("the download follows the release redirect to the CDN",
           "setFollowRedirects(" in ota_cpp,
@@ -653,8 +654,12 @@ def main():
           "the flag clears on entry and the banner can never show")
     c.add("a failed download names the stage (TCP probe vs TLS)",
           "no route to github.com:443" in ota_cpp and
-          "TLS to github.com failed" in ota_cpp and "heap %lu" in ota_cpp,
+          "raw-TLS %s" in ota_cpp and "getMaxAllocHeap" in ota_cpp,
           "HTTP -1 alone cannot tell DNS from TLS")
+    c.add("the raw-TLS probe is fenced: handshake only, never the download",
+          ota_cpp.count("setInsecure") == 1 and "probe.stop()" in ota_cpp and
+          "http.begin(client, cloudUrl)" in ota_cpp,
+          "an insecure client must never carry firmware bytes")
     c.add("the arm reply promises the banner, not live progress",
           "banner above while it downloads" in ota_cpp and
           "progress above" not in ota_cpp,

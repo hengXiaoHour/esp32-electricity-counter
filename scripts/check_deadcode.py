@@ -545,7 +545,9 @@ def main():
             ("version stamp kept", "--version" in build_sh),
             ("banner flag spans the download", "cloudActive" in ota_h_s),
             ("status reports mid-download", "cloudBusy || cloudActive" in ota_cpp_s),
-            ("TCP probe stages the failure", "no route to github.com:443" in ota_cpp_s)]:
+            ("TCP probe stages the failure", "no route to github.com:443" in ota_cpp_s),
+            ("raw-TLS probe fenced off the download",
+             ota_cpp_s.count("setInsecure") == 1 and "probe.stop()" in ota_cpp_s)]:
         if not present:
             ota_missing.append(what)
     r.add("the cloud-OTA feature is still wired end to end", not ota_missing,
