@@ -424,6 +424,10 @@ billingMonth = YYYYMM
 if (billingMonth != nvs->loadLastMonth()) → zero all counters, clear latches,
                                           stop buzzer, persist month immediately
 ```
+with two never-wipe exceptions: an UNSET marker (`0` — fresh board, or an
+unreadable read) anchors instead of wiping (`Billing anchor initialized —
+counters kept`), and a marker AHEAD of the computed month re-anchors down
+instead of wiping (forward-only, below).
 
 Changing the day re-anchors `last_month` to the new cycle **without** zeroing:
 without that, the stored marker (computed under the old day) would read as a
@@ -447,6 +451,22 @@ rollover has committed, later cycles short-circuit at the month comparison.
 A latch here is actively harmful — on a fresh board the stored month is `0`, so
 the first valid NTP would consume the single allowed rollover and the real month
 boundary would then be skipped for the rest of that boot session.
+
+Reboot safety (2026-10-05: typing `reboot` wiped every counter, twice, 1 s
+apart). Two live grenades on the restart path, both fixed:
+1. `cmdReboot` used to call `nvs->end()` before its 1 s delay. A closed
+   Preferences handle makes every read return its default, so `last_month`
+   read as `0` while the sensor task kept running — a fake fresh-board marker
+   that fired the rollover before the reset. The `end()` is deleted:
+   `ESP.restart()` needs nothing closed, `flushEnergy`'s commit already left
+   flash consistent, and the handle must stay open until the reset lands.
+2. The RTC restore did a plain `millis() - rtcLastMillis`, but `millis()`
+   resets to 0 across `ESP.restart()` while RTC memory persists — the unsigned
+   subtraction underflows to ~49.7 days in the FUTURE, which reads as forward
+   billing progress and wipes. A smaller `millis()` than the stored one now
+   means restarted, and the elapsed time is just the time since this boot began.
+3. Belt and braces: the unset-marker guard above makes the whole class
+   wipe-safe even if a closed/mid-commit read ever returns 0 again.
 
 The zeros and the new billing month are written in **one** `commit()`, so a
 reboot can never restore stale kWh alongside an already-advanced month.

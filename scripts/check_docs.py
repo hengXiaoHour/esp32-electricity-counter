@@ -720,6 +720,37 @@ def main():
           "if (billingMonth < marker)" in lm_code
           and "re-anchored, counters kept" in lm_code,
           "a backward correction would wipe real counters")
+    # --- reboot must not close NVS -------------------------------------
+    # 2026-10-05: cmdReboot called nvs->end() before its 1 s delay. A closed
+    # Preferences handle returns defaults on every read (verified against the
+    # installed core: getInt returns defaultValue, put* are no-ops), so the
+    # sensor task's rollover check read last_month as 0 mid-reboot and fired.
+    # The handle must stay open until ESP.restart() lands.
+    c.add("the reboot path never closes the NVS handle",
+          "nvs->end()" not in strip_comments(ch),
+          "a closed handle reads last_month as 0 and the reboot wipes")
+    # --- unset marker anchors, never wipes -------------------------------
+    # Marker 0 = fresh board or an unreadable read (closed handle, mid-commit
+    # race). There is no previous month to close out, so anchoring keeps
+    # counters that wiping would destroy on zero evidence. Scoped to the
+    # rollover body: the guard must sit before the zeroing branch.
+    _ro = re.search(r"void LimitManager::rolloverIfNeeded\(\) \{([\s\S]*?)\n\}\n",
+                    strip_comments(lm))
+    _ro_b = _ro.group(1) if _ro else ""
+    c.add("an unset billing marker anchors instead of wiping",
+          _ro is not None and
+          "marker == 0" in _ro_b and
+          "counters kept" in _ro_b and
+          _ro_b.index("marker == 0") < _ro_b.index("counters zeroed"),
+          "a closed-handle read of last_month would wipe real counters")
+    # --- RTC restore survives ESP.restart --------------------------------
+    # millis() resets to 0 across a restart while RTC memory persists, so a
+    # plain millis() - rtcLastMillis underflows to ~49.7 days in the future —
+    # forward billing progress, i.e. a wipe. A smaller millis() than the
+    # stored one means restarted: elapsed is the time since this boot began.
+    c.add("the RTC restore cannot jump forward across a restart",
+          re.search(r">=\s*rtcLastMillis", strip_comments(ts_cpp)) is not None,
+          "every reboot would restore a clock ~50 days ahead and wipe")
     # --- test_force_rollover is audited ----------------------------------
     # It moves the marker silently and the wipe lands a cycle later, so an
     # unaudited arming reads as a causeless "Monthly reset" — exactly the

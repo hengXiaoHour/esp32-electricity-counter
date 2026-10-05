@@ -134,6 +134,24 @@ void LimitManager::rolloverIfNeeded() {
   int32_t marker = nvs->loadLastMonth();
   if (billingMonth == marker) return;
 
+  // An UNSET marker (0) is not a month to roll over from — it is a fresh
+  // board, a never-written namespace, or an unreadable read (NVS handle
+  // closed mid-commit on the other core: closed reads return the default 0,
+  // see Preferences::getInt). Wiping here would destroy real accumulation on
+  // zero evidence — the 2026-10-05 reboot wipes read exactly this 0. With no
+  // previous month to compare against there is nothing to close out, so
+  // anchor the marker to the current cycle and keep every counter. A true
+  // fresh board holds 0.0 kWh in RAM anyway, so anchoring is observably
+  // identical to wiping there; the next real month boundary still fires.
+  if (marker == 0) {
+    STATUS_LOG("  [ROLLOVER] marker unset — anchoring to %ld, counters kept\n",
+               (long)billingMonth);
+    nvs->saveLastMonth(billingMonth);
+    nvs->commit();
+    logForensicEvent(0, STATUS_OK, "Billing anchor initialized — counters kept", 0.0f);
+    return;
+  }
+
   // Forward only. A marker AHEAD of the computed month means the clock moved
   // backward since the marker was written (NTP/browser correction landing) or
   // the marker came from the future — wiping here would destroy real

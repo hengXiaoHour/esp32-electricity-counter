@@ -437,7 +437,12 @@ void ConsoleHandler::flushEnergy() {
 void ConsoleHandler::cmdReboot(String &out) {
   consoleAppendf(out, "%s", "  Rebooting...");
   flushEnergy();
-  nvs->end();
+  // No nvs->end() here on purpose. The handle must stay OPEN until the reset:
+  // end() makes every read return its default (last_month reads as 0), so the
+  // sensor task's rollover check, which keeps running during the delay below,
+  // would see a fake fresh-board marker and zero a month of counters before
+  // the restart (the 2026-10-05 reboot wipes). ESP.restart() needs nothing
+  // closed — flushEnergy's commit already left flash consistent.
   delay(1000);
   ESP.restart();
 }

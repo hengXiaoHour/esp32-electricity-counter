@@ -27,7 +27,15 @@ void TimeSync::begin() {
   // stale epoch - that would produce a wildly wrong time.
   if (rtcValid && rtcLastEpoch >= PLAUSIBLE_MIN_EPOCH &&
       rtcLastEpoch <= PLAUSIBLE_MAX_EPOCH) {
-    uint32_t elapsedMs = millis() - rtcLastMillis;   // wrap-safe
+    // Across ESP.restart() millis() resets to 0 while RTC memory persists, so
+    // a plain (millis() - rtcLastMillis) underflows to ~49.7 days in the
+    // FUTURE and the first sensor cycle would read it as forward billing
+    // progress and wipe the month. A smaller millis() than the stored one
+    // means restarted: the elapsed time is just the time since this boot
+    // began (seconds — billing-safe, it cannot cross a month boundary).
+    uint32_t nowMs = millis();
+    uint32_t elapsedMs = (nowMs >= rtcLastMillis) ? (nowMs - rtcLastMillis)
+                                                  : nowMs;
     struct timeval tv;
     tv.tv_sec = (time_t)(rtcLastEpoch + elapsedMs / 1000);
     tv.tv_usec = (suseconds_t)((elapsedMs % 1000) * 1000);
