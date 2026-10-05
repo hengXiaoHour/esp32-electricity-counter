@@ -63,7 +63,7 @@ DEFAULTS = {
     # of silently desyncing the mock from the firmware.
     "current_cal": [100.0] * 5,
     "noise_floor": [0.0] * 5,
-    "lpf_alpha": [0.2] * 5,
+    "lpf_alpha": [1.0] * 5,
     "rms_samples": 1000,
 }
 

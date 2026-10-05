@@ -303,7 +303,7 @@ signalRMS = sqrt( rawRMS² - floor² )      // 0 if rawRMS <= floor
 `signalRMS` is then smoothed by a per-channel EMA:
 
 ```
-filtered += alpha * (signalRMS - filtered)   // alpha = lpfAlpha[ch], default 0.2
+filtered += alpha * (signalRMS - filtered)   // alpha = lpfAlpha[ch], default 1.0 (no filtering)
 ```
 
 The first sample after any alpha/noise-floor change initialises `filtered`

@@ -138,7 +138,7 @@ constexpr const char *AP_PASS_DEFAULT = "configure123";
 #define MONTHLY_RESET_DAY 25
 
 // Default per-channel LPF alpha (EMA on post-RMS estimate; 1.0 = no filtering)
-#define DEFAULT_LPF_ALPHA 0.2f
+#define DEFAULT_LPF_ALPHA 1.0f
 
 // ==============================
 // Auto-Recovery (limit trip)

@@ -220,14 +220,28 @@ function apValidationMessage(ssidRaw, pass) {
   return '';
 }
 
+// Display formatting only: EC64C998B0EC -> ec:64:c9:98:b0:ec. RTDB paths
+// and stored ids keep the raw form; only what the eye reads is formatted.
+function macFmt(id) {
+  if (typeof id !== 'string' || !/^[0-9a-fA-F]{12}$/.test(id)) return id;
+  return id.toLowerCase().replace(/(..)(..)(..)(..)(..)(..)/, '$1:$2:$3:$4:$5:$6');
+}
+
+// Eye icons for the password reveal buttons (see pw-eye in style.css).
 // Shows what is typed, never what is stored: the board never sends a
 // password back, so this only reveals the field being edited.
+const EYE_OPEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/><path d="M4 4l16 16"/></svg>';
 function togglePw(id, btn) {
   const el = document.getElementById(id);
   if (!el) return;
   const show = el.type === 'password';
   el.type = show ? 'text' : 'password';
-  if (btn) btn.textContent = show ? 'Hide' : 'Show';
+  if (btn) {
+    btn.innerHTML = show ? EYE_OFF : EYE_OPEN;
+    btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+    btn.setAttribute('title', show ? 'Hide password' : 'Show password');
+  }
 }
 
 function saveApSettings() {
@@ -818,11 +832,11 @@ function updateDashboard(data) {
       txt = 'off';
       col = 'var(--muted, #8a8a8a)';
     } else if (typeof c.age === 'number' && c.age >= 0) {
-      txt = 'pushing — last ok ' + c.age + 's ago' + (c.dev ? ' · ' + c.dev : '');
+      txt = 'pushing — last ok ' + c.age + 's ago' + (c.dev ? ' · ' + macFmt(c.dev) : '');
       col = c.ok ? 'var(--ok, #4ade80)' : 'var(--warn, #f59e0b)';
-      if (!c.ok) txt = 'enabled, last push FAILED' + (c.dev ? ' · ' + c.dev : '');
+      if (!c.ok) txt = 'enabled, last push FAILED' + (c.dev ? ' · ' + macFmt(c.dev) : '');
     } else {
-      txt = 'enabled — no push yet' + (c.dev ? ' · ' + c.dev : '');
+      txt = 'enabled — no push yet' + (c.dev ? ' · ' + macFmt(c.dev) : '');
       col = 'var(--warn, #f59e0b)';
     }
     cloudStatusEl.textContent = txt;
@@ -978,7 +992,7 @@ function updateDashboard(data) {
     data.ch.forEach((_, idx) => {
       const currCal = (data.currentCalibration && data.currentCalibration[idx]) || 100;
       const nf = (data.noiseFloor && data.noiseFloor[idx]) || 0;
-      const lpf = (data.lpfAlpha && data.lpfAlpha[idx]) != null ? data.lpfAlpha[idx] : 0.2;
+      const lpf = (data.lpfAlpha && data.lpfAlpha[idx]) != null ? data.lpfAlpha[idx] : 1.0;
 
       const header = document.createElement('div');
       header.className = 'cal-collapse-header';
@@ -1011,7 +1025,6 @@ function updateDashboard(data) {
           <label>LPF Alpha:</label>
           <div class="cal-field">
             <input type="number" id="lpf_${idx}" step="0.01" min="0.01" max="1" value="${lpf}" oninput="this.dataset.userSet='true'">
-            <span class="hint-inline">(0.01-1, 1=none)</span>
           </div>
           <button class="btn-sm" onclick="sendLpfAlpha(${idx})">Set</button>
         </div>
@@ -1546,7 +1559,7 @@ function startDemoMode() {
       lastMonth: 202608,
       epoch: Math.floor(Date.now() / 1000),
       ota: false,
-      lpfAlpha: [0.2, 0.2, 0.2, 0.2, 0.2, 0.2],
+      lpfAlpha: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
       azActive: false, azChannel: -1, azProgress: 0, azQueue: [],
       ch: [
         { n: "Counter 1", a: 4.8 + Math.random(), w: 1080 + Math.random() * 20, kwh: 42.4, pf: 0.95, mkwh: 48, s: 0 },

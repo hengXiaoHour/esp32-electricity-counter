@@ -622,7 +622,7 @@ function check(name, cond, detail) {
   await page.waitForTimeout(1200);
   const cloudStatus = await page.locator('#cloudStatus').textContent();
   check('the status line reports pushing with the device id',
-        /pushing/i.test(cloudStatus) && /A1B2C3D4E5F6/.test(cloudStatus),
+        /pushing/i.test(cloudStatus) && /a1:b2:c3:d4:e5:f6/.test(cloudStatus),
         'status = "' + cloudStatus + '"');
   const boardSoFar = await page.evaluate(() => window.__wsSeen.slice());
   const passLeaks = boardSoFar.filter(m => JSON.stringify(m).indexOf('SECRET-PASS-123') >= 0);

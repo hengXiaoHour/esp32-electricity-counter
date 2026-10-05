@@ -79,8 +79,8 @@ until calibration finished.
 - **Dashboard**: the broadcast sync is gated on `data.azActive !== true`, so the LPF box
   holds its last real value while the banner/chips communicate the busy state; it resumes
   syncing the instant the broadcast clears `azActive`.
-- **Demo mock** broadcasts `lpfAlpha: [0.2 ×5]` plus reset az fields, so demo mode does
-  not show `1.00` LPF boxes and cannot race the gate.
+- **Demo mock** broadcasts `lpfAlpha: [1.0 ×5]` (the firmware default) plus reset
+  az fields, so demo mode matches a fresh board and cannot race the gate.
 
 ### Clock status is an indicator, not decoration (2026-10-02)
 Settings shows the board's reported clock state (`#timeStatus`), including the

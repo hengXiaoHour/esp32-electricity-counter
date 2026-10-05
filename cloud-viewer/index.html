@@ -14,7 +14,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="style.css?v=04c89541">
+<link rel="stylesheet" href="style.css?v=1ce45890">
 <script>
 // The board is always on location.host, so there is no session to restore and
 // nothing to decide before the first paint. This only hides the connect panel
@@ -63,7 +63,7 @@
   <!-- Sidebar (desktop) -->
   <aside id="sidebar">
     <div class="side-brand">
-      <button id="menuToggle" class="icon-btn" onclick="toggleSidebar()" title="Expand sidebar">&#9776;</button>
+      <button id="menuToggle" class="icon-btn" onclick="toggleSidebar()" title="Expand sidebar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="4"/><path d="M9.5 5v14"/><path d="M16.5 9.5l-3 2.5 3 2.5"/></svg></button>
       <div class="brand-text">
         <span class="brand-title">ESP32 Counter</span>
       </div>
@@ -239,7 +239,7 @@
             <div class="cal-field">
               <input type="password" id="cloudAuth" placeholder="Account password" autocomplete="off" oninput="this.dataset.userSet='true'">
             </div>
-            <button class="btn-sm" onclick="togglePw('cloudAuth',this)">Show</button>
+            <button class="btn-sm pw-eye" onclick="togglePw('cloudAuth',this)" aria-label="Show password" title="Show password"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
           </div>
           <div class="cal-actions">
             <button class="btn-sm" id="cloudSaveBtn" onclick="saveCloudSettings()">Save</button>
@@ -266,7 +266,7 @@
             <div class="cal-field">
               <input type="password" id="staPass" placeholder="Your home WiFi password" autocomplete="off" oninput="this.dataset.userSet='true'">
             </div>
-            <button class="btn-sm" onclick="togglePw('staPass',this)">Show</button>
+            <button class="btn-sm pw-eye" onclick="togglePw('staPass',this)" aria-label="Show password" title="Show password"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
           </div>
           <div class="cal-actions">
             <button class="btn-sm" id="staSaveBtn" onclick="saveStaSettings()">Save</button>
@@ -285,10 +285,9 @@
           <div class="cal-row-single">
             <label for="apPass">Password:</label>
             <div class="cal-field">
-              <input type="password" id="apPass" placeholder="Loading…" autocomplete="off" oninput="this.dataset.userSet='true'">
-              <span class="hint-inline">(8-63)</span>
+              <input type="password" id="apPass" placeholder="8-63 characters" autocomplete="off" oninput="this.dataset.userSet='true'">
             </div>
-            <button class="btn-sm" onclick="togglePw('apPass',this)">Show</button>
+            <button class="btn-sm pw-eye" onclick="togglePw('apPass',this)" aria-label="Show password" title="Show password"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
           </div>
           <div class="cal-actions">
             <button class="btn-sm" id="apSaveBtn" onclick="saveApSettings()">Save</button>
@@ -309,7 +308,6 @@
             <label for="rmsSamples">RMS Samples:</label>
             <div class="cal-field">
               <input type="number" id="rmsSamples" step="50" min="100" max="2000" value="1000" placeholder="100-2000" oninput="this.dataset.userSet='true'">
-              <span class="hint-inline">(100-2000)</span>
             </div>
             <button class="btn-sm" onclick="setRmsSamples()">Set</button>
           </div>
@@ -317,7 +315,6 @@
             <label for="azBatches">Auto-Zero Batches:</label>
             <div class="cal-field">
               <input type="number" id="azBatches" step="1" min="1" max="64" value="1" placeholder="1-64" oninput="this.dataset.userSet='true'">
-              <span class="hint-inline">(1-64)</span>
             </div>
             <button class="btn-sm" onclick="setAzBatches()">Set</button>
           </div>
@@ -412,8 +409,8 @@
   </div>
 </div>
 
-<script src="script.js?v=04c89541"></script>
-<script src="cloud.js?v=04c89541"></script>
+<script src="script.js?v=1ce45890"></script>
+<script src="cloud.js?v=1ce45890"></script>
 <script>
 if ('serviceWorker' in navigator && window.isSecureContext) {
   window.addEventListener('load', function () {

@@ -100,8 +100,8 @@ function cl_googleToggle() {
 
 // Cloud payload -> local snapshot shape (see updateDashboard in script.js).
 // Push sends fw (not firmwareVersion) and mcu (not mcuTemp); map both.
-// Anything the push does not carry (calibration, AP/STA names, lastMonth)
-// is simply absent and the dashboard's typeof guards skip it.
+// Anything the push does not carry (calibration values) is simply absent
+// and the dashboard's typeof guards skip it.
 // RTDB may hand arrays back as keyed objects after a delete; normalise.
 function cl_toArray(x) {
   if (Array.isArray(x)) return x;
@@ -126,7 +126,8 @@ function cl_adapt(latest, mac) {
   d.apIsDefault = latest.apIsDefault;
   d.staSsid = (typeof latest.staSsid === 'string') ? latest.staSsid : undefined;
   d.staIsDefault = latest.staIsDefault;
-  d.lastMonth = (typeof latest.lastMonth === 'number') ? latest.lastMonth : undefined;
+  d.lastMonth = (typeof latest.lastMonth === 'number') ? latest.lastMonth
+    : (latest.cloud && typeof latest.cloud.lastMonth === 'number') ? latest.cloud.lastMonth : undefined;
   d.mcuTemp = (latest.mcu === undefined || latest.mcu === null) ? null : latest.mcu;
   d.eco = !!latest.eco;
   d.firmwareVersion = latest.fw;

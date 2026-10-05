@@ -317,7 +317,11 @@ bool CloudPush::snapshot(SystemData *sysData, SemaphoreHandle_t *mutex, String &
   body += timeOk ? "true" : "false";
   body += ",\"age\":";
   body += timeAge;
-  body += "},\"cloud\":{\"en\":";
+  // Billing month top-level, same key as system_json.cpp - the viewer reads
+  // latest.lastMonth. Without it the cloud About panel shows "--" forever.
+  body += "},\"lastMonth\":";
+  body += nvs ? (long)nvs->loadLastMonth() : 0;
+  body += ",\"cloud\":{\"en\":";
   body += cloudEn ? "true" : "false";
   body += ",\"ok\":";
   body += cloudOk ? "true" : "false";
@@ -335,10 +339,6 @@ bool CloudPush::snapshot(SystemData *sysData, SemaphoreHandle_t *mutex, String &
     body += cloudEscapeOut(email);
     body += "\"";
   }
-  // Billing month the board is enforcing (system_json.cpp reports the same
-  // value locally). Without it the cloud About panel shows "--" forever.
-  body += ",\"lastMonth\":";
-  body += nvs ? (long)nvs->loadLastMonth() : 0;
   body += "},\"ch\":[";
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {
     body += "{\"n\":\"";
