@@ -59,6 +59,12 @@ void buildSystemJson(const SystemData &data, PowerCalculator *powerCalc,
   json += data.wifiRSSI;
   json += ",\"ap\":";
   json += data.apMode ? "true" : "false";
+  // Interface addresses the UI prints (both modes). Empty = down.
+  json += ",\"staIp\":\"";
+  json += data.staIp;
+  json += "\",\"apIp\":\"";
+  json += data.apIp;
+  json += "\"";
   json += ",\"voltageCalibration\":";
   json += String(data.voltageCalibration, 1);
   json += ",\"currentCalibration\":[";
@@ -105,6 +111,10 @@ void buildSystemJson(const SystemData &data, PowerCalculator *powerCalc,
   json += (long)time(nullptr);
   json += ",\"lastMonth\":";
   json += nvs->loadLastMonth();
+  // Billing reset day the rollover enforces (NVS, factory 25). The About
+  // panel edits this instead of showing a dead value.
+  json += ",\"resetDay\":";
+  json += nvs->loadResetDay();
   // The AP identity actually in effect, so the dashboard can show the user what
   // to edit instead of a placeholder. Without this the Access Point panel always
   // looked like a fresh board, whatever was stored - you could rename the

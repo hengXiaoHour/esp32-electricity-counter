@@ -305,6 +305,7 @@ bool processCommand(NVSManager *nvs, SystemData *sysData,
     nvs->saveVoltageCalibration(DEFAULT_VOLTAGE_CALIBRATION);
     nvs->saveRmsSamples(MAX_RMS_SAMPLES / 2);
     nvs->saveAzBatches(PowerCalculator::AZ_BATCHES_DEFAULT);
+    nvs->saveResetDay(MONTHLY_RESET_DAY);
     powerCalc->voltageCal = DEFAULT_VOLTAGE_CALIBRATION;
     powerCalc->rmsSamples = MAX_RMS_SAMPLES / 2;
     powerCalc->setRmsSamples(MAX_RMS_SAMPLES / 2);

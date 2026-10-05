@@ -657,6 +657,66 @@ def main():
         c.add("the host test's copy of appendJsonEscaped matches the firmware's",
               ok, "firmware branches=%s test branches=%s" % (fw_b, tst_b))
 
+    # --- billing reset day (NVS, not hardcoded) -------------------------
+    # The rollover used to anchor on the MONTHLY_RESET_DAY literal; now the
+    # day lives in NVS (`reset_day`) and the literal is only the factory
+    # default + the no-NVS fallback. A hardcoded comparison coming back
+    # would silently ignore the user's setting, so the absence is asserted.
+    lm_code = strip_comments(lm)
+    c.add("the rollover reads the reset day from NVS, not the #define",
+          "loadResetDay()" in lm_code
+          and re.search(r">=\s*MONTHLY_RESET_DAY", lm_code) is None,
+          "rollover ignores a user-set day")
+    c.add("changing the day re-anchors the month without zeroing counters",
+          "saveResetDay" in lm_code and "saveLastMonth(billingMonthFor" in lm_code,
+          "a day change must not wipe kWh as a side effect")
+    c.add("the NVS reset-day accessors persist under reset_day",
+          'getUChar("reset_day"' in nvs and 'saveResetDay' in nvs_h
+          and 'loadResetDay' in nvs_h)
+    c.add("the CLI spells reset_day <1-28> and documents it in help",
+          'startsWith("reset_day")' in ch and "cmdResetDay" in ch
+          and "reset_day <1-28>" in ch)
+    c.add("factory reset restores the default reset day too",
+          "saveResetDay(MONTHLY_RESET_DAY)" in cmd)
+    c.add("both snapshots publish the enforced reset day",
+          re.search(r'\\?"resetDay\\?"', sysjson) is not None
+          and re.search(r'\\?"resetDay\\?"', cl_cpp) is not None,
+          "About panel would show a dead value")
+    c.add("the About panel edits the day through the shared console line",
+          'id="resetDay"' in html and 'id="resetDayBtn"' in html
+          and "data.resetDay" in js and "reset_day " in js,
+          "a second JSON verb would split the CLI/UI code paths")
+    # --- RSSI display filter ---------------------------------------------
+    # Raw scans jitter several dB and the header icon bounced every push.
+    # The filter lives at the single writer (updateSharedData), so the local
+    # snapshot, the cloud snapshot and the icon all read the same smoothed
+    # value. Filtering in either snapshot builder instead would let them
+    # disagree with each other.
+    c.add("RSSI is EMA-smoothed once where shared data is written",
+          "rssiSm += 0.1f" in ino and "rssiInit" in ino
+          and "wifiRSSI = wifiMgr.staRSSI()" not in ino
+          and "wifiMgr.staRSSI()" in ino,
+          "raw RSSI reaches the UI and the icon flickers")
+    # --- interface addresses (both modes) --------------------------------
+    # The UI prints the address to open in STA and in fallback-AP mode. The
+    # addresses are captured once in updateSharedData() (the single writer),
+    # so the local snapshot and the cloud push can never disagree. A panel
+    # that read location.host instead would show the HOSTING domain on the
+    # cloud page, never the board.
+    c.add("both snapshots publish the STA + AP interface addresses",
+          re.search(r'\\"staIp\\"', sysjson) is not None
+          and re.search(r'\\"apIp\\"', sysjson) is not None
+          and re.search(r'\\"staIp\\"', cl_cpp) is not None
+          and re.search(r'\\"apIp\\"', cl_cpp) is not None,
+          "a mode shows no address in the UI")
+    c.add("the addresses are captured where shared data is written",
+          "WiFi.localIP()" in ino and "WiFi.softAPIP()" in ino,
+          "snapshot builders would read the radio on different tasks")
+    c.add("the STA/AP panels have an IP row each",
+          'id="staIp"' in html and 'id="apIp"' in html
+          and "getElementById('staIp')" in js and "getElementById('apIp')" in js,
+          "the address lives only in a status sentence")
+
     # --- README claims about the tree ----------------------------------
     c.add("README documents the AsyncTCP patch step that patch_async_tcp.py exists for",
           "patch_async_tcp.py" in rdme and (ROOT / "scripts/patch_async_tcp.py").exists())

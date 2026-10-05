@@ -41,8 +41,6 @@ var cl_mac = null;
 var cl_latestRef = null;
 var cl_ackRef = null;
 var cl_lastRxMs = 0;
-var cl_lastSentId = null;
-var cl_lastSentAt = 0;
 var cl_userEmail = null;
 var cl_isAdmin = false;
 var cl_staleTimer = null;
@@ -126,8 +124,11 @@ function cl_adapt(latest, mac) {
   d.apIsDefault = latest.apIsDefault;
   d.staSsid = (typeof latest.staSsid === 'string') ? latest.staSsid : undefined;
   d.staIsDefault = latest.staIsDefault;
+  d.staIp = (typeof latest.staIp === 'string' && latest.staIp) ? latest.staIp : undefined;
+  d.apIp = (typeof latest.apIp === 'string' && latest.apIp) ? latest.apIp : undefined;
   d.lastMonth = (typeof latest.lastMonth === 'number') ? latest.lastMonth
     : (latest.cloud && typeof latest.cloud.lastMonth === 'number') ? latest.cloud.lastMonth : undefined;
+  d.resetDay = (typeof latest.resetDay === 'number') ? latest.resetDay : undefined;
   d.mcuTemp = (latest.mcu === undefined || latest.mcu === null) ? null : latest.mcu;
   d.eco = !!latest.eco;
   d.firmwareVersion = latest.fw;
@@ -280,7 +281,6 @@ function cl_loadDevices() {
 
 function cl_selectDevice(mac) {
   cl_mac = mac;
-  cl_lastSentId = null;
   cl_status('No command sent yet.');
   if (cl_latestRef) { cl_latestRef.off(); cl_latestRef = null; }
   if (cl_ackRef) { cl_ackRef.off(); cl_ackRef = null; }
@@ -365,10 +365,7 @@ function sendCommand(obj) {
   if (obj.cmd === 'set_ap') { var a = document.getElementById('apPass'); if (a) a.value = ''; }
   if (obj.cmd === 'setwifi') { var s = document.getElementById('staPass'); if (s) s.value = ''; }
   if (obj.cmd === 'setcloud') { var c = document.getElementById('cloudAuth'); if (c) c.value = ''; }
-  if (obj.cmd === 'console') { var ci = document.getElementById('consoleInput'); }
   var id = String(Date.now()) + '-' + Math.floor(Math.random() * 1000000);
-  cl_lastSentId = id;
-  cl_lastSentAt = Date.now();
   cl_status('sent ' + obj.cmd + ' (id ' + id + '), waiting for board (polls every ~2s)…');
   var p = {};
   var promise = new Promise(function (resolve, reject) { p.resolve = resolve; p.reject = reject; });

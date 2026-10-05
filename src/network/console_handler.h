@@ -114,6 +114,7 @@ private:
   void cmdCloudDiag(String &out);
   void cmdSetAp(const String &args, String &out);
   void cmdResetAp(String &out);
+  void cmdResetDay(const String &args, String &out);
   void cmdLed(const String &args, String &out);
 
   // Push RAM energy counters to NVS + commit. Called before every

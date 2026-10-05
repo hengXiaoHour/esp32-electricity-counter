@@ -777,6 +777,14 @@ function updateDashboard(data) {
     }
   }
 
+  // Billing reset day the rollover enforces. Same fill pattern as the AP
+  // name: the board reports the stored value, the userSet guard keeps a
+  // half-typed day from being overwritten by the next push.
+  const rdEl = document.getElementById('resetDay');
+  if (rdEl && !rdEl.dataset.userSet && typeof data.resetDay === 'number') {
+    rdEl.value = data.resetDay;
+  }
+
   // Access Point panel: show the identity the board is actually broadcasting, so
   // the user edits the stored value instead of a placeholder that looks like a
   // fresh board. The password is deliberately never sent - the board reports
@@ -797,6 +805,31 @@ function updateDashboard(data) {
       : 'unchanged (custom — type to replace)';
   }
 
+  // Connection Board row + Home/AP IP rows. The board publishes both
+  // interface addresses (staIp while joined, apIp while the fallback is up,
+  // empty = down), so the UI prints the address to open in BOTH modes.
+  // Falls back to location.host only on the board-served page with old
+  // firmware (the cloud page's host is the hosting domain, never the board).
+  const boardIpEl = document.getElementById('connectedIp');
+  if (boardIpEl && !isDemo) {
+    const sIp = (typeof data.staIp === 'string' && data.staIp) ? data.staIp : '';
+    const aIp = (typeof data.apIp === 'string' && data.apIp) ? data.apIp : '';
+    if (sIp && aIp) boardIpEl.textContent = sIp + ' • ' + aIp;
+    else if (sIp || aIp) boardIpEl.textContent = sIp || aIp;
+    else if ((typeof cl_mac === 'undefined' || !cl_mac)
+             && boardIpEl.textContent === '--') boardIpEl.textContent = location.host;
+  }
+  const staIpEl = document.getElementById('staIp');
+  if (staIpEl) {
+    const sIp = (typeof data.staIp === 'string' && data.staIp) ? data.staIp : '';
+    staIpEl.textContent = sIp || (data.wifi ? '…' : '—');
+  }
+  const apIpEl = document.getElementById('apIp');
+  if (apIpEl) {
+    const aIp = (typeof data.apIp === 'string' && data.apIp) ? data.apIp : '';
+    apIpEl.textContent = aIp || 'OFF';
+  }
+
   // Home-network panel. The SSID is published in the snapshot, but the
   // password never is — only whether the board currently holds one. Same
   // dataset.userSet guard, for the same reason: this frame arrives several
@@ -804,8 +837,10 @@ function updateDashboard(data) {
   const staStatusEl = document.getElementById('staStatus');
   if (staStatusEl) {
     const up = !!data.wifi;
+    const sIp = (typeof data.staIp === 'string' && data.staIp) ? data.staIp : '';
     staStatusEl.textContent = up
       ? 'Connected' + (typeof data.rssi === 'number' ? ' ' + Math.abs(data.rssi) + ' dB' : '')
+        + (sIp ? ' • ' + sIp : '')
       : 'not connected';
     staStatusEl.style.color = up ? 'var(--ok, #4ade80)' : 'var(--muted, #8a8a8a)';
   }
@@ -1442,6 +1477,21 @@ function setAzBatches() {
   });
 }
 
+// Billing reset day goes through the console line, not a JSON verb: the CLI
+// (`reset_day <1-28>`), the dashboard console box and this button all share
+// the one consoleHandler implementation, so there is exactly one code path
+// to keep correct. Works on the cloud viewer too (its sendCommand also
+// carries console lines over /cmd).
+function setResetDay() {
+  const inp = document.getElementById('resetDay');
+  const val = parseInt(inp.value);
+  if (isNaN(val) || val < 1 || val > 28) return showToast('Reset Day must be 1-28');
+  delete inp.dataset.userSet;
+  sendCommand({ cmd: 'console', line: 'reset_day ' + val }).then(() => {
+    showToast(`Billing reset day set to ${val}`);
+  }).catch(() => {});
+}
+
 function handleResetNvs() {
   const btn = document.getElementById('resetNvsBtn');
   if (btn.dataset.confirm === 'true') {
@@ -1450,6 +1500,7 @@ function handleResetNvs() {
     delete document.getElementById('rmsSamples').dataset.userSet;
     delete document.getElementById('azBatches').dataset.userSet;
     delete document.getElementById('voltCal').dataset.userSet;
+    delete document.getElementById('resetDay').dataset.userSet;
     for (let i = 0; i < 6; i++) {
       const nf = document.getElementById(`nf_${i}`);
       if (nf) delete nf.dataset.userSet;
@@ -1555,8 +1606,11 @@ function startDemoMode() {
       wifi: true,
       ap: false,
       rssi: -55 - Math.floor(Math.random() * 20),
+      staIp: '192.168.1.50',
+      apIp: '',
       firmwareVersion: '1.2.0',
       lastMonth: 202608,
+      resetDay: 25,
       epoch: Math.floor(Date.now() / 1000),
       ota: false,
       lpfAlpha: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],

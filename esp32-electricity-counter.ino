@@ -139,8 +139,36 @@ static void updateSharedData() {
   // Link state is read live from the radio every sensor cycle, so the snapshot
   // never reports a stale mode after a fallback transition.
   systemData.wifiConnected = wifiMgr.stationUp();
-  systemData.wifiRSSI = wifiMgr.staRSSI();
+  // RSSI display filter (EMA 0.1): raw readings jitter several dB between
+  // scans and the header icon bounced between levels on every push. Both
+  // snapshots read this one field, so filtering here smooths the icon, the
+  // Home Network dB and the cloud viewer together. Re-initialises on
+  // reconnect so an old value never drags the fresh link.
+  {
+    static float rssiSm = 0.0f;
+    static bool rssiInit = false;
+    if (!systemData.wifiConnected) {
+      rssiInit = false;
+      systemData.wifiRSSI = 0;
+    } else {
+      float raw = (float)wifiMgr.staRSSI();
+      if (!rssiInit) { rssiSm = raw; rssiInit = true; }
+      else rssiSm += 0.1f * (raw - rssiSm);
+      systemData.wifiRSSI = (int8_t)rssiSm;
+    }
+  }
   systemData.apMode = wifiMgr.apActive();
+  // Interface addresses for the UI (both modes). STA IP when joined, AP IP
+  // (192.168.4.1) while the fallback is up, empty otherwise. Both snapshots
+  // read these fields, so local + cloud always agree.
+  {
+    String s = systemData.wifiConnected ? WiFi.localIP().toString() : String();
+    strncpy(systemData.staIp, s.c_str(), sizeof(systemData.staIp) - 1);
+    systemData.staIp[sizeof(systemData.staIp) - 1] = '\0';
+    String a = systemData.apMode ? WiFi.softAPIP().toString() : String();
+    strncpy(systemData.apIp, a.c_str(), sizeof(systemData.apIp) - 1);
+    systemData.apIp[sizeof(systemData.apIp) - 1] = '\0';
+  }
   systemData.otaInProgress = otaHandler.isInProgress();
   systemData.otaProgress = otaHandler.getProgress();
   systemData.ecoMode = ecoActive;

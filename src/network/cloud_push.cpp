@@ -223,6 +223,9 @@ bool CloudPush::snapshot(SystemData *sysData, SemaphoreHandle_t *mutex, String &
   bool eco = sysData->ecoMode;
   bool wifi = sysData->wifiConnected;
   bool ap = sysData->apMode;
+  char staIp[16] = {0}, apIp[16] = {0};
+  strncpy(staIp, sysData->staIp, sizeof(staIp) - 1);
+  strncpy(apIp, sysData->apIp, sizeof(apIp) - 1);
   bool timeOk = timeSync.isSynced();
   long timeAge = (long)timeSync.secondsSinceSync();
   bool cloudEn = sysData->cloudEnabled;
@@ -292,6 +295,12 @@ bool CloudPush::snapshot(SystemData *sysData, SemaphoreHandle_t *mutex, String &
   body += wifi ? "true" : "false";
   body += ",\"ap\":";
   body += ap ? "true" : "false";
+  // Interface addresses the viewer prints (both modes). Empty = down.
+  body += ",\"staIp\":\"";
+  body += staIp;
+  body += "\",\"apIp\":\"";
+  body += apIp;
+  body += "\"";
   // The identities the local snapshot publishes (system_json.cpp): SSIDs are
   // public (a scan reads them off the air), passwords never leave the board.
   // Without these the cloud viewer shows placeholders forever.
@@ -321,6 +330,9 @@ bool CloudPush::snapshot(SystemData *sysData, SemaphoreHandle_t *mutex, String &
   // latest.lastMonth. Without it the cloud About panel shows "--" forever.
   body += "},\"lastMonth\":";
   body += nvs ? (long)nvs->loadLastMonth() : 0;
+  // Billing reset day the rollover enforces (same key as system_json.cpp).
+  body += ",\"resetDay\":";
+  body += nvs ? (int)nvs->loadResetDay() : MONTHLY_RESET_DAY;
   body += ",\"cloud\":{\"en\":";
   body += cloudEn ? "true" : "false";
   body += ",\"ok\":";

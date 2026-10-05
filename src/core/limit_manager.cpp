@@ -105,6 +105,17 @@ void LimitManager::updateBuzzer() {
   tripCycleIndex = (tripCycleIndex + 1) % n;
 }
 
+// Billing-cycle math shared by rolloverIfNeeded() and setResetDay(): at 00:00
+// UTC on the reset day the counters zero and the new billing month begins
+// (reset day 25: the 25th itself starts the new cycle, 25th → 24th).
+static int32_t billingMonthFor(int y, int m, int d, int resetDay) {
+  if (d >= resetDay) {
+    m += 1;
+    if (m > 12) { m = 1; y += 1; }
+  }
+  return y * 100 + m;
+}
+
 void LimitManager::rolloverIfNeeded() {
   // No once-per-boot latch here on purpose. The persisted billing month IS the
   // idempotency guard (see the billingMonth == loadLastMonth() check below), so
@@ -117,16 +128,8 @@ void LimitManager::rolloverIfNeeded() {
 
   struct tm t;
   localtime_r(&now, &t);
-  int y = t.tm_year + 1900;
-  int m = t.tm_mon + 1;
-  int d = t.tm_mday;
-  // Billing cycle anchored to MONTHLY_RESET_DAY (e.g. 26th → 25th).
-  // Effective month increments on/after the reset day at 00:00 UTC.
-  if (d >= MONTHLY_RESET_DAY) {
-    m += 1;
-    if (m > 12) { m = 1; y += 1; }
-  }
-  int32_t billingMonth = y * 100 + m;
+  int32_t billingMonth = billingMonthFor(t.tm_year + 1900, t.tm_mon + 1,
+                                         t.tm_mday, resetDay());
 
   if (billingMonth == nvs->loadLastMonth()) return;
 
@@ -149,6 +152,38 @@ void LimitManager::rolloverIfNeeded() {
   nvs->commit();  // persist immediately — prevents repeat on next boot
   if (buzzer) buzzer->stop();
   logForensicEvent(0, STATUS_OK, "Monthly reset — counters zeroed", 0.0f);
+}
+
+uint8_t LimitManager::resetDay() {
+  if (!nvs) return MONTHLY_RESET_DAY;
+  return nvs->loadResetDay();
+}
+
+bool LimitManager::setResetDay(uint8_t day) {
+  if (day < 1 || day > 28 || !nvs || !dataMutex) return false;
+  if (xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) != pdTRUE) return false;
+  nvs->saveResetDay(day);
+  // Re-anchor the cycle to the new day WITHOUT zeroing: the stored marker is
+  // computed under the old day, so without this the next check would read the
+  // change as a new billing month and wipe the counters as a side effect.
+  // When the clock is not set yet there is nothing sane to anchor to — the
+  // first valid time then behaves like a fresh board (one rollover, already
+  // zero), which is the pre-existing behaviour, not a new edge.
+  time_t now = time(nullptr);
+  if (now > 1600000000) {
+    struct tm t;
+    localtime_r(&now, &t);
+    nvs->saveLastMonth(billingMonthFor(t.tm_year + 1900, t.tm_mon + 1,
+                                       t.tm_mday, day));
+  }
+  nvs->commit();
+  char msg[EVENT_MSG_LEN];
+  snprintf(msg, sizeof(msg), "Billing reset day set to %d", (int)day);
+  // Logged while STILL holding dataMutex: logForensicEvent persists to flash
+  // with its own commit, which is not thread-safe against a concurrent one.
+  logForensicEvent(0, STATUS_OK, msg, (float)day);
+  xSemaphoreGive(*dataMutex);
+  return true;
 }
 
 void LimitManager::resetCounter(uint8_t ch) {

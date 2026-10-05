@@ -213,6 +213,12 @@
         <div class="panel-box admin-only">
           <div class="panel-header"><h3>Access Point (fallback)</h3></div>
           <div class="cal-row-single">
+            <label>IP:</label>
+            <div class="cal-field">
+              <span class="mono" id="apIp">OFF</span>
+            </div>
+          </div>
+          <div class="cal-row-single">
             <label for="apSsid">Network name:</label>
             <div class="cal-field">
               <input type="text" id="apSsid" placeholder="Loading…" autocomplete="off" spellcheck="false" oninput="this.dataset.userSet='true'">
@@ -238,6 +244,12 @@
             <label for="staStatus">Status:</label>
             <div class="cal-field">
               <span class="mono" id="staStatus">Loading&hellip;</span>
+            </div>
+          </div>
+          <div class="cal-row-single">
+            <label>IP:</label>
+            <div class="cal-field">
+              <span class="mono" id="staIp">--</span>
             </div>
           </div>
           <div class="cal-row-single">
@@ -350,6 +362,13 @@
           <div class="cal-row-single">
             <label>Month:</label>
             <span id="lastMonth" class="mono conn-ip">--</span>
+          </div>
+          <div class="cal-row-single">
+            <label for="resetDay">Reset Day:</label>
+            <div class="cal-field">
+              <input type="number" id="resetDay" step="1" min="1" max="28" value="25" oninput="this.dataset.userSet='true'">
+            </div>
+            <button class="btn-sm" id="resetDayBtn" onclick="setResetDay()">Set</button>
           </div>
           <div class="hint">ESP32 Counter dashboard &middot; ESP32-S3 6-channel electricity monitor &middot; served by the board itself, over its own WiFi</div>
         </div>

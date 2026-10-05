@@ -135,6 +135,9 @@ constexpr const char *AP_PASS_DEFAULT = "configure123";
 
 // Monthly billing reset day (1-28). Counters zero at 00:00 UTC on this day each month.
 // Billing period = 25th → 24th next month. Use 1 for calendar-month reset.
+// This is only the FACTORY default: the user can change it at runtime via
+// `reset_day <1-28>` (serial / dashboard console / cloud console) or the
+// About panel, and it persists in NVS under reset_day.
 #define MONTHLY_RESET_DAY 25
 
 // Default per-channel LPF alpha (EMA on post-RMS estimate; 1.0 = no filtering)
@@ -206,6 +209,12 @@ struct SystemData {
   bool wifiConnected;
   int8_t wifiRSSI;
   bool apMode;
+  // Dotted-decimal interface addresses, refreshed every sensor cycle in
+  // updateSharedData(). Empty string = that interface is down. The dashboard
+  // prints these (STA panel + AP panel + Connection Board row) so the user
+  // can see the address to open in BOTH modes without guessing.
+  char staIp[16];
+  char apIp[16];
 
   float mcuTempC;    // on-die temperature, °C (NAN when the chip has no sensor)
   bool ecoMode;      // true while nobody is watching (modem-sleep + quiet radio)

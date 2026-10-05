@@ -263,6 +263,7 @@ class State:
         # ConsoleHandler::cmdReboot would cause.
         self.ap_ssid = AP_SSID_DEFAULT
         self.ap_pass = AP_PASS_DEFAULT
+        self.reset_day = 25        # NVS reset_day; set by `reset_day <1-28>`
         self.rebooted = False
         self.reboot_reason = None
 
@@ -289,6 +290,8 @@ class State:
                 "rssi": -58 if self.station_up else 0,
                 # STA-first: the fallback AP is up exactly when STA is down.
                 "ap": not self.station_up,
+                "staIp": "192.168.1.50" if self.station_up else "",
+                "apIp": "192.168.4.1" if not self.station_up else "",
                 "voltageCalibration": DEFAULTS["voltage_cal"],
                 "currentCalibration": list(DEFAULTS["current_cal"]),
                 "rmsSamples": DEFAULTS["rms_samples"],
@@ -301,6 +304,7 @@ class State:
                 "firmwareVersion": "3.0.0",
                 "epoch": self.epoch,
                 "lastMonth": 202610,
+                "resetDay": self.reset_day,
                 "apSsid": self.ap_ssid,
                 "apIsDefault": (self.ap_ssid == AP_SSID_DEFAULT
                                 and self.ap_pass == AP_PASS_DEFAULT),
@@ -400,6 +404,21 @@ class State:
                 return True, None, False
 
             if verb == "console":
+                line = extract_json_string(frame, "line") or ""
+                # The one console line the UI sends as a real command:
+                # `reset_day <1-28>` (About -> Reset Day -> Set). Parsed like
+                # ConsoleHandler::cmdResetDay so the E2E round trip is honest.
+                parts = line.strip().split()
+                if len(parts) == 2 and parts[0] == "reset_day":
+                    try:
+                        day = int(parts[1])
+                    except ValueError:
+                        day = 0
+                    if 1 <= day <= 28:
+                        self.reset_day = day
+                        self.applied.append(("reset_day", day))
+                        return True, ("  Billing reset day set to %d — counters zero"
+                                       " at 00:00 UTC on day %d each month (NVS level)" % (day, day)), False
                 return True, "  Unknown command. Type 'help'.", False
 
             if verb == "set_ap":

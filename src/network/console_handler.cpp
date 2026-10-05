@@ -225,6 +225,9 @@ void ConsoleHandler::exec(const String &line, String &out) {
   } else if (cmd == "reset_ap") {
     cmdResetAp(out);
 
+  } else if (cmd.startsWith("reset_day")) {
+    cmdResetDay(cmd.length() > 9 ? cmd.substring(9) : "", out);
+
   } else if (cmd == "clearwifi") {
     cmdClearWifi(out);
 
@@ -678,6 +681,20 @@ void ConsoleHandler::cmdResetAp(String &out) {
   requestReboot("  (AP credentials reset - restarting)");
 }
 
+void ConsoleHandler::cmdResetDay(const String &args, String &out) {
+  int day = args.toInt();
+  if (day >= 1 && day <= 28 && limitMgr) {
+    if (limitMgr->setResetDay((uint8_t)day)) {
+      consoleAppendf(out, "  Billing reset day set to %d — counters zero at 00:00 UTC on day %d each month (NVS level)", day, day);
+    } else {
+      consoleAppendf(out, "%s", "  Could not take the data lock - retry");
+    }
+  } else {
+    consoleAppendf(out, "  Usage: reset_day <1-28>%s",
+                   limitMgr ? "" : " (unavailable)");
+  }
+}
+
 void ConsoleHandler::cmdStatus(String &out) {
   uint32_t up = millis() / 1000;
   consoleAppendf(out, "  %-16s%02lu:%02lu:%02lu", "Uptime:",
@@ -805,6 +822,7 @@ void ConsoleHandler::cmdHelp(String &out) {
   consoleAppendf(out, "%s", "    clearcloud          Stop remote monitoring (no reboot)");
   consoleAppendf(out, "%s", "    set_ap <name> <pw>  Rename the network + set password (reboots)");
   consoleAppendf(out, "%s", "    reset_ap            Restore the default network name (reboots)");
+  consoleAppendf(out, "%s", "    reset_day <1-28>    Billing reset day (counters zero at 00:00 UTC)");
   consoleAppendf(out, "%s", "    nvs_debug           Test NVS write/read cycle");
   consoleAppendf(out, "%s", "    reboot              Restart the device");
 }

@@ -413,14 +413,23 @@ console command. The README's "RED LED blink on trip" is stale (Part C.2).
 
 ### Monthly rollover
 
-Anchored to `MONTHLY_RESET_DAY = 25` (so the billing period is the 25th → 24th):
+Anchored to the NVS `reset_day` (1–28, factory `MONTHLY_RESET_DAY = 25`, so by
+default the billing period is the 25th → 24th). The user changes it via
+`reset_day <1-28>` (serial / dashboard console / cloud console — one shared
+CLI path) or the About panel; `reset_nvs_defaults` restores 25:
 
 ```
-if (day >= 25) month += 1            // with year wrap
+if (day >= reset_day) month += 1       // with year wrap
 billingMonth = YYYYMM
 if (billingMonth != nvs->loadLastMonth()) → zero all counters, clear latches,
                                           stop buzzer, persist month immediately
 ```
+
+Changing the day re-anchors `last_month` to the new cycle **without** zeroing:
+without that, the stored marker (computed under the old day) would read as a
+new billing month and wipe the counters as a side effect. Every rollover and
+every day change is event-logged (`Monthly reset — counters zeroed` /
+`Billing reset day set to N`), so the trail shows why counters moved.
 
 It waits for a valid clock (`now > 1600000000`, i.e. NTP synced) and is
 re-evaluated every sensor cycle. There is deliberately **no once-per-boot
@@ -627,7 +636,9 @@ going silent.
 
 It is a hand-rolled `indexOf` scanner, not a JSON library — which is why the
 code carries hand-written escape handling. Every mutating verb ends with
-`nvs->commit()`.
+`nvs->commit()`. Settings sent as `console` lines (`reset_day <1-28>` from the
+About panel) run the same `consoleHandler.exec` as the serial CLI, so there is
+one code path for both.
 
 ### The admin gate
 

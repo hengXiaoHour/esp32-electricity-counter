@@ -468,6 +468,15 @@ function check(name, cond, detail) {
   const hint = await page.locator('#apHint').textContent();
   check('the panel warns that the board is rebooting',
         /rebooting/i.test(hint), 'hint = "' + (hint || '').slice(0, 80) + '"');
+  // Fallback state (fresh mock, STA never joined): the AP row prints the
+  // address to open while the STA row shows down. The joined-state flip is
+  // asserted later, after the STA save below.
+  check('the AP row prints the fallback address while STA is down',
+        /192\.168\.4\.1/.test(await page.locator('#apIp').textContent()),
+        'apIp="' + await page.locator('#apIp').textContent() + '"');
+  check('the STA row shows down before anything is joined',
+        (await page.locator('#staIp').textContent()).trim() === '—',
+        'staIp="' + await page.locator('#staIp').textContent() + '"');
 
   // ---------------------------------------------------------------------
   // Home Network (STA) panel.
@@ -660,6 +669,50 @@ function check(name, cond, detail) {
         JSON.stringify(noPinCloud).slice(0, 60));
 
   // ---------------------------------------------------------------------
+  // Billing reset day: About -> Reset Day -> Set sends the console line
+  // `reset_day <1-28>` (one shared CLI path, not a second JSON verb), the
+  // board stores it in NVS and the next snapshot reports it back.
+  console.log('\n== billing reset day ==');
+  // The cloud save above scheduled handleDisconnect() (+1500ms: on real
+  // hardware the board reboots), so the page socket is dead by now - the
+  // same trap the STA section documents. Reopen it first.
+  await page.evaluate(() => {
+    if (typeof ws === 'undefined' || !ws || ws.readyState !== WebSocket.OPEN) { userDisconnect = false; connectWS(); }
+  });
+  await page.waitForFunction(
+    () => (typeof ws !== 'undefined') && !!ws && ws.readyState === WebSocket.OPEN,
+    null, { timeout: 8000 })
+    .catch(() => {});
+  await page.fill('#resetDay', '5');
+  const beforeDay = await page.evaluate(() => window.__wsSent.length);
+  await page.click('#resetDayBtn');
+  await page.waitForTimeout(800);
+  const dayFrames = (await page.evaluate((n) => window.__wsSent.slice(n), beforeDay))
+    .filter(f => f.indexOf('"console"') >= 0);
+  check('Reset Day Set sends one console line',
+        dayFrames.length >= 1 && dayFrames.some(f => f.indexOf('reset_day 5') >= 0),
+        JSON.stringify(dayFrames).slice(0, 120));
+  check('...carrying the admin PIN',
+        dayFrames.some(f => /"pin":"1234"/.test(f)),
+        JSON.stringify(dayFrames).slice(0, 120));
+  const daySnap = (await page.evaluate(() => window.__wsSeen.slice()))
+    .filter(m => m.type !== 'console' && m.type !== 'auth' && 'resetDay' in m).pop();
+  check('the board reports the stored reset day back',
+        daySnap && daySnap.resetDay === 5,
+        'resetDay=' + (daySnap && daySnap.resetDay));
+  check('the About input shows the stored day, not the typed one',
+        (await page.inputValue('#resetDay')) === '5');
+  // Out of range never leaves the page: client-side guard, no frame.
+  await page.fill('#resetDay', '31');
+  const beforeBadDay = await page.evaluate(() => window.__wsSent.length);
+  await page.click('#resetDayBtn');
+  await page.waitForTimeout(400);
+  const badDayFrames = (await page.evaluate((n) => window.__wsSent.slice(n), beforeBadDay))
+    .filter(f => f.indexOf('reset_day') >= 0);
+  check('day 31 is refused client-side (nothing sent)',
+        badDayFrames.length === 0, JSON.stringify(badDayFrames).slice(0, 120));
+
+  // ---------------------------------------------------------------------
   // Header icon + Connection-panel rows follow the snapshot.
   //
   // The icon once only knew lv0/lv2 (the AP-only era) while the STA code could
@@ -691,6 +744,21 @@ function check(name, cond, detail) {
   check('MCU temperature renders from the snapshot',
         /51\.2/.test(await page.locator('#mcuTemp').textContent()),
         'mcu="' + await page.locator('#mcuTemp').textContent() + '"');
+  // Interface addresses: the STA save above rebooted the mock joined
+  // (station_up), so the STA row shows 192.168.1.50 while the AP row reads
+  // OFF — the exact flip of the fallback state at boot.
+  check('the STA row prints the joined address',
+        /192\.168\.1\.50/.test(await page.locator('#staIp').textContent()),
+        'staIp="' + await page.locator('#staIp').textContent() + '"');
+  check('the home status names the address too',
+        /192\.168\.1\.50/.test(await page.locator('#staStatus').textContent()),
+        'staStatus="' + await page.locator('#staStatus').textContent() + '"');
+  check('the AP row reads OFF while the fallback is down',
+        (await page.locator('#apIp').textContent()).trim() === 'OFF',
+        'apIp="' + await page.locator('#apIp').textContent() + '"');
+  check('the Board row names the reachable address, not a blank',
+        /192\.168\.1\.50/.test(await page.locator('#connectedIp').textContent()),
+        'board="' + await page.locator('#connectedIp').textContent() + '"');
   check('eco state renders from the snapshot',
         /Full|ECO/.test(await page.locator('#ecoStatus').textContent()),
         'eco="' + await page.locator('#ecoStatus').textContent() + '"');

@@ -317,6 +317,22 @@ int32_t NVSManager::loadLastMonth() {
   return prefs.getLong("last_month", 0);
 }
 
+// --- Billing reset day (1-28) ---
+
+uint8_t NVSManager::loadResetDay() {
+  int v = prefs.getUChar("reset_day", MONTHLY_RESET_DAY);
+  if (v < 1) v = 1;
+  if (v > 28) v = 28;
+  return (uint8_t)v;
+}
+
+void NVSManager::saveResetDay(uint8_t day) {
+  if (day < 1) day = 1;
+  if (day > 28) day = 28;
+  prefs.putUChar("reset_day", day);
+  DEBUG_LOG("  [NVS] saved reset day: %d\n", (int)day);
+}
+
 void NVSManager::saveLastMonth(int32_t month) {
   prefs.putLong("last_month", month);
   DEBUG_LOG("  [NVS] saved last month: %ld\n", (long)month);

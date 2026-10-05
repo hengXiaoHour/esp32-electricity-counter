@@ -116,6 +116,11 @@ public:
   int32_t loadLastMonth();
   void saveLastMonth(int32_t month);
 
+  // Billing reset day (1-28): the counters zero at 00:00 UTC on this day each
+  // month. Factory default MONTHLY_RESET_DAY; user-settable via `reset_day`.
+  uint8_t loadResetDay();
+  void saveResetDay(uint8_t day);
+
   // Forensic event ring: the last FORENSIC_KEEP events, persisted to flash
   // so the trail survives a reboot (RAM log is wiped). EVERY event is written,
   // not just trips - at a few writes a day max the flash wear is negligible,
