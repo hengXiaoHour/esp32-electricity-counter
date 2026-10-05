@@ -460,12 +460,13 @@ def main():
           re.search(r"val !== again[\s\S]{0,200}?return Promise\.resolve\(false\)",
                     js) is not None)
 
-    # --- install button exists after connect, not just before ----------------
+    # --- install button lives in the top bar, not just the connect panel --
     # The shipped bug: the only Install button lived in the connect panel,
-    # which hides the instant the dashboard connects.
-    c.add("settings has its own install button",
-          'id="installBtn2"' in html and "installHint2" in html and
-          "installHint2" in js)
+    # which hides the instant the dashboard connects. It then moved to
+    # Settings, and now to the header so it is one tap away on mobile and
+    # desktop alike. The manual-steps hint stays in the connect panel.
+    c.add("the top bar has its own install button",
+          'id="installBtnTop"' in html and "installBtnTop" in js)
     c.add("the station defaults live in config.h",
           "STA_SSID_DEFAULT" in cfg and "STA_PASS_DEFAULT" in cfg)
     c.add("station credentials are read from NVS first, defaults second",

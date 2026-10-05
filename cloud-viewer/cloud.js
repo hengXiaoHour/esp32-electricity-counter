@@ -77,7 +77,7 @@ function cl_setAdmin(isAdmin, email) {
   var badge = document.getElementById('adminBadge');
   if (badge) badge.classList.toggle('hidden', !cl_isAdmin);
   var ue = document.getElementById('userEmail');
-  if (ue) ue.textContent = cl_userEmail || '';
+  if (ue) ue.textContent = cl_userEmail || 'not signed in';
   var who = document.getElementById('googleWho');
   if (who) who.textContent = cl_userEmail || 'not signed in';
   var b1 = document.getElementById('authBtn');
@@ -122,6 +122,11 @@ function cl_adapt(latest, mac) {
   d.rssi = latest.rssi;
   d.wifi = (latest.wifi === true) || (typeof latest.rssi === 'number');
   d.ap = !!latest.ap;
+  d.apSsid = (typeof latest.apSsid === 'string') ? latest.apSsid : undefined;
+  d.apIsDefault = latest.apIsDefault;
+  d.staSsid = (typeof latest.staSsid === 'string') ? latest.staSsid : undefined;
+  d.staIsDefault = latest.staIsDefault;
+  d.lastMonth = (typeof latest.lastMonth === 'number') ? latest.lastMonth : undefined;
   d.mcuTemp = (latest.mcu === undefined || latest.mcu === null) ? null : latest.mcu;
   d.eco = !!latest.eco;
   d.firmwareVersion = latest.fw;
@@ -133,8 +138,9 @@ function cl_adapt(latest, mac) {
     ok: !!(latest.cloud && latest.cloud.ok),
     age: (latest.cloud && typeof latest.cloud.age === 'number') ? latest.cloud.age : -1,
     dev: mac,
-    host: 'esp32-electricity-counter-default-rtdb.firebaseio.com',
-    acct: ''
+    host: (latest.cloud && typeof latest.cloud.host === 'string' && latest.cloud.host)
+      ? latest.cloud.host : 'esp32-electricity-counter-default-rtdb.firebaseio.com',
+    acct: (latest.cloud && typeof latest.cloud.acct === 'string') ? latest.cloud.acct : ''
   };
   return d;
 }
@@ -217,6 +223,13 @@ function cl_setCmdDone(line) {
   }
 }
 
+// Display formatting only: EC64C998B0EC -> ec:64:c9:98:b0:ec. RTDB paths
+// and option values keep the raw id; only what the eye reads is formatted.
+function cl_macFmt(id) {
+  if (typeof id !== 'string' || !/^[0-9a-fA-F]{12}$/.test(id)) return id;
+  return id.toLowerCase().replace(/(..)(..)(..)(..)(..)(..)/, '$1:$2:$3:$4:$5:$6');
+}
+
 function cl_loadDevices() {
   cl_status('Loading devices…');
   return fetch(CL_FIREBASE_CONFIG.databaseURL + '/devices.json?shallow=true')
@@ -243,7 +256,7 @@ function cl_loadDevices() {
       keys.forEach(function (k) {
         var o = document.createElement('option');
         o.value = k;
-        o.textContent = k;
+        o.textContent = cl_macFmt(k);
         sel.appendChild(o);
       });
       var pick = keys.indexOf(CL_DEFAULT_MAC) >= 0 ? CL_DEFAULT_MAC : keys[0];
@@ -263,7 +276,7 @@ function cl_selectDevice(mac) {
   if (cl_latestRef) { cl_latestRef.off(); cl_latestRef = null; }
   if (cl_ackRef) { cl_ackRef.off(); cl_ackRef = null; }
   var ipEl = document.getElementById('connectedIp');
-  if (ipEl) ipEl.textContent = 'cloud / ' + mac;
+  if (ipEl) ipEl.textContent = 'cloud / ' + cl_macFmt(mac);
   cl_latestRef = cl_db.ref('devices/' + mac + '/latest');
   cl_latestRef.on('value',
     function (snap) { cl_onLatest(snap.val()); },
@@ -453,9 +466,6 @@ function saveCloudSettings() {
   cl_auth.onAuthStateChanged(function (user) {
     var email = user && user.email ? user.email : null;
     cl_setAdmin(email === CL_ADMIN_EMAIL, email);
-    cl_status(cl_isAdmin
-      ? 'Admin via Google (' + email + ') — full remote control.'
-      : 'Viewer — read-only. Sign in with the admin Google account for control.');
   });
 
   cl_staleTimer = setInterval(cl_refreshStale, 5000);

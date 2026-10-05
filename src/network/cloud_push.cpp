@@ -292,6 +292,25 @@ bool CloudPush::snapshot(SystemData *sysData, SemaphoreHandle_t *mutex, String &
   body += wifi ? "true" : "false";
   body += ",\"ap\":";
   body += ap ? "true" : "false";
+  // The identities the local snapshot publishes (system_json.cpp): SSIDs are
+  // public (a scan reads them off the air), passwords never leave the board.
+  // Without these the cloud viewer shows placeholders forever.
+  {
+    String ssid = nvs ? nvs->loadApSsid() : String();
+    String pass = nvs ? nvs->loadApPass() : String();
+    body += ",\"apSsid\":\"";
+    body += cloudEscapeOut(ssid);
+    body += "\",\"apIsDefault\":";
+    body += (ssid == AP_SSID_DEFAULT && pass == AP_PASS_DEFAULT) ? "true" : "false";
+  }
+  {
+    String ssid, pass;
+    const bool stored = nvs && nvs->loadWiFi(ssid, pass) && ssid.length() > 0;
+    body += ",\"staSsid\":\"";
+    body += cloudEscapeOut(ssid);
+    body += "\",\"staIsDefault\":";
+    body += stored ? "false" : "true";
+  }
   body += ",\"fw\":\"";
   body += FIRMWARE_VERSION;
   body += "\",\"time\":{\"ok\":";
@@ -304,6 +323,22 @@ bool CloudPush::snapshot(SystemData *sysData, SemaphoreHandle_t *mutex, String &
   body += cloudOk ? "true" : "false";
   body += ",\"age\":";
   body += cloudAge;
+  // Host + account are NOT secrets (host rides in TLS SNI, the email is an
+  // identifier), so the viewer can show what is configured - same rationale
+  // as the SSIDs above. The PASSWORD stays out, always.
+  {
+    String host, email, pass;
+    if (nvs) nvs->loadFb(host, email, pass);
+    body += ",\"host\":\"";
+    body += cloudEscapeOut(host);
+    body += "\",\"acct\":\"";
+    body += cloudEscapeOut(email);
+    body += "\"";
+  }
+  // Billing month the board is enforcing (system_json.cpp reports the same
+  // value locally). Without it the cloud About panel shows "--" forever.
+  body += ",\"lastMonth\":";
+  body += nvs ? (long)nvs->loadLastMonth() : 0;
   body += "},\"ch\":[";
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {
     body += "{\"n\":\"";

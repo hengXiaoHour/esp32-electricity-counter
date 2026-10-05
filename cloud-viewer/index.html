@@ -14,7 +14,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="style.css?v=6c262133">
+<link rel="stylesheet" href="style.css?v=04c89541">
 <script>
 // The board is always on location.host, so there is no session to restore and
 // nothing to decide before the first paint. This only hides the connect panel
@@ -86,16 +86,6 @@
         <span class="nav-label">Settings</span>
       </button>
     </nav>
-    <div class="side-footer">
-      <button class="nav-item" onclick="showPage('settings')">
-        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
-        <span class="nav-label">Admin</span>
-      </button>
-      <button class="nav-item" onclick="handleDisconnect()">
-        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
-        <span class="nav-label">Sign Out</span>
-      </button>
-    </div>
   </aside>
 
   <!-- Main -->
@@ -113,6 +103,9 @@
         <div class="stat"><span class="stat-label">P</span><span id="totalPower" class="stat-value mono">0 W</span></div>
         <div class="stat"><span class="stat-label">I</span><span id="totalCurrent" class="stat-value mono">0.00 A</span></div>
         <div class="stat stat-clock"><span id="todayDate" class="mono stat-sub">--</span><span id="deviceTime" class="mono stat-sub">--</span></div>
+        <button id="installBtnTop" class="icon-btn hidden" onclick="promptInstall()" title="Install app">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 21h16"/></svg>
+        </button>
       </div>
     </header>
 
@@ -189,7 +182,6 @@
         <label>Google:</label>
         <div class="cal-field">
           <span id="userEmail" class="mono dim"></span>
-          <span id="adminBadge" class="role-badge role-admin hidden">ADMIN</span>
         </div>
         <button class="btn-sm" id="authBtn">Sign in with Google</button>
       </div>
@@ -218,11 +210,6 @@
             <label>Power:</label>
             <span id="ecoStatus" class="mono conn-txt">--</span>
           </div>
-          <div class="cal-row-single" id="installRow2">
-            <label>App:</label>
-            <button class="btn-sm" id="installBtn2" onclick="promptInstall()">&#8595; Install App</button>
-          </div>
-          
           <div style="margin-top:12px;">
             <button class="btn-outline" onclick="handleDisconnect()">Disconnect</button>
           </div>
@@ -252,6 +239,7 @@
             <div class="cal-field">
               <input type="password" id="cloudAuth" placeholder="Account password" autocomplete="off" oninput="this.dataset.userSet='true'">
             </div>
+            <button class="btn-sm" onclick="togglePw('cloudAuth',this)">Show</button>
           </div>
           <div class="cal-actions">
             <button class="btn-sm" id="cloudSaveBtn" onclick="saveCloudSettings()">Save</button>
@@ -278,6 +266,7 @@
             <div class="cal-field">
               <input type="password" id="staPass" placeholder="Your home WiFi password" autocomplete="off" oninput="this.dataset.userSet='true'">
             </div>
+            <button class="btn-sm" onclick="togglePw('staPass',this)">Show</button>
           </div>
           <div class="cal-actions">
             <button class="btn-sm" id="staSaveBtn" onclick="saveStaSettings()">Save</button>
@@ -299,6 +288,7 @@
               <input type="password" id="apPass" placeholder="Loading…" autocomplete="off" oninput="this.dataset.userSet='true'">
               <span class="hint-inline">(8-63)</span>
             </div>
+            <button class="btn-sm" onclick="togglePw('apPass',this)">Show</button>
           </div>
           <div class="cal-actions">
             <button class="btn-sm" id="apSaveBtn" onclick="saveApSettings()">Save</button>
@@ -422,8 +412,8 @@
   </div>
 </div>
 
-<script src="script.js?v=6c262133"></script>
-<script src="cloud.js?v=6c262133"></script>
+<script src="script.js?v=04c89541"></script>
+<script src="cloud.js?v=04c89541"></script>
 <script>
 if ('serviceWorker' in navigator && window.isSecureContext) {
   window.addEventListener('load', function () {

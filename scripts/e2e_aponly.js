@@ -694,8 +694,8 @@ function check(name, cond, detail) {
   check('eco state renders from the snapshot',
         /Full|ECO/.test(await page.locator('#ecoStatus').textContent()),
         'eco="' + await page.locator('#ecoStatus').textContent() + '"');
-  check('settings has its own install button (connect panel hides on connect)',
-        await page.locator('#installBtn2').count() === 1);
+  check('top bar has its own install button (connect panel hides on connect)',
+        await page.locator('#installBtnTop').count() === 1);
 
   console.log('\n' + checks + ' checks, ' + failures + ' failures');
   await browser.close();

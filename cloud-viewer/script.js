@@ -44,18 +44,20 @@ function isStandalone() {
 }
 
 function showInstallRow() {
+  // Two places offer install: the connect panel (pre-connect) and the top
+  // bar (always visible, mobile + desktop). Both go when installed.
   const row = document.getElementById('installRow');
   if (row) row.classList.remove('hidden');
+  const top = document.getElementById('installBtnTop');
+  if (top) top.classList.remove('hidden');
 }
 
 function hideInstallRow() {
-  // Two rows show the button: the connect panel (pre-connect) and Settings
-  // (post-connect, where the connect panel is hidden). Both go when installed.
-  for (const id of ['installRow', 'installRow2']) {
+  for (const id of ['installRow', 'installBtnTop']) {
     const row = document.getElementById(id);
     if (row) row.classList.add('hidden');
   }
-  for (const id of ['installHint', 'installHint2']) {
+  for (const id of ['installHint']) {
     const h = document.getElementById(id);
     if (h) h.classList.add('hidden');
   }
@@ -85,14 +87,9 @@ function promptInstall() {
   }
   // No prompt available - normal on a plain unencrypted (http) board address,
   // browsers never fire beforeinstallprompt. Toggle the manual-steps hint
-  // nearest to the button that was pressed (connect panel or Settings).
-  const h2 = document.getElementById('installHint2');
+  // in the connect panel (the only one left).
   const h1 = document.getElementById('installHint');
-  // Prefer the Settings hint when the dashboard is up (connect panel hidden),
-  // otherwise the connect-panel one.
-  const appVisible = !document.getElementById('app').classList.contains('hidden');
-  const h = (appVisible && h2) ? h2 : h1;
-  if (h) h.classList.toggle('hidden');
+  if (h1) h1.classList.toggle('hidden');
 }
 
 // Initial Setup
@@ -221,6 +218,16 @@ function apValidationMessage(ssidRaw, pass) {
   if (passLen < AP_PASS_MIN) return `Password must be at least ${AP_PASS_MIN} characters`;
   if (passLen > AP_PASS_MAX) return `Password must be ${AP_PASS_MAX} characters or fewer`;
   return '';
+}
+
+// Shows what is typed, never what is stored: the board never sends a
+// password back, so this only reveals the field being edited.
+function togglePw(id, btn) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const show = el.type === 'password';
+  el.type = show ? 'text' : 'password';
+  if (btn) btn.textContent = show ? 'Hide' : 'Show';
 }
 
 function saveApSettings() {

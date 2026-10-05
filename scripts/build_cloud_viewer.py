@@ -60,7 +60,6 @@ CLOUD_BAR = """    <!-- Cloud device panel: lives in Settings so the header stat
         <label>Google:</label>
         <div class="cal-field">
           <span id="userEmail" class="mono dim"></span>
-          <span id="adminBadge" class="role-badge role-admin hidden">ADMIN</span>
         </div>
         <button class="btn-sm" id="authBtn">Sign in with Google</button>
       </div>
@@ -170,6 +169,7 @@ CLOUD_CSS = """
   background: var(--warn); color: #000; padding: 2px 8px; border-radius: 3px;
 }
 .cloud-status { margin-top: 8px; font-size: 0.72rem; white-space: pre-wrap; word-break: break-word; }
+#userEmail { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #cloudDot.led-ok { background: var(--ok); box-shadow: 0 0 10px var(--ok); }
 #cloudDot.led-stale { background: var(--warn); box-shadow: 0 0 10px var(--warn); }
 """
@@ -195,11 +195,7 @@ def patch_index(src: str) -> str:
     html = html.replace(
         "&#9654; Reconnect", "&#9654; Retry",
     )
-    # Sidebar footer still says "Admin PIN" - cloud has no PIN, just Admin.
-    html = html.replace(
-        '<span class="nav-label">Admin PIN</span>',
-        '<span class="nav-label">Admin</span>',
-    )
+    # (Sidebar footer went away entirely - no Admin PIN / Sign Out buttons.)
     # Cloud device panel at the top of Settings (NOT above the status bar:
     # the header stays identical to the board-served dashboard).
     if 'id="cloudBar"' not in html:

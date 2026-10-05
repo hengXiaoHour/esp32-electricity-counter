@@ -90,10 +90,8 @@ html.has-session #app { display: grid !important; }
 #app { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; transition: grid-template-columns 0.25s ease; }
 #app.side-collapsed { grid-template-columns: 62px 1fr; }
 #app.side-collapsed .nav-label,
-#app.side-collapsed .brand-text,
-#app.side-collapsed .side-footer .nav-label { max-width: 0; opacity: 0; margin-right: -12px; }
-#app.side-collapsed .side-nav .nav-item,
-#app.side-collapsed .side-footer .nav-item { justify-content: center; padding: 12px 0; gap: 0; }
+#app.side-collapsed .brand-text { max-width: 0; opacity: 0; margin-right: -12px; }
+#app.side-collapsed .side-nav .nav-item { justify-content: center; padding: 12px 0; gap: 0; }
 #app.side-collapsed .side-brand { justify-content: center; gap: 0; }
 
 /* Sidebar */
@@ -120,7 +118,6 @@ html.has-session #app { display: grid !important; }
 .nav-item:hover { background: var(--bg-hover); color: var(--text); }
 .nav-item.active { background: var(--bg-hover); color: var(--text); box-shadow: inset 3px 0 0 var(--trip); }
 .nav-icon { width: 17px; height: 17px; flex: 0 0 auto; }
-.side-footer { border-top: 1px solid var(--border); padding: 8px 0; }
 
 /* Auth */
 .role-badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 0.66rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
@@ -454,3 +451,16 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
   background: #16191d;
 }
 .connect-card-note .mono { color: #e8e8e8; }
+
+/* Mobile: channel rows keep input + button on one line. The wrap used to
+   drop every Set/Auto-Zero button onto its own line on phones. This block
+   lives at the end on purpose: the base .cal-param-row rule sits further
+   down the file than the first media query, so anything earlier loses. */
+@media (max-width: 480px) {
+  .cal-param-row { flex-wrap: nowrap; }
+  .cal-param-row label { min-width: 0; width: 80px; }
+  .cal-param-row .cal-field { flex: 1 1 auto; min-width: 0; max-width: none; }
+  .cal-param-row input { width: 64px; }
+  .cal-param-row .hint-inline { display: none; }
+  .cal-param-row .btn-sm { flex: 0 0 72px; min-width: 0; font-size: 0.62rem; }
+}
