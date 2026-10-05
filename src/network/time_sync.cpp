@@ -1,4 +1,5 @@
 #include "time_sync.h"
+#include "../config.h"
 #include "../utils/log_gate.h"
 
 // Defined here so every translation unit shares one clock.
@@ -54,10 +55,11 @@ void TimeSync::begin() {
 void TimeSync::beginNTP() {
   if (ntpStarted) return;
   ntpStarted = true;
-  // UTC, no DST: the board works in epoch throughout and the browser renders
-  // local time, so no timezone is configured here. Three servers so one dead
+  // Local midnight (UTC+7, TIMEZONE_OFFSET_SECONDS): the board works in epoch
+  // throughout and the browser renders local time, so only the localtime_r()
+  // calendar that the billing rollover reads moves. Three servers so one dead
   // host does not silence the sync.
-  configTime(0, 0, "pool.ntp.org", "time.nist.gov", "time.google.com");
+  configTime(TIMEZONE_OFFSET_SECONDS, 0, "pool.ntp.org", "time.nist.gov", "time.google.com");
   STATUS_LOG("  [TIME] NTP started - clock will follow the internet\n");
 }
 

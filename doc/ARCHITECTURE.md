@@ -414,7 +414,9 @@ console command. The README's "RED LED blink on trip" is stale (Part C.2).
 ### Monthly rollover
 
 Anchored to the NVS `reset_day` (1–28, factory `MONTHLY_RESET_DAY = 25`, so by
-default the billing period is the 25th → 24th). The user changes it via
+default the billing period is the 25th → 24th). Boundaries land at LOCAL
+midnight (board timezone UTC+7, `TIMEZONE_OFFSET_SECONDS` in `config.h`;
+Cambodia has no DST so the fixed offset is exact). The user changes it via
 `reset_day <1-28>` (serial / dashboard console / cloud console — one shared
 CLI path) or the About panel; `reset_nvs_defaults` restores 25:
 

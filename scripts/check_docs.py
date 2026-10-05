@@ -208,8 +208,11 @@ def main():
           "stationUp()) timeSync.beginNTP()" in ino)
     c.add("each network cycle polls NTP for a fresh sync",
           "timeSync.pollNTP()" in ino)
-    c.add("SNTP is pointed at public servers in UTC (board works in epoch)",
-          "configTime(0, 0" in ts_cpp and "pool.ntp.org" in ts_cpp)
+    c.add("SNTP is pointed at public servers with the board timezone applied",
+          "configTime(TIMEZONE_OFFSET_SECONDS, 0" in ts_cpp
+          and "pool.ntp.org" in ts_cpp
+          and "#define TIMEZONE_OFFSET_SECONDS (7 * 3600)" in cfg,
+          "a bare configTime(0, 0, ...) would bill on UTC midnights, not local")
     # Strip comments first: the name acceptEpoch also appears in a comment
     # inside pollNTP, and a substring rule would keep passing after the real
     # call was deleted (caught by mutation testing, not by reading).

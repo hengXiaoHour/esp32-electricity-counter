@@ -133,7 +133,13 @@ constexpr const char *AP_PASS_DEFAULT = "configure123";
 // Default monthly kWh limit
 #define DEFAULT_MONTHLY_KWH_LIMIT 48.0f
 
-// Monthly billing reset day (1-28). Counters zero at 00:00 UTC on this day each month.
+// Board wall-clock timezone: UTC+7 (Asia/Phnom_Penh). Cambodia has no DST,
+// so a fixed offset is exact. NTP and the browser lend still speak epoch, so
+// only the localtime_r() calendar moves — billing boundaries land at LOCAL
+// midnight instead of 00:00 UTC.
+#define TIMEZONE_OFFSET_SECONDS (7 * 3600)
+
+// Monthly billing reset day (1-28). Counters zero at 00:00 local time (UTC+7) on this day each month.
 // Billing period = 25th → 24th next month. Use 1 for calendar-month reset.
 // This is only the FACTORY default: the user can change it at runtime via
 // `reset_day <1-28>` (serial / dashboard console / cloud console) or the

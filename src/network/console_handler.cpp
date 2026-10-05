@@ -711,7 +711,7 @@ void ConsoleHandler::cmdResetDay(const String &args, String &out) {
   int day = args.toInt();
   if (day >= 1 && day <= 28 && limitMgr) {
     if (limitMgr->setResetDay((uint8_t)day)) {
-      consoleAppendf(out, "  Billing reset day set to %d — counters zero at 00:00 UTC on day %d each month (NVS level)", day, day);
+      consoleAppendf(out, "  Billing reset day set to %d — counters zero at 00:00 local time (UTC+7) on day %d each month (NVS level)", day, day);
     } else {
       consoleAppendf(out, "%s", "  Could not take the data lock - retry");
     }
@@ -848,7 +848,7 @@ void ConsoleHandler::cmdHelp(String &out) {
   consoleAppendf(out, "%s", "    clearcloud          Stop remote monitoring (no reboot)");
   consoleAppendf(out, "%s", "    set_ap <name> <pw>  Rename the network + set password (reboots)");
   consoleAppendf(out, "%s", "    reset_ap            Restore the default network name (reboots)");
-  consoleAppendf(out, "%s", "    reset_day <1-28>    Billing reset day (counters zero at 00:00 UTC)");
+  consoleAppendf(out, "%s", "    reset_day <1-28>    Billing reset day (counters zero at 00:00 local, UTC+7)");
   consoleAppendf(out, "%s", "    nvs_debug           Test NVS write/read cycle");
   consoleAppendf(out, "%s", "    test_force_rollover CONFIRM  Arm a billing wipe for real (bare = dry run)");
   consoleAppendf(out, "%s", "    reboot              Restart the device");

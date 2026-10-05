@@ -106,7 +106,7 @@ void LimitManager::updateBuzzer() {
 }
 
 // Billing-cycle math shared by rolloverIfNeeded() and setResetDay(): at 00:00
-// UTC on the reset day the counters zero and the new billing month begins
+// local time (UTC+7) on the reset day the counters zero and the new billing month begins
 // (reset day 25: the 25th itself starts the new cycle, 25th → 24th).
 static int32_t billingMonthFor(int y, int m, int d, int resetDay) {
   if (d >= resetDay) {

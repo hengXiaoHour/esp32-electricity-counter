@@ -418,7 +418,7 @@ class State:
                         self.reset_day = day
                         self.applied.append(("reset_day", day))
                         return True, ("  Billing reset day set to %d — counters zero"
-                                       " at 00:00 UTC on day %d each month (NVS level)" % (day, day)), False
+                                       " at 00:00 local time (UTC+7) on day %d each month (NVS level)" % (day, day)), False
                 return True, "  Unknown command. Type 'help'.", False
 
             if verb == "set_ap":
