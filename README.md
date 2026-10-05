@@ -215,5 +215,7 @@ Serial console (`help` for the list): `status`, `wifi`, `set_ap`, `setwifi`,
 
 3.2.0 notes: cloud OTA — `ota <url>` console verb (serial / dashboard / cloud), github release `.bin` into the inactive slot with TLS chain validation, progress banner + chip-aware Firmware panel, `--classic` + `--version` build flags.
 
+3.2.1 notes: fixes a one-character cloud-payload typo (stray quote before `"time"`) that made every push invalid JSON — boards on 3.2.0 poll fine but show straight fails and never update `latest`. Downlink still works, so 3.2.0 boards can take this over the air.
+
 3.0.0 notes: AP-only architecture, NVS-persisted AP name/password, CLI LED
 type switch, pinned-down AsyncTCP patches. Full history: `gh release list`.

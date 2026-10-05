@@ -337,7 +337,7 @@ bool CloudPush::snapshot(SystemData *sysData, SemaphoreHandle_t *mutex, String &
   body += otaRun ? "true" : "false";
   body += ",\"otaPct\":";
   body += (int)otaPct;
-  body += "\",\"time\":{\"ok\":";
+  body += ",\"time\":{\"ok\":";
   body += timeOk ? "true" : "false";
   body += ",\"age\":";
   body += timeAge;

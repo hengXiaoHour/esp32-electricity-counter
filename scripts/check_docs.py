@@ -593,8 +593,8 @@ def main():
 
     # --- firmware version / size ---------------------------------------
     m = re.search(r'#define FIRMWARE_VERSION "([^"]+)"', cfg)
-    c.add("FIRMWARE_VERSION is the 3.2.0 cloud-OTA release",
-          m and m.group(1) == "3.2.0", "found %s" % (m.group(1) if m else "none"))
+    c.add("FIRMWARE_VERSION is the 3.2.1 cloud-OTA release",
+          m and m.group(1) == "3.2.1", "found %s" % (m.group(1) if m else "none"))
 
     # --- cloud OTA: github release .bin -> inactive slot -> reboot --------
     # One code path for serial / dashboard / cloud: the click becomes a
@@ -643,6 +643,10 @@ def main():
     c.add("the cloud adapter maps the OTA state onto the shared banner",
           "otaRun" in cloudjs and "otaProgress" in cloudjs,
           "remote progress would never render")
+    c.add("the cloud payload has no stray quote before \"time\" (3.2.0 broke every push)",
+          'body += ",\\"time\\":{\\"ok\\":"' in cl_cpp and
+          'body += "\\",\\"time\\"' not in cl_cpp,
+          "a stray quote makes otaPct invalid JSON and all pushes fail while polls pass")
     c.add("the viewer checks releases and sends the console line, keyed by chip",
           "api.github.com" in js and "checkFirmware" in js and
           "startFirmwareUpdate" in js and "esp32-classic-" in js and
