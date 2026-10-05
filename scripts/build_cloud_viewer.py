@@ -34,18 +34,30 @@ FIREBASE_SDK = """<script src="https://www.gstatic.com/firebasejs/10.12.2/fireba
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 """
 
-CLOUD_BAR = """    <!-- Cloud bar: device picker + Google auth + freshness. The only
-         chrome that differs from the board-served dashboard. -->
+CLOUD_BAR = """    <!-- Cloud device panel: lives in Settings so the header status bar
+         stays identical to the board-served dashboard ("Connected"). -->
     <div id="cloudBar" class="panel-box cloud-bar">
-      <div class="cloud-row">
-        <span id="cloudDot" class="led" title="cloud freshness"></span>
-        <select id="devicePicker" class="cloud-select" aria-label="device"></select>
+      <div class="panel-header"><h3>Cloud device</h3></div>
+      <div class="cal-row-single">
+        <label for="devicePicker">Device:</label>
+        <div class="cal-field">
+          <select id="devicePicker" class="cloud-select" aria-label="device"></select>
+        </div>
         <button class="btn-sm" id="cloudReloadBtn" title="reload device list">Reload</button>
+      </div>
+      <div class="cal-row-single">
+        <label>Freshness:</label>
+        <div class="cal-field">
+          <span class="mono conn-txt"><span id="cloudDot" class="led" title="cloud freshness"></span> <span id="cloudFresh">connecting&hellip;</span></span>
+        </div>
         <span id="staleTag" class="stale-tag hidden">STALE</span>
       </div>
-      <div class="cloud-row">
-        <span id="userEmail" class="mono dim"></span>
-        <span id="adminBadge" class="role-badge role-admin hidden">ADMIN</span>
+      <div class="cal-row-single">
+        <label>Google:</label>
+        <div class="cal-field">
+          <span id="userEmail" class="mono dim"></span>
+          <span id="adminBadge" class="role-badge role-admin hidden">ADMIN</span>
+        </div>
         <button class="btn-sm" id="authBtn">Sign in with Google</button>
       </div>
       <div id="cloudCmdStatus" class="mono dim cloud-status">No command sent yet.</div>
@@ -104,8 +116,8 @@ def patch_index(src: str) -> str:
     html = html.replace(
         """      This page is served by the board itself. Join its WiFi network
       (<span class="mono">ESP32-Elec-Counter</span>) and reload if you are not connected.""",
-        """      Cloud mirror of the meter, pushed by the board every ~10&nbsp;s over home WiFi.
-      Pick a device below &mdash; no board WiFi needed.""",
+        """      Cloud mirror of the meter, pushed by the board every second over home WiFi.
+      It connects automatically &mdash; switch devices in Settings &mdash; no board WiFi needed.""",
     )
     html = html.replace(
         "&#9654; Reconnect", "&#9654; Retry",
@@ -115,11 +127,13 @@ def patch_index(src: str) -> str:
         '<span class="nav-label">Admin PIN</span>',
         '<span class="nav-label">Admin</span>',
     )
-    # Cloud bar at the top of <main>, before the status bar.
+    # Cloud device panel at the top of Settings (NOT above the status bar:
+    # the header stays identical to the board-served dashboard).
     if 'id="cloudBar"' not in html:
         html = html.replace(
-            "    <!-- Status Bar -->\n    <header id=\"statusBar\">",
-            CLOUD_BAR + "\n    <!-- Status Bar -->\n    <header id=\"statusBar\">",
+            '<section id="page-settings" class="page">',
+            '<section id="page-settings" class="page">\n' + CLOUD_BAR,
+            1,
         )
     # Admin PIN panel -> Google admin panel (keep roleBadge + guestHint ids:
     # script.js/cloud.js drive the badge from those).

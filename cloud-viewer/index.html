@@ -14,7 +14,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="style.css?v=6c196dc0">
+<link rel="stylesheet" href="style.css?v=942dfe8c">
 <script>
 // The board is always on location.host, so there is no session to restore and
 // nothing to decide before the first paint. This only hides the connect panel
@@ -38,8 +38,8 @@
     </div>
 
     <div class="connect-card-note">
-      Cloud mirror of the meter, pushed by the board every ~10&nbsp;s over home WiFi.
-      Pick a device below &mdash; no board WiFi needed.
+      Cloud mirror of the meter, pushed by the board every second over home WiFi.
+      It connects automatically &mdash; switch devices in Settings &mdash; no board WiFi needed.
     </div>
 
     <div class="connect-row">
@@ -100,24 +100,6 @@
 
   <!-- Main -->
   <main id="main">
-
-    <!-- Cloud bar: device picker + Google auth + freshness. The only
-         chrome that differs from the board-served dashboard. -->
-    <div id="cloudBar" class="panel-box cloud-bar">
-      <div class="cloud-row">
-        <span id="cloudDot" class="led" title="cloud freshness"></span>
-        <select id="devicePicker" class="cloud-select" aria-label="device"></select>
-        <button class="btn-sm" id="cloudReloadBtn" title="reload device list">Reload</button>
-        <span id="staleTag" class="stale-tag hidden">STALE</span>
-      </div>
-      <div class="cloud-row">
-        <span id="userEmail" class="mono dim"></span>
-        <span id="adminBadge" class="role-badge role-admin hidden">ADMIN</span>
-        <button class="btn-sm" id="authBtn">Sign in with Google</button>
-      </div>
-      <div id="cloudCmdStatus" class="mono dim cloud-status">No command sent yet.</div>
-      <div id="cloudDbg" class="mono dim cloud-status"></div>
-    </div>
 
     <!-- Status Bar -->
     <header id="statusBar">
@@ -185,6 +167,36 @@
 
       <!-- Settings -->
       <section id="page-settings" class="page">
+    <!-- Cloud device panel: lives in Settings so the header status bar
+         stays identical to the board-served dashboard ("Connected"). -->
+    <div id="cloudBar" class="panel-box cloud-bar">
+      <div class="panel-header"><h3>Cloud device</h3></div>
+      <div class="cal-row-single">
+        <label for="devicePicker">Device:</label>
+        <div class="cal-field">
+          <select id="devicePicker" class="cloud-select" aria-label="device"></select>
+        </div>
+        <button class="btn-sm" id="cloudReloadBtn" title="reload device list">Reload</button>
+      </div>
+      <div class="cal-row-single">
+        <label>Freshness:</label>
+        <div class="cal-field">
+          <span class="mono conn-txt"><span id="cloudDot" class="led" title="cloud freshness"></span> <span id="cloudFresh">connecting&hellip;</span></span>
+        </div>
+        <span id="staleTag" class="stale-tag hidden">STALE</span>
+      </div>
+      <div class="cal-row-single">
+        <label>Google:</label>
+        <div class="cal-field">
+          <span id="userEmail" class="mono dim"></span>
+          <span id="adminBadge" class="role-badge role-admin hidden">ADMIN</span>
+        </div>
+        <button class="btn-sm" id="authBtn">Sign in with Google</button>
+      </div>
+      <div id="cloudCmdStatus" class="mono dim cloud-status">No command sent yet.</div>
+      <div id="cloudDbg" class="mono dim cloud-status"></div>
+    </div>
+
                 <div class="panel-box">
           <div class="panel-header"><h3>Admin</h3></div>
           <div class="pin-badge-row">
@@ -434,8 +446,8 @@
   </div>
 </div>
 
-<script src="script.js?v=6c196dc0"></script>
-<script src="cloud.js?v=6c196dc0"></script>
+<script src="script.js?v=942dfe8c"></script>
+<script src="cloud.js?v=942dfe8c"></script>
 <script>
 if ('serviceWorker' in navigator && window.isSecureContext) {
   window.addEventListener('load', function () {

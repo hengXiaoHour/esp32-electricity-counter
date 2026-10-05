@@ -140,18 +140,25 @@ function cl_adapt(latest, mac) {
 }
 
 function cl_refreshStale() {
+  // The header stays identical to the board-served dashboard: "Connected"
+  // when fresh, like the local UI. Detail (cadence, quiet time, debug)
+  // lives in Settings under Cloud device.
   var ms = cl_staleMs();
   var stale = !cl_lastRxMs || (Date.now() - cl_lastRxMs > ms);
   var tag = document.getElementById('staleTag');
   if (tag) tag.classList.toggle('hidden', !stale);
   var dot = document.getElementById('cloudDot');
   if (dot) dot.className = 'led ' + (!cl_lastRxMs ? '' : (stale ? 'led-stale' : 'led-ok'));
+  var fr = document.getElementById('cloudFresh');
+  if (fr) {
+    fr.textContent = !cl_lastRxMs ? 'connecting…'
+      : (stale ? 'STALE — board quiet >' + Math.round(ms / 1000) + 's'
+               : 'live (' + cl_cadenceLabel() + ' pushes)');
+  }
   var cs = document.getElementById('connStatus');
   if (cs && cl_mac) {
-    cs.textContent = cl_lastRxMs
-      ? (stale ? 'Cloud — STALE (board quiet >' + Math.round(ms / 1000) + 's)'
-               : 'Cloud — live (' + cl_cadenceLabel() + ' pushes)')
-      : 'Cloud — waiting for data…';
+    cs.textContent = !cl_lastRxMs ? 'Connected'
+      : (stale ? 'Stale (board quiet >' + Math.round(ms / 1000) + 's)' : 'Connected');
   }
 }
 
@@ -270,7 +277,7 @@ function cl_selectDevice(mac) {
     .then(function (v) { if (v) cl_onLatest(v); })
     .catch(function () {});
   showDashboard();
-  setConnectStatus('Cloud — connecting…', 'connected');
+  setConnectStatus('Connecting…', 'connected');
   var cs2 = document.getElementById('connStatus2');
   if (cs2) cs2.textContent = 'Cloud — ' + mac;
 }
