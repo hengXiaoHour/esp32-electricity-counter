@@ -454,6 +454,26 @@ void CloudPush::pollCmd(SystemData *sysData, SemaphoreHandle_t *mutex,
   if (cmdId.length() >= sizeof(lastCmdId_)) cmdId.remove(sizeof(lastCmdId_) - 1);
   if (cmdId.equals(lastCmdId_)) return;  // already executed
 
+  // Record BEFORE executing. If the ack write below fails, the next poll
+  // must NOT re-run the command: re-running is harmless for idempotent
+  // verbs (reboot, reset_day) but a second execution of a non-idempotent
+  // verb (test_force_rollover) yanks the billing marker back a second time
+  // and the next sensor cycle wipes a month of counters again — the
+  // double-wipe of 2026-10-05. Execute-once beats ack-once: a lost ack only
+  // costs the reply text, a re-execution costs real state.
+  // Under the mutex: commit() is prefs.end()+prefs.begin(), which is not
+  // thread-safe against sensorTask's 5 s energy save on the same handle.
+  // The mutex is NOT held across processCommand below (it takes dataMutex
+  // internally and does network I/O).
+  {
+    bool locked = (mutex && xSemaphoreTake(*mutex, pdMS_TO_TICKS(50)) == pdTRUE);
+    strncpy(lastCmdId_, cmdId.c_str(), sizeof(lastCmdId_) - 1);
+    lastCmdId_[sizeof(lastCmdId_) - 1] = '\0';
+    nvsRef->saveCloudCmdId(cmdId);
+    nvsRef->commit();
+    if (locked) xSemaphoreGive(*mutex);
+  }
+
   // Execute WITHOUT the PIN: trust comes from the RTDB rules (only the admin
   // Gmail can write cmd) + TLS + this ID token. The frame may carry
   // set_pin/set_ap/setwifi passwords, so it is NEVER logged - verb + id only.
@@ -483,16 +503,8 @@ void CloudPush::pollCmd(SystemData *sysData, SemaphoreHandle_t *mutex,
   if (!Firebase.RTDB.setJSON(&s_pollFbdo, ackPath, &ackJson)) {
     DEBUG_LOG("  [CLOUD] cmd ack failed: %s\n",
               s_pollFbdo.errorReason().c_str());
-    return;  // id NOT recorded: the next poll retries the same command.
+    return;  // executed once; only the reply is lost, never retried.
   }
-  // Record under the mutex: commit() is prefs.end()+prefs.begin(), which is
-  // not thread-safe against sensorTask's 5 s energy save on the same handle.
-  bool locked = (mutex && xSemaphoreTake(*mutex, pdMS_TO_TICKS(50)) == pdTRUE);
-  strncpy(lastCmdId_, cmdId.c_str(), sizeof(lastCmdId_) - 1);
-  lastCmdId_[sizeof(lastCmdId_) - 1] = '\0';
-  nvsRef->saveCloudCmdId(cmdId);
-  nvsRef->commit();
-  if (locked) xSemaphoreGive(*mutex);
 }
 
 void CloudPush::loop(SystemData *sysData, SemaphoreHandle_t *mutex,

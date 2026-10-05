@@ -398,6 +398,17 @@ def main():
           'getString("cloud_cmd"' in nvs and 'putString("cloud_cmd"' in nvs and
           'loadCloudCmdId' in nvs_h and 'saveCloudCmdId' in nvs_h,
           "an acked command re-runs after every reboot")
+    # Execute-once: the id is recorded BEFORE processCommand runs, so a
+    # failed ack write can never re-run the verb on the next poll. The old
+    # shape (record-after + retry) double-executed non-idempotent verbs —
+    # the 2026-10-05 double-wipe. Code shape, not comments: exactly one
+    # record site in the poll body, ordered before the execution.
+    c.add("a failed cmd ack never re-runs the command (id recorded first)",
+          _poll is not None and
+          _poll_b.count("saveCloudCmdId") == 1 and
+          "processCommand(" in _poll_b and
+          _poll_b.index("saveCloudCmdId") < _poll_b.index("processCommand("),
+          "an ack failure would execute a non-idempotent verb twice")
     _poll_iv = re.search(r"POLL_INTERVAL_MS\s*=\s*(\d+)", cl_h)
     c.add("the downlink polls on its own 2 s timer, wired into loop()",
           _poll_iv is not None and int(_poll_iv.group(1)) == 2000 and
