@@ -356,6 +356,43 @@ def main():
           "it is committed again - untrack with "
           "'git rm --cached src/network/web_assets.h'")
 
+    # --- 7b. no credential material is tracked, by name or by content -----
+    # Oct 2026: flipping this repo public exposed two service-account key
+    # files that `git add -A` had swept up in Sep 2026 (removed from HEAD
+    # days later, but the blobs stayed in history). Google disabled the keys
+    # within the hour and paused the project. The Sep-2026 fix HAD added a
+    # *firebase-adminsdk*.json ignore, but a later rewrite of .gitignore
+    # silently dropped it - so this rule asserts the guard two independent
+    # ways: the ignore pattern must exist in .gitignore AND no tracked file
+    # may match the name or hold a PEM block. Either half catches what the
+    # other misses (a renamed key file, or a key pasted into an innocent
+    # filename).
+    _tracked = subprocess.run(
+        ["git", "ls-files"], cwd=str(ROOT), capture_output=True,
+        text=True).stdout.splitlines()
+    _key_files = [f for f in _tracked if "firebase-adminsdk" in f]
+    r.add("no service-account key file is tracked", not _key_files,
+          "tracked: " + ", ".join(_key_files))
+    _leaky = []
+    # The needle is built at runtime: written as one literal, this file would
+    # match itself and the gate would fail on clean code.
+    _pem = "BEGIN PRIVATE" + " KEY"
+    for _f in _tracked:
+        try:
+            _p = ROOT / _f
+            if _p.stat().st_size > 2000000:
+                continue
+            if _pem in _p.read_text(encoding="utf-8",
+                                errors="replace"):
+                _leaky.append(_f)
+        except OSError:
+            pass
+    r.add("no tracked file holds private-key material", not _leaky,
+          "key block in: " + ", ".join(_leaky))
+    r.add("the key-file ignore pattern is present in .gitignore",
+          "*firebase-adminsdk*.json" in read(".gitignore"),
+          "a .gitignore rewrite dropped the guard again")
+
     # --- 8. the AP rename path must stay wired end to end -----------------
     # Not a dead-code rule in the usual sense, but the same disease seen from the
     # other side: every layer of this feature can be removed one at a time and

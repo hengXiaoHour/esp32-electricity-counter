@@ -67,3 +67,11 @@ node_modules/
 # Firebase CLI scratch: debug log + hosting cache. Regenerated on every deploy.
 firebase-debug.log
 .firebase/
+# Service-account key files (never commit, never flash). Two of these were
+# swept up by `git add -A` in Sep 2026; flipping this repo public in Oct 2026
+# exposed the historical blobs and Google disabled the keys within the hour.
+# The pattern below is the guard; scripts/check_deadcode.py rule 7b asserts
+# no tracked file matches it and no tracked blob holds key material, so a
+# later rewrite of this file cannot silently drop the guard again (which is
+# exactly what happened to the Sep-2026 ignore rule).
+*firebase-adminsdk*.json
