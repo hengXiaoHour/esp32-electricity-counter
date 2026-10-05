@@ -22,6 +22,7 @@ Re-run after any frontend change:
 import re
 import shutil
 import sys
+import hashlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -194,20 +195,36 @@ def main() -> int:
     for p in icons_src.glob("*.png"):
         shutil.copy2(p, icons_dst / p.name)
 
+    # Cache-busting stamp, derived from CONTENT (not time) so the builder
+    # stays a no-op when sources are unchanged: a returning browser must
+    # never keep running a stale script.js after a deploy, and the service
+    # worker only updates when sw.js bytes change.
+    h = hashlib.sha1()
+    for name in ("script.js", "cloud.js", "style.css"):
+        h.update((CLOUD / name).read_bytes())
+    stamp = h.hexdigest()[:8]
+
+    html_path = CLOUD / "index.html"
+    html = html_path.read_text(encoding="utf-8")
+    html = re.sub(r'(src|href)="(script\.js|cloud\.js|style\.css)(\?v=[0-9a-z]+)?"',
+                  lambda m: '%s="%s?v=%s"' % (m.group(1), m.group(2), stamp), html)
+    html_path.write_text(html, encoding="utf-8")
+
     # Service worker: same logic, cloud cache name + cloud shell.
+    # Both carry the content stamp so a deploy always busts every cache.
     sw = (FRONT / "sw.js").read_text(encoding="utf-8")
-    sw = sw.replace("esp32-counter-v15", "esp32-counter-cloud-v1")
+    sw = sw.replace("esp32-counter-v15", "esp32-counter-cloud-" + stamp)
     sw = re.sub(
         r"const SHELL = \[.*?\]",
         """const SHELL = [
   './index.html',
-  './style.css',
-  './script.js',
-  './cloud.js',
+  './style.css?v=%s',
+  './script.js?v=%s',
+  './cloud.js?v=%s',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png'
-]""",
+]""" % (stamp, stamp, stamp),
         sw,
         flags=re.S,
     )
