@@ -1355,6 +1355,19 @@ function confirmModalReset() {
 }
 
 // ============ Event Log ============
+function eventTag(ev) {
+  // System-wide events are logged with channel 0 (same slot as Counter 1),
+  // so rendering them as CH1 claims only Counter 1 was affected — while the
+  // Monthly reset actually zeroes all five. Tag those SYS instead.
+  const m = String((ev && ev.m) || '');
+  if (ev && ev.c === 0 &&
+      (m.indexOf('Boot \u2014') === 0 || m.indexOf('Billing') === 0 ||
+       m.indexOf('Monthly reset') === 0 || m.indexOf('Rollover test armed') === 0)) {
+    return 'SYS';
+  }
+  return 'CH' + (ev.c + 1);
+}
+
 function renderEvents(events) {
   if (!events) return;
   const key = events.map(e => `${e.t}_${e.c}_${e.s}_${e.m}`).join('|');
@@ -1368,7 +1381,7 @@ function renderEvents(events) {
       const tkey = `${latest.t}_${latest.c}_${latest.m}`;
       if (tkey !== lastToastEventKey) {
         lastToastEventKey = tkey;
-        showToast(`Ch${latest.c + 1}: ${latest.m}`);
+        showToast(`${eventTag(latest)}: ${latest.m}`);
       }
     }
   }
@@ -1392,7 +1405,7 @@ function renderEvents(events) {
     div.className = 'event-item ' + type;
     div.innerHTML = `
       <span class="time">${new Date(ev.t * 1000).toLocaleTimeString()}</span>
-      <span class="tag">CH${ev.c + 1}</span>
+      <span class="tag">${eventTag(ev)}</span>
       <span class="msg">${ev.m}</span>
     `;
     list.appendChild(div);
