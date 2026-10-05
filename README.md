@@ -217,5 +217,7 @@ Serial console (`help` for the list): `status`, `wifi`, `set_ap`, `setwifi`,
 
 3.2.1 notes: fixes a one-character cloud-payload typo (stray quote before `"time"`) that made every push invalid JSON — boards on 3.2.0 poll fine but show straight fails and never update `latest`. Downlink still works, so 3.2.0 boards can take this over the air.
 
+3.2.2 notes: OTA re-test — same code as 3.2.1 with a version stamp only, to prove the end-to-end Check → Update path again.
+
 3.0.0 notes: AP-only architecture, NVS-persisted AP name/password, CLI LED
 type switch, pinned-down AsyncTCP patches. Full history: `gh release list`.

@@ -593,8 +593,8 @@ def main():
 
     # --- firmware version / size ---------------------------------------
     m = re.search(r'#define FIRMWARE_VERSION "([^"]+)"', cfg)
-    c.add("FIRMWARE_VERSION is the 3.2.1 cloud-OTA release",
-          m and m.group(1) == "3.2.1", "found %s" % (m.group(1) if m else "none"))
+    c.add("FIRMWARE_VERSION is the 3.2.2 cloud-OTA release",
+          m and m.group(1) == "3.2.2", "found %s" % (m.group(1) if m else "none"))
 
     # --- cloud OTA: github release .bin -> inactive slot -> reboot --------
     # One code path for serial / dashboard / cloud: the click becomes a
