@@ -217,9 +217,11 @@ void networkTask(void *pvParameters) {
     if (wifiMgr.stationUp()) timeSync.beginNTP();
     timeSync.pollNTP();
 
-    // Remote monitoring, STA-only and push-only (never reads). Runs on the
-    // network task so a slow TLS handshake stalls broadcasts, never sensing.
-    cloudPush.loop(&systemData, &dataMutex);
+    // Remote monitoring + remote control, STA-only. Pushes the snapshot and
+    // polls the admin's cmd node (downlink) on separate 10 s timers. Runs on
+    // the network task so a slow TLS handshake stalls broadcasts, never
+    // sensing.
+    cloudPush.loop(&systemData, &dataMutex, &powerCalc, &limitMgr);
 
     // Serial processing on Core 0
     while (Serial.available()) {
@@ -499,8 +501,9 @@ void setup() {
 
   // Two tasks on two cores. The firebaseTask that used to sit at priority 1
   // on Core 0 to keep its blocking TLS work away from the broadcast loop is
-  // gone with the old cloud SDK: the small REST push runs inline on networkTask
-  // instead (STA-only, every 10 s), so there is still exactly one Core 0 task.
+  // gone with the old cloud SDK: the small REST push + cmd poll run inline on
+  // networkTask instead (STA-only, every 10 s each), so there is still exactly
+  // one Core 0 task.
   xTaskCreatePinnedToCore(networkTask, "network", 8192, NULL, 2, NULL, 0);
   xTaskCreatePinnedToCore(sensorTask, "sensor", 8192, NULL, 2, NULL, 1);
 

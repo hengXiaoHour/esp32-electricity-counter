@@ -7,10 +7,21 @@
 #include "cloud_cfg.h"
 
 class NVSManager;
+class PowerCalculator;
+class LimitManager;
 
-// Remote monitoring: pushes a small snapshot to a realtime database over
-// plain HTTPS REST (PATCH /devices/<MAC>/latest.json?auth=...), every
-// PUSH_INTERVAL_MS, STA-only.
+// Remote monitoring + remote control over plain HTTPS REST, STA-only.
+//
+// UPLINK: pushes a small snapshot (PATCH /devices/<MAC>/latest.json?auth=...)
+// every PUSH_INTERVAL_MS.
+//
+// DOWNLINK: polls /devices/<MAC>/cmd.json?auth=... every POLL_INTERVAL_MS for
+// a {id, frame, ts} written by the Gmail admin, executes a NEW id once via
+// processCommand(..., skipAuth=true), and acks it at
+// /devices/<MAC>/ack.json. Trust comes from the RTDB rules (only the admin
+// Gmail can write cmd) + TLS + the board's own ID token - the cloud never
+// carries a PIN, so the PIN gate is skipped for cloud frames only. Local
+// WebSocket callers keep the PIN (processCommand default).
 //
 // Herd auth: the board signs into Firebase Authentication with an
 // email + password (Identity Toolkit REST, no SDK), holds the ID token in
@@ -22,9 +33,10 @@ class NVSManager;
 //
 // The deliberate differences from the removed cloud era
 // (doc/opencode_agent/lessons.md, "Archived - cloud era") still hold:
-// push-only (never reads - the old per-loop poll shared the push's TLS
-// session and tore it down on every missing node), STA-only (the fallback AP
-// has no internet), MAC identity (no settable board id, nothing to mistype).
+// STA-only (the fallback AP has no internet), MAC identity (no settable
+// board id, nothing to mistype). The old "never reads" half is superseded:
+// the downlink GETs only the cmd node on its own 10 s timer (never sharing
+// the push connection), and a missing node is a quiet no-op, not a teardown.
 //
 // Cost, stated honestly: auth adds up to two HTTPS round-trips per push
 // interval when the token lapses (typically under 2 s each, timeout 4 s).
@@ -37,7 +49,17 @@ public:
   // Call from networkTask (~20 ms tick). Takes dataMutex briefly to snapshot
   // the readings, then does TLS with the mutex RELEASED - a multi-second
   // handshake must never hold the lock the sensor task needs.
-  void loop(SystemData *sysData, SemaphoreHandle_t *mutex);
+  void loop(SystemData *sysData, SemaphoreHandle_t *mutex,
+            PowerCalculator *powerCalc, LimitManager *limitMgr);
+
+  // One downlink poll: GET the cmd node, execute a NEW id once via
+  // processCommand(..., skipAuth=true), PATCH the ack. Safe to call from
+  // loop() only; does TLS with dataMutex RELEASED and commits the new id
+  // under dataMutex (50 ms take, same pattern as snapshot). Quiet no-op when
+  // WiFi is down, login fails, or no new command is waiting.
+  void pollCmd(SystemData *sysData, SemaphoreHandle_t *mutex,
+               PowerCalculator *powerCalc, LimitManager *limitMgr,
+               NVSManager *nvsRef);
 
   bool enabled() const { return enabled_; }
   // True while cloud needs the radio awake. updateEcoMode() counts this as
@@ -46,21 +68,25 @@ public:
   bool lastPushOk() const { return lastOk_; }
   // Seconds since the last 200 OK, or UINT32_MAX when nothing ever landed.
   uint32_t secondsSincePush() const;
+  // Seconds since the last downlink poll attempt, or UINT32_MAX before first.
+  uint32_t secondsSincePoll() const;
   // 12-char MAC id, or "" when the radio has no MAC to read.
   const char *deviceId() const { return deviceId_; }
   // Signed-in account (identifier, not secret - shown in the dashboard).
   const char *account() const { return email_; }
 
   // Read-only diagnostic for `cloud diag` (serial + web console): account,
-  // session age, token LENGTH and token audience claim. The token and the
+  // session age, token LENGTH and token audience claim, plus the last
+  // executed command id (first 20 chars) and the poll age. The token and the
   // password are never printed - length + aud is everything needed to tell
   // "mangled on the board" from "rejected by the project". Takes dataMutex
   // briefly: the WS console runs on a different task than loop().
   void diag(String &out, SemaphoreHandle_t *mutex);
 
   static const uint32_t PUSH_INTERVAL_MS = 10000;
+  static const uint32_t POLL_INTERVAL_MS = 10000;
 
-private:
+ private:
   NVSManager *nvs = nullptr;
   bool enabled_ = false;
   char host_[CLOUD_MAX_HOST_LEN + 1] = {0};
@@ -77,6 +103,10 @@ private:
   bool lastOk_ = false;
   uint32_t lastAttemptMs_ = 0;
   uint32_t lastOkMs_ = 0;
+
+  // Downlink dedup: last executed command id (mirrored to NVS "cloud_cmd").
+  char lastCmdId_[48] = {0};
+  uint32_t lastPollMs_ = 0;
 
   bool snapshot(SystemData *sysData, SemaphoreHandle_t *mutex, String &body);
   // POSTs and returns the HTTP status code (0 = transport failure).

@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Electricity Counter &mdash; Cloud Viewer</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="dot" id="liveDot" title="live"></span>
+    <span class="brand-name">ELECTRICITY COUNTER</span>
+    <span class="brand-sub">CLOUD VIEWER</span>
+  </div>
+  <div class="authbox">
+    <span id="userEmail" class="user-email"></span>
+    <span id="adminBadge" class="admin-badge" hidden>ADMIN</span>
+    <button id="authBtn" class="btn">Sign in with Google</button>
+  </div>
+</header>
+
+<main class="wrap">
+  <p id="banner" class="banner" hidden></p>
+
+  <section class="panel">
+    <div class="panel-head">DEVICE</div>
+    <div class="row">
+      <select id="devicePicker" aria-label="device"></select>
+      <button id="refreshBtn" class="btn ghost" title="reload device list">Reload</button>
+    </div>
+    <div id="stateLine" class="state-line">Admin via Google &mdash; no PIN in cloud. Local board dashboard keeps its PIN.</div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">LIVE READINGS <span id="staleTag" class="stale" hidden>STALE</span></div>
+    <div id="noview" class="muted">Waiting for data&hellip;</div>
+    <div id="readings" hidden>
+      <div class="grid">
+        <div class="kv"><span class="k">Device</span><span class="v mono" id="rDev">&mdash;</span></div>
+        <div class="kv"><span class="k">Time</span><span class="v mono" id="rTime">&mdash;</span></div>
+        <div class="kv"><span class="k">Uptime</span><span class="v mono" id="rUptime">&mdash;</span></div>
+        <div class="kv"><span class="k">RSSI</span><span class="v mono" id="rRssi">&mdash;</span></div>
+        <div class="kv"><span class="k">Voltage</span><span class="v mono" id="rVolt">&mdash;</span></div>
+        <div class="kv"><span class="k">MCU temp</span><span class="v mono" id="rMcu">&mdash;</span></div>
+        <div class="kv"><span class="k">Eco</span><span class="v mono" id="rEco">&mdash;</span></div>
+      </div>
+      <table class="chtable">
+        <thead>
+          <tr><th>CH</th><th class="num">W</th><th class="num">kWh</th><th>STATE</th></tr>
+        </thead>
+        <tbody id="chBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel" id="adminPanel" hidden>
+    <div class="panel-head danger">ADMIN &mdash; FULL REMOTE CONTROL</div>
+    <p class="muted small">Commands are written to <span class="mono">/devices/&lt;MAC&gt;/cmd</span>.
+    The board polls about every 10&nbsp;s; the reply appears under <span class="mono">/ack</span>.</p>
+    <div id="cmdStatus" class="cmd-status">No command sent yet.</div>
+
+    <h3>Channel</h3>
+    <div class="row">
+      <select id="chSel" aria-label="channel"></select>
+      <input id="chName" class="inp" maxlength="15" placeholder="name" aria-label="channel name">
+      <button class="btn" data-cmd="set_name">Set name</button>
+    </div>
+    <div class="row">
+      <input id="mkwh" class="inp" inputmode="decimal" placeholder="monthly kWh" aria-label="monthly kWh">
+      <button class="btn" data-cmd="set_monthly_kwh">Set monthly kWh</button>
+      <button class="btn danger" data-cmd="reset_counter" data-confirm="Reset CH counter to 0?">Reset counter</button>
+    </div>
+
+    <h3>Calibration</h3>
+    <div class="row">
+      <input id="voltCal" class="inp" inputmode="decimal" placeholder="voltage cal" aria-label="voltage calibration">
+      <button class="btn" data-cmd="set_voltage_cal">Set voltage cal</button>
+    </div>
+    <div class="row">
+      <input id="currCal" class="inp" inputmode="decimal" placeholder="current cal" aria-label="current calibration">
+      <button class="btn" data-cmd="set_current_cal">Set current cal (ch)</button>
+    </div>
+    <div class="row">
+      <input id="nfVal" class="inp" inputmode="decimal" placeholder="noise floor (blank = auto)" aria-label="noise floor">
+      <button class="btn" data-cmd="set_noise_floor">Set noise floor (ch)</button>
+      <button class="btn" data-cmd="autozero">Auto-Zero (ch)</button>
+    </div>
+    <div class="row">
+      <input id="lpfVal" class="inp" inputmode="decimal" placeholder="LPF 0.01&ndash;1" aria-label="LPF alpha">
+      <button class="btn" data-cmd="set_lpf">Set LPF (ch)</button>
+    </div>
+    <div class="row">
+      <input id="rmsVal" class="inp" inputmode="numeric" placeholder="RMS samples 100&ndash;2000" aria-label="RMS samples">
+      <button class="btn" data-cmd="set_rms_samples">Set RMS samples</button>
+      <input id="azVal" class="inp" inputmode="numeric" placeholder="AZ batches 1&ndash;64" aria-label="auto-zero batches">
+      <button class="btn" data-cmd="set_az_batches">Set AZ batches</button>
+    </div>
+    <div class="row">
+      <button class="btn danger" data-cmd="reset_ch_cal" data-confirm="Reset CH calibration to defaults?">Reset CH cal</button>
+      <button class="btn danger" data-cmd="reset_ch_to_default" data-confirm="Reset CH name + limit to defaults?">Reset CH to default</button>
+      <button class="btn danger" data-cmd="reset_nvs_defaults" data-confirm="Reset ALL NVS settings to defaults?">Reset NVS defaults</button>
+    </div>
+
+    <h3>Board identity &amp; network</h3>
+    <div class="row">
+      <input id="pinNew" class="inp" inputmode="numeric" maxlength="8" placeholder="new LAN PIN" aria-label="new LAN PIN">
+      <button class="btn danger" data-cmd="set_pin" data-confirm="Change the board LAN PIN?">Set LAN PIN</button>
+    </div>
+    <div class="row">
+      <input id="apSsid" class="inp" maxlength="32" placeholder="AP name" aria-label="AP SSID">
+      <input id="apPass" class="inp" maxlength="63" placeholder="AP password (8-63 chars)" aria-label="AP password">
+      <button class="btn danger" data-cmd="set_ap" data-confirm="Rename the fallback AP? The board will REBOOT.">Set AP + reboot</button>
+      <button class="btn danger" data-cmd="reset_ap" data-confirm="Reset AP to defaults? The board will REBOOT.">Reset AP</button>
+    </div>
+    <div class="row">
+      <input id="staSsid" class="inp" maxlength="32" placeholder="home WiFi name" aria-label="home WiFi SSID">
+      <input id="staPass" class="inp" maxlength="63" placeholder="home WiFi password" aria-label="home WiFi password">
+      <button class="btn danger" data-cmd="setwifi" data-confirm="Change home WiFi? The board will REBOOT.">Set home WiFi</button>
+      <button class="btn danger" data-cmd="clearwifi" data-confirm="Forget home WiFi? Falls back to AP.">Clear home WiFi</button>
+    </div>
+
+    <h3>Cloud account on the board</h3>
+    <div class="row">
+      <input id="clHost" class="inp" placeholder="database host" aria-label="database host">
+      <input id="clEmail" class="inp" inputmode="email" placeholder="account email" aria-label="cloud account email">
+      <input id="clPass" class="inp" placeholder="account password" aria-label="cloud account password">
+      <button class="btn danger" data-cmd="setcloud" data-confirm="Change the board cloud account? The board will REBOOT.">Set cloud</button>
+      <button class="btn danger" data-cmd="clearcloud" data-confirm="Stop cloud pushes from this board?">Clear cloud</button>
+    </div>
+
+    <h3>Console &amp; diagnostics</h3>
+    <div class="row">
+      <input id="consoleLine" class="inp grow" placeholder="console line (e.g. status)" aria-label="console line">
+      <button class="btn" data-cmd="console">Send</button>
+      <button class="btn danger" data-cmd="test_force_rollover" data-confirm="Force a billing rollover on the board?">Force rollover</button>
+    </div>
+    <pre id="consoleOut" class="console" aria-live="polite"></pre>
+  </section>
+
+  <footer class="foot muted small">
+    Public read-only mirror of the meter. Pushed by the board every ~10&nbsp;s over home WiFi.
+  </footer>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

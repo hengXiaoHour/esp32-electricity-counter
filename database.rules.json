@@ -1,11 +1,21 @@
 {
   "rules": {
     "devices": {
+      ".read": true,
       "$dev": {
-        ".write": true,
-        ".read": "auth != null",
         "latest": {
+          ".write": "auth != null",
           ".validate": "newData.hasChildren(['dev', 'epoch', 'uptime', 'rssi', 'v', 'ch'])"
+        },
+        "cmd": {
+          ".read": true,
+          ".write": "auth != null && auth.token.email == 'heng.xiao.hour@gmail.com'",
+          ".validate": "newData.hasChildren(['id', 'frame', 'ts'])"
+        },
+        "ack": {
+          ".read": true,
+          ".write": "auth != null",
+          ".validate": "newData.hasChildren(['id', 'ok', 'ts'])"
         }
       }
     }

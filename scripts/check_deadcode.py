@@ -404,6 +404,8 @@ def main():
     clcpp = strip_cpp(read("src/network/cloud_push.cpp"))
     post_body = body_of(clcpp, "int CloudPush::postStatus")
     begin_body = body_of(clcpp, "void CloudPush::begin")
+    cl_loop_body = body_of(clcpp, "void CloudPush::loop")
+    cl_poll_body = body_of(clcpp, "void CloudPush::pollCmd")
     cloud_missing = []
     for what, present in [
             ("firmware verb (setcloud)", has("setcloud", cmd)),
@@ -426,7 +428,26 @@ def main():
             ("dashboard panel", 'id="cloudHost"' in read("frontend/index.html")),
             ("begin loads from NVS", bool(begin_body) and "loadFb" in begin_body),
             ("post sends the session token buffer (never a constant)",
-             bool(post_body) and "idToken_" in post_body)]:
+             bool(post_body) and "idToken_" in post_body),
+            # Downlink: same disease as above - each layer deletable while the
+            # rest looks tidy. Shape-scoped, not word-scoped: has("pollCmd")
+            # alone passes on the definition after the loop wiring is deleted,
+            # and "saveCloudCmdId" alone passes on the NVS definition after the
+            # ack path stops calling it (both proven by mutation, not reading).
+            ("downlink fetch (cmd node)", "/cmd.json" in clcpp),
+            ("downlink ack (ack node)", "/ack.json" in clcpp),
+            ("poll executes cloud frames",
+             bool(cl_poll_body) and "processCommand(" in cl_poll_body),
+            ("poll skips the PIN (cloud trusts RTDB rules, not a PIN)",
+             bool(cl_poll_body) and
+             re.search(r"processCommand\([\s\S]{0,400}?, true\)",
+                       cl_poll_body) is not None),
+            ("poll wired into loop",
+             bool(cl_loop_body) and "pollCmd(" in cl_loop_body),
+            ("acked id persisted (no re-run after reboot)",
+             bool(cl_poll_body) and "saveCloudCmdId(" in cl_poll_body),
+            ("begin restores the last acked id",
+             bool(begin_body) and "loadCloudCmdId" in begin_body)]:
         if not present:
             cloud_missing.append(what)
     r.add("the cloud monitoring feature is still wired end to end", not cloud_missing,

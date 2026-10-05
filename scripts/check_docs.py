@@ -250,7 +250,7 @@ def main():
           "state = END_PAUSE" in buzz_cpp and "case END_PAUSE:" in buzz_cpp,
           "the end-pause state is gone - patterns blur together")
 
-    # --- remote monitoring: push-only, STA-only, MAC identity -----------------
+    # --- remote monitoring + remote control, STA-only, MAC identity --------
     # The return of the cloud, minus everything that got it removed. Each rule
     # below is one archived lesson (doc/opencode_agent/lessons.md); the
     # mutation suite proves each one can fail.
@@ -261,10 +261,20 @@ def main():
           "firebase" not in strip_comments(cl_cpp).lower() and
           "firebase" not in strip_comments(cl_h).lower(),
           "an SDK crept back into the pusher")
-    c.add("the pusher never reads: no GET anywhere in it",
-          "GET " not in strip_comments(cl_cpp) and
-          ".get(" not in strip_comments(cl_cpp),
-          "a read path shares the push connection again")
+    # The downlink is the ONE sanctioned read: GET /devices/<id>/cmd.json on
+    # its own 10 s timer, never sharing the push connection. Scoped to the
+    # poll body (not the file): a bare "GET is present" would also pass for a
+    # read smuggled into the push path, which is exactly the old teardown bug.
+    _https_get = re.search(r"static int httpsGet\([^)]*\) \{([\s\S]*?)\n\}\n",
+                           strip_comments(cl_cpp))
+    _poll = re.search(r"void CloudPush::pollCmd\([^)]*\) \{([\s\S]*?)\n\}\n",
+                      strip_comments(cl_cpp))
+    _poll_b = _poll.group(1) if _poll else ""
+    c.add("the only read is the downlink cmd poll (GET /cmd.json, own timer)",
+          _https_get is not None and "GET " in _https_get.group(1) and
+          _poll is not None and "/cmd.json" in _poll_b and
+          "httpsGet(" in _poll_b and ".get(" not in strip_comments(cl_cpp),
+          "a read path outside pollCmd, or a non-REST read")
     # Scoped to loop()'s body, not the file: WL_CONNECTED also appears in
     # wantsRadio(), so a file-wide substring rule passes after the loop's own
     # gate is deleted (proven by mutation, not by reading).
@@ -357,6 +367,40 @@ def main():
           _diag is not None and _diag_outs and
           all(not any(s in call for s in _secret_names) for call in _diag_outs),
           "diag() formats credential bytes")
+    c.add("cloud diag reports the last executed command and the poll age",
+          _diag is not None and "LastCmd" in _diag_b and "Poll:" in _diag_b,
+          "diag() hides the downlink state")
+
+    # --- cloud downlink: full remote control, PIN-free by design ------------
+    # Local WebSocket callers keep the PIN (processCommand default); only the
+    # cloud poller skips it, because trust there comes from the RTDB rules
+    # (only the admin Gmail can write cmd) + TLS + the board's ID token.
+    c.add("local WebSocket callers keep the PIN (no skipAuth at the WS site)",
+          "processCommand(" in ws_code and "skipAuth" not in ws_code,
+          "the WS path stopped enforcing the PIN")
+    c.add("the downlink executes via processCommand with auth skipped",
+          _poll is not None and
+          re.search(r"processCommand\([\s\S]{0,400}?, true\)", _poll_b) is not None,
+          "pollCmd does not pass skipAuth=true")
+    c.add("the PIN skip names its trust (RTDB rules + TLS + ID token)",
+          "CLOUD TRUST" in cmd and "RTDB rules" in cmd and "skipAuth" in cmd,
+          "the trust comment is gone - a skip without a reason")
+    c.add("the executed cmd id is deduplicated in NVS under cloud_cmd",
+          'getString("cloud_cmd"' in nvs and 'putString("cloud_cmd"' in nvs and
+          'loadCloudCmdId' in nvs_h and 'saveCloudCmdId' in nvs_h,
+          "an acked command re-runs after every reboot")
+    _poll_iv = re.search(r"POLL_INTERVAL_MS\s*=\s*(\d+)", cl_h)
+    c.add("the downlink polls on its own 10 s timer, wired into loop()",
+          _poll_iv is not None and int(_poll_iv.group(1)) == 10000 and
+          _loop is not None and "pollCmd(" in _loop.group(1),
+          "poll starves behind the push or never runs")
+    # The frame may carry set_pin/set_ap/setwifi passwords, so the poll's own
+    # log lines may name the verb and the id, never the frame. Scoped to the
+    # log CALLS inside pollCmd: the variable legitimately exists in the body.
+    _poll_logs = re.findall(r"(?:DEBUG_LOG|STATUS_LOG)\(([\s\S]*?)\);", _poll_b)
+    c.add("the poll never logs the command frame (it may carry passwords)",
+          _poll_logs and all("frame" not in call for call in _poll_logs),
+          "a log line formats the raw frame")
 
     # --- five channels means five, everywhere ---------------------------------
     # The 6->5 migration left a channels[5] out-of-bounds read in the status
@@ -628,20 +672,35 @@ def main():
 
     # --- the committed RTDB rules must be valid and match the payload ------
     # Rules deploy by CLI, not console clicking, so a typo here ships to the
-    # database. Assert shape, not vibes: parses as JSON, guards devices/$dev,
-    # and requires the fields the pusher actually sends (dev/epoch/uptime/
-    # rssi/v/ch - see CloudPush::snapshot). The .validate sits at
+    # database. Assert shape, not vibes: parses as JSON, devices readable by
+    # all (the dashboard viewer is public), latest guarded with the fields the
+    # pusher actually sends (dev/epoch/uptime/rssi/v/ch - see
+    # CloudPush::snapshot), cmd writable ONLY by the admin Gmail with the
+    # fields the poller parses (id/frame/ts), ack writable by any signed-in
+    # board with the fields it writes (id/ok/ts). The .validate sits at
     # devices/$dev/latest (NOT $dev): writes land at .../latest.json, so a
     # validator one level up sees {latest: {...}} and rejects everything -
     # shipped exactly that bug once, and every push 401d.
     try:
         _rules = json.loads(read("database.rules.json"))
         _fb = json.loads(read("firebase.json"))
-        _dev = _rules.get("rules", {}).get("devices", {}).get("$dev", {})
+        _devices = _rules.get("rules", {}).get("devices", {})
+        _dev = _devices.get("$dev", {})
         _need = {"dev", "epoch", "uptime", "rssi", "v", "ch"}
-        _valid = _dev.get("latest", {}).get(".validate", "")
-        _rules_ok = (".write" in _dev and ".read" in _dev and
-                     _need <= set(re.findall(r"'(\w+)'", _valid)) and
+        _latest_valid = _dev.get("latest", {}).get(".validate", "")
+        _cmd_rule = _dev.get("cmd", {})
+        _cmd_valid = _cmd_rule.get(".validate", "")
+        _ack_rule = _dev.get("ack", {})
+        _ack_valid = _ack_rule.get(".validate", "")
+        _rules_ok = (_devices.get(".read") is True and
+                     _dev.get("latest", {}).get(".write") == "auth != null" and
+                     _need <= set(re.findall(r"'(\w+)'", _latest_valid)) and
+                     _cmd_rule.get(".read") is True and
+                     "heng.xiao.hour@gmail.com" in str(_cmd_rule.get(".write", "")) and
+                     {"id", "frame", "ts"} <= set(re.findall(r"'(\w+)'", _cmd_valid)) and
+                     _ack_rule.get(".read") is True and
+                     _ack_rule.get(".write") == "auth != null" and
+                     {"id", "ok", "ts"} <= set(re.findall(r"'(\w+)'", _ack_valid)) and
                      _fb.get("database", {}).get("rules") == "database.rules.json")
     except (ValueError, AttributeError):
         _rules_ok = False

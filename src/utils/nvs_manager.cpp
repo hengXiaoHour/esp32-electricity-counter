@@ -133,6 +133,19 @@ void NVSManager::clearFb() {
   DEBUG_LOG("  [NVS] cloud monitoring cleared\n");
 }
 
+// --- Cloud downlink command id (deduplicates across reboots) ---
+
+bool NVSManager::loadCloudCmdId(String &idOut) {
+  idOut = prefs.getString("cloud_cmd", "");
+  return idOut.length() > 0;
+}
+
+void NVSManager::saveCloudCmdId(const String &id) {
+  prefs.putString("cloud_cmd", id);
+  // No commit() here: same staged-write rule as saveFb/saveWiFi, the caller
+  // commits under dataMutex.
+}
+
 // --- Channel Config ---
 
 String NVSManager::channelKey(uint8_t channel, const char *suffix) {

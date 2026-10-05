@@ -63,6 +63,14 @@ public:
   void saveFb(const String &host, const String &email, const String &pass);
   void clearFb();
 
+  // Last executed cloud downlink command id (deduplicates across reboots).
+  // The Gmail admin writes /devices/<MAC>/cmd {id, frame, ts}; the board
+  // executes each id once, acks it, and remembers it here. Writes are staged;
+  // the caller commits under dataMutex like every other settings write.
+  // Returns true when an id was stored (false = nothing executed yet).
+  bool loadCloudCmdId(String &idOut);
+  void saveCloudCmdId(const String &id);
+
   // Per-channel name
   bool loadChannelName(uint8_t channel, char *name, size_t nameLen);
   void saveChannelName(uint8_t channel, const char *name);

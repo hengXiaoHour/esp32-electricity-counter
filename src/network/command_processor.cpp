@@ -59,7 +59,8 @@ static bool extractJsonString(const String &s, const char *key, String &outVal) 
 bool processCommand(NVSManager *nvs, SystemData *sysData,
                     SemaphoreHandle_t *dataMutex,
                     PowerCalculator *powerCalc, LimitManager *limitMgr,
-                    const char *msg, String *responseOut, bool *authRejected) {
+                    const char *msg, String *responseOut, bool *authRejected,
+                    bool skipAuth) {
   bool handled = false;
   String s(msg);
 
@@ -73,7 +74,13 @@ bool processCommand(NVSManager *nvs, SystemData *sysData,
   // dependency and is unit-tested on the host by scripts/test_auth_gate.c
   // (47 assertions, mutation-checked). Anything subtly wrong here would be a
   // security hole with no test to catch it.
-  {
+  //
+  // CLOUD TRUST: when skipAuth is true the caller is CloudPush::pollCmd, and
+  // trust comes from the RTDB rules (only the admin Gmail can write cmd) +
+  // TLS + the board's own ID token - NOT from a PIN in the frame. The cloud
+  // never carries a PIN, so demanding one here would brick remote control.
+  // Local WebSocket callers always use the default (false) and stay PIN-gated.
+  if (!skipAuth) {
     char verb[AUTH_MAX_VERB];
     String want = nvs->loadPin();
     if (!auth_check(msg, want.c_str(), verb, sizeof(verb))) {

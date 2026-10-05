@@ -64,3 +64,6 @@ node_modules/
 # `firebase use --add`. The rules themselves ARE committed
 # (database.rules.json + firebase.json); only the alias is local.
 .firebaserc
+# Firebase CLI scratch: debug log + hosting cache. Regenerated on every deploy.
+firebase-debug.log
+.firebase/
