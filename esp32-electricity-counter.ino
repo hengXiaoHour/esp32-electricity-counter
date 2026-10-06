@@ -29,6 +29,12 @@ CloudPush       cloudPush;
 SystemData systemData;
 SemaphoreHandle_t dataMutex;
 
+// Task diagnostics (read by `info` via console_handler.h). loopIters proves
+// the Core-1 Arduino loop is turning; the handles feed stack watermarks.
+volatile uint32_t g_loopIters = 0;
+TaskHandle_t g_networkTask = nullptr;
+TaskHandle_t g_sensorTask = nullptr;
+
 static uint32_t lastSensorCycle = 0;
 
 // Auto-zero is processed in small chunks per sensor cycle so the sensing loop
