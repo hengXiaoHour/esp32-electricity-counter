@@ -245,6 +245,14 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
 }
 .ring-box.warn .ring-pct { color: var(--warn); }
 .ring-box.over .ring-pct { color: var(--trip); font-weight: 700; }
+@keyframes ringPulseWarn {
+  0%, 100% { filter: drop-shadow(0 0 3px rgba(229, 164, 59, 0.25)); }
+  50% { filter: drop-shadow(0 0 9px rgba(229, 164, 59, 0.65)); }
+}
+@keyframes ringPulseOver {
+  0%, 100% { filter: drop-shadow(0 0 3px rgba(226, 74, 59, 0.35)); }
+  50% { filter: drop-shadow(0 0 12px rgba(226, 74, 59, 0.8)); }
+}
 @media (prefers-reduced-motion: reduce) {
   .ring-fill { transition: none; }
   .ring-box.warn .ring-fill, .ring-box.over .ring-fill { animation: none; }
