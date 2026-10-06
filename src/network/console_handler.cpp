@@ -476,14 +476,10 @@ void ConsoleHandler::flushEnergy() {
   // rather than skip the flush, because a missed save on a reboot is exactly
   // the data loss this function exists to prevent.
   bool locked = (xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE);
-  Serial.print("  [reboot] mutex=");
-  Serial.println(locked ? "yes" : "timeout");
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {
     nvs->saveEnergyKWh(ch, powerCalc->getEnergyKWh(ch));
   }
-  Serial.println("  [reboot] saved, committing");
   nvs->commit();
-  Serial.println("  [reboot] committed");
   if (locked) xSemaphoreGive(*dataMutex);
 }
 
