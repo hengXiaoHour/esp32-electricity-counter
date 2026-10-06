@@ -143,10 +143,11 @@ int OTAHandler::compareVersions(const String &a, const String &b) {
   return 0;
 }
 
-bool OTAHandler::fetchLatest(String &latest, String &binUrl) {
+bool OTAHandler::fetchLatest(String &latest, String &binUrl, String *detail) {
   // Small GET only: a ~200-byte JSON fetch, safe inline at verb time even
   // with the SDK sessions up. The firmware bytes still flow in the
-  // pre-SDK updater tick (see loopCloud).
+  // pre-SDK updater tick (see loopCloud). `detail` carries the short failure
+  // reason for the `update` verb; the auto-poll passes null and stays silent.
   latest = "";
   binUrl = "";
   WiFiClientSecure client;
@@ -161,12 +162,14 @@ bool OTAHandler::fetchLatest(String &latest, String &binUrl) {
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
   String url = String(OTA_VERSION_URL) + "?t=" + String(millis());
   if (!http.begin(client, url)) {
+    if (detail) *detail = "HTTP setup failed (out of memory?).";
     return false;
   }
   http.addHeader("Cache-Control", "no-cache");
   http.addHeader("Pragma", "no-cache");
   int code = http.GET();
   if (code != 200) {
+    if (detail) *detail = String("version.json GET ") + code + ".";
     http.end();
     return false;
   }
@@ -174,6 +177,7 @@ bool OTAHandler::fetchLatest(String &latest, String &binUrl) {
   http.end();
   JsonDocument doc;
   if (deserializeJson(doc, payload)) {
+    if (detail) *detail = "version.json did not parse.";
     return false;
   }
   String v = doc["version"] | "";
@@ -188,6 +192,7 @@ bool OTAHandler::fetchLatest(String &latest, String &binUrl) {
   v.trim();
   b.trim();
   if (v == "" || b == "") {
+    if (detail) *detail = "version.json missing version/bin URL.";
     return false;
   }
   latest = v;
