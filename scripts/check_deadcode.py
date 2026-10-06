@@ -570,8 +570,8 @@ def main():
             ("status shows the notice AND a past failure together (never masks)",
              "updateAvailable_" in ota_cpp_s and "last updater run failed" in ota_cpp_s),
             ("deferred commands set the command BEFORE the flag (cross-core race)",
-             "pendingCmd = cmd;\n      pendingDefer = true" in ch_s and
-             "Lost deferred command" in ch_s),
+             "pendingCmd = cmd;\n      pendingDefer = true" in ch and
+             "Lost deferred command" in ch),
             ("armed check + message survive the reboot via NVS",
              "saveOtaCheck" in ch and "saveOtaMsg" in ota_cpp_s),
             ("stale check notes die on boot, failures survive",
