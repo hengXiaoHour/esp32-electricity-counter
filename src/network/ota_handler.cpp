@@ -262,9 +262,9 @@ bool OTAHandler::checkForUpdate(bool doInstall, bool staUp, bool verbose,
     reply = "  No home network: cloud OTA needs STA (the fallback AP has no internet).";
     return false;
   }
-  String latest, binUrl;
-  if (!fetchLatest(latest, binUrl)) {
-    reply = "  Check failed: version.json unreachable or bad (HTTP/parse).";
+  String latest, binUrl, why_not;
+  if (!fetchLatest(latest, binUrl, &why_not)) {
+    reply = String("  Check failed: ") + why_not;
     return false;
   }
   int cmp = compareVersions(String(FIRMWARE_VERSION), latest);
