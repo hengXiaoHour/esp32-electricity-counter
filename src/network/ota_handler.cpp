@@ -338,47 +338,58 @@ void OTAHandler::bootCheck() {
   // Unprompted + latest: silent by design (no spam).
 }
 
-bool OTAHandler::checkForUpdate(bool doInstall, bool staUp, bool verbose,
-                                String &reply, String &stageUrl) {
+OTAHandler::CheckOutcome OTAHandler::checkForUpdate(bool doInstall, bool staUp,
+                                                       bool verbose,
+                                                       String &reply,
+                                                       String &stageUrl) {
   stageUrl = "";
   if (inProgress || cloudBusy || cloudActive) {
     reply = "  An update is already running - wait for it to finish.";
-    return false;
+    return CHECK_BUSY;
   }
   if (!staUp) {
     reply = "  No home network: cloud OTA needs STA (the fallback AP has no internet).";
-    return false;
+    return CHECK_NO_NET;
   }
   prepareTlsWindow();
   String latest, binUrl, why_not;
   if (!fetchLatest(latest, binUrl, &why_not)) {
-    reply = String("  Check failed: ") + why_not;
-    return false;
+    // Runtime TLS/DNS failure is EXPECTED on fragmented heaps (34 KB wall),
+    // never a verdict on the release: the caller arms a boot check instead.
+    // Parse-level failures are definitive (a reboot cannot fix the manifest).
+    if (why_not.startsWith("version.json did not parse") ||
+        why_not.startsWith("version.json missing")) {
+      reply = String("  Check failed: ") + why_not;
+      return CHECK_BAD_LINK;
+    }
+    reply = String("  Runtime check blocked (") + why_not +
+            ") - arming a clean-heap check instead.";
+    return CHECK_RETRYABLE;
   }
   int cmp = compareVersions(String(FIRMWARE_VERSION), latest);
   if (cmp >= 0) {
     reply = String("  Already on latest (") + FIRMWARE_VERSION + " >= " +
             latest + ").";
     if (verbose) reply += " Checked " + String(OTA_VERSION_URL) + ".";
-    return false;
+    return CHECK_LATEST;
   }
   const char *why = nullptr;
   if (!ota_url_validate(binUrl.c_str(), &why)) {
     reply = String("  New version ") + latest +
             " found, but its link is bad: " + (why ? why : "bad URL.");
-    return false;
+    return CHECK_BAD_LINK;
   }
   if (!doInstall) {
     reply = String("  NEW VERSION! ") + FIRMWARE_VERSION + " -> " + latest +
             " - type `update` to flash.";
-    return false;
+    return CHECK_STAGED;
   }
   const char *base = strrchr(binUrl.c_str(), '/');
   reply = String("  NEW VERSION ") + FIRMWARE_VERSION + " -> " + latest +
           ": staged \"" + (base ? base + 1 : binUrl.c_str()) +
           "\" - rebooting into the updater, banner above while it downloads, `ota status` for detail.";
   stageUrl = binUrl;
-  return true;
+  return CHECK_STAGED;
 }
 
 // Downloads the armed URL into the inactive OTA slot, then raises
