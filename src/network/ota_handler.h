@@ -58,6 +58,22 @@ public:
   bool checkForUpdate(bool doInstall, bool staUp, bool verbose,
                       String &reply, String &stageUrl);
 
+  // Shared version.json fetch behind checkForUpdate and the auto-poll below:
+  // true with `latest` + per-chip `binUrl` filled, false on any failure
+  // (no STA here - the caller owns that decision). Small GET only.
+  bool fetchLatest(String &latest, String &binUrl);
+
+  // Periodic poll, called from loop(): every OTA_CHECK_INTERVAL_MS with STA
+  // up it fetches the manifest and - only when a NEWER release appears that
+  // this boot has not announced yet - prints one serial line and remembers
+  // it for `ota status`. Already-on-latest, bad links and failed fetches
+  // stay silent. Never stages, never reboots (notify-only by design).
+  void pollTick();
+
+  // True once the poll has seen a newer release (cleared when the manifest
+  // no longer names anything newer, e.g. right after flashing it).
+  bool updateAvailable() const { return updateAvailable_; }
+
   // -1/0/1 dotted-decimal compare, cloud-ota compareVersion verbatim
   // ("1.10.0" beats "1.9.9"; missing parts read as 0).
   static int compareVersions(const String &a, const String &b);
