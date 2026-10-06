@@ -563,7 +563,7 @@ def main():
             ("boot check never stages unprompted, announces instead",
              "updateAvailable_" in ota_cpp_s and "loadOtaCheck" in ota_cpp_s),
             ("armed check + message survive the reboot via NVS",
-             "saveOtaCheck" in ota_cpp_s and "saveOtaMsg" in ota_cpp_s),
+             "saveOtaCheck" in ch and "saveOtaMsg" in ota_cpp_s),
             ("stale check notes die on boot, failures survive",
              "clearOtaMsg" in ino_txt and "clearOtaErr" in ota_cpp_s),
             ("version check stages DNS vs TLS like the updater tick",
