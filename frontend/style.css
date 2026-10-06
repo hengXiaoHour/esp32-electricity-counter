@@ -245,22 +245,10 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
 }
 .ring-box.warn .ring-pct { color: var(--warn); }
 .ring-box.over .ring-pct { color: var(--trip); font-weight: 700; }
-.ring-meta { display: flex; flex-direction: column; gap: 2px; font-size: 0.66rem; color: var(--text-3); font-family: var(--font-mono); }
-@keyframes ringPulseWarn {
-  0%, 100% { filter: drop-shadow(0 0 3px rgba(229, 164, 59, 0.25)); }
-  50% { filter: drop-shadow(0 0 9px rgba(229, 164, 59, 0.65)); }
-}
-@keyframes ringPulseOver {
-  0%, 100% { filter: drop-shadow(0 0 3px rgba(226, 74, 59, 0.35)); }
-  50% { filter: drop-shadow(0 0 12px rgba(226, 74, 59, 0.8)); }
-}
 @media (prefers-reduced-motion: reduce) {
   .ring-fill { transition: none; }
   .ring-box.warn .ring-fill, .ring-box.over .ring-fill { animation: none; }
 }
-
-/* Secondary metrics + actions */
-.ch-submetrics { display: flex; justify-content: space-between; padding: 4px 16px 8px; font-size: 0.7rem; color: var(--text-3); border-top: 1px solid rgba(255, 255, 255, 0.04); }
 .card-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 8px 16px 12px; }
 /* height (not padding) so a .btn-sm lines up exactly with the field beside it,
    and inline-flex so its label stays optically centred at that height. */
