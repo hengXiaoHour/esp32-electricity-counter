@@ -73,6 +73,25 @@
 #define FIRMWARE_VERSION "3.2.12"
 
 // ==============================
+// Cloud OTA (serial-first, cloud-ota proven pattern)
+// ==============================
+// The board polls this version.json (same shape the cloud-ota rig uses)
+// and flashes the per-chip release asset. Serial verbs only for now:
+// `version` prints the compiled stamp, `update` checks + stages + reboots,
+// `ota <url>` / `ota status` keep their existing direct-link shape. No web
+// button yet - the dashboard Firmware panel still sends `ota <url>`.
+//
+// USE_INSECURE is deliberate, not lazy: the validated-TLS downloader
+// (3.2.0-3.2.12) never completed a handshake on this board (34 KB largest
+// block), while the cloud-ota rig's setInsecure + HTTPUpdate flashes
+// reliably. Trust comes from the /cmd downlink only the admin Gmail can
+// write + Update.end() image validation, same as the cloud-ota rig.
+#define OTA_VERSION_URL "https://raw.githubusercontent.com/hengXiaoHour/esp32-electricity-counter/main/version.json"
+#define OTA_CHECK_INTERVAL_MS 30000
+#define OTA_AUTO_UPDATE false
+#define OTA_USE_INSECURE true
+
+// ==============================
 // Station WiFi (STA) - the DEFAULT path. The board joins this home network on
 // boot; the AP below is fallback-only and stays OFF unless the home link fails.
 // `setwifi <ssid> <pass>` (serial or dashboard) stores the real thing in NVS and
