@@ -70,7 +70,7 @@
 // 3.1.0 = local-midnight billing (UTC+7), reboot-safe NVS (no more
 // reboot wipes), forward-only rollover with unset-marker anchoring,
 // execute-once cloud downlink, guarded test_force_rollover CLI.
-#define FIRMWARE_VERSION "3.2.5"
+#define FIRMWARE_VERSION "3.2.6"
 
 // ==============================
 // Station WiFi (STA) - the DEFAULT path. The board joins this home network on
