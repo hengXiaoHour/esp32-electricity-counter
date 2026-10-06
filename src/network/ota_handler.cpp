@@ -4,11 +4,13 @@
 #include "../utils/nvs_manager.h"
 
 #include <ArduinoOTA.h>
+#include <ArduinoJson.h>
 #include <HTTPClient.h>
+#include <HTTPUpdate.h>
 #include <NetworkClient.h>
 #include <NetworkClientSecure.h>
-#include <Update.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <time.h>
 
 void OTAHandler::begin(const char *hostname) {
