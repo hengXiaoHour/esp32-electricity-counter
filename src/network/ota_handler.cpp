@@ -66,7 +66,7 @@ void OTAHandler::loop() {
         nvs_->clearOtaPending();
         nvs_->clearOtaErr();
         nvs_->commit();
-        if (locked) xSemaphoreGive(*mutex_);
+        if (locked) xSemaphoreGive(mutex_);
       }
       cloudBusy = true;
     }
@@ -82,7 +82,7 @@ void OTAHandler::loop() {
         bool locked = (mutex_ && xSemaphoreTake(mutex_, pdMS_TO_TICKS(100)) == pdTRUE);
         nvs_->saveOtaErr(cloudErr);
         nvs_->commit();
-        if (locked) xSemaphoreGive(*mutex_);
+        if (locked) xSemaphoreGive(mutex_);
       }
     }
   }
