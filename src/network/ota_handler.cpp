@@ -90,6 +90,9 @@ void OTAHandler::loop() {
       }
     }
   }
+  // Auto-poll runs on the same tick (notify-only, never stages). It skips
+  // itself while a download is staged or running - see pollTick.
+  pollTick();
 }
 
 bool OTAHandler::startCloudUpdate(const char *url, bool staUp, String &reply) {
