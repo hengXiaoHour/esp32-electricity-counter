@@ -143,6 +143,109 @@ int OTAHandler::compareVersions(const String &a, const String &b) {
   return 0;
 }
 
+bool OTAHandler::fetchLatest(String &latest, String &binUrl) {
+  // Small GET only: a ~200-byte JSON fetch, safe inline at verb time even
+  // with the SDK sessions up. The firmware bytes still flow in the
+  // pre-SDK updater tick (see loopCloud).
+  latest = "";
+  binUrl = "";
+  WiFiClientSecure client;
+  if (OTA_USE_INSECURE) {
+    client.setInsecure();
+  } else {
+    client.useBuiltinCACertBundle();
+  }
+  client.setTimeout(15000);
+  HTTPClient http;
+  http.setTimeout(15000);
+  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  String url = String(OTA_VERSION_URL) + "?t=" + String(millis());
+  if (!http.begin(client, url)) {
+    return false;
+  }
+  http.addHeader("Cache-Control", "no-cache");
+  http.addHeader("Pragma", "no-cache");
+  int code = http.GET();
+  if (code != 200) {
+    http.end();
+    return false;
+  }
+  String payload = http.getString();
+  http.end();
+  JsonDocument doc;
+  if (deserializeJson(doc, payload)) {
+    return false;
+  }
+  String v = doc["version"] | "";
+  // Per-chip asset (counter releases ship two .bins); legacy single
+  // bin_url kept as fallback so a cloud-ota-shaped file still works.
+  String legacy = doc["bin_url"] | "";
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+  String b = doc["s3_bin_url"] | legacy;
+#else
+  String b = doc["classic_bin_url"] | legacy;
+#endif
+  v.trim();
+  b.trim();
+  if (v == "" || b == "") {
+    return false;
+  }
+  latest = v;
+  binUrl = b;
+  return true;
+}
+
+void OTAHandler::pollTick() {
+  // Notify-only: never stage, never reboot. Skips while the updater owns
+  // the radio path (staged link, active download, verified image waiting
+  // for its deferred reboot, or the LAN updater running).
+  if (inProgress || cloudBusy || cloudActive || havePending_ || rebootDue) {
+    return;
+  }
+  if (WiFi.status() != WL_CONNECTED) {
+    return;  // offline: retry next tick, timer untouched so reconnect checks soon
+  }
+  unsigned long now = millis();
+  if (lastPollMs_ == 0) {
+    // First boot: let STA/DHCP settle before the first fetch.
+    if (now < 60000UL) {
+      return;
+    }
+  } else if (now - lastPollMs_ < (unsigned long)OTA_CHECK_INTERVAL_MS) {
+    return;
+  }
+  lastPollMs_ = now;
+  String latest, binUrl;
+  if (!fetchLatest(latest, binUrl)) {
+    return;  // failed fetch stays silent; `update` reports it on demand
+  }
+  if (compareVersions(String(FIRMWARE_VERSION), latest) < 0) {
+    const char *why = nullptr;
+    if (!ota_url_validate(binUrl.c_str(), &why)) {
+      return;  // bad link stays silent here; `update` names it
+    }
+    updateAvailable_ = true;
+    strncpy(latestVer_, latest.c_str(), sizeof(latestVer_) - 1);
+    latestVer_[sizeof(latestVer_) - 1] = '\0';
+    // Anti-spam latch: one serial line per release per boot.
+    if (strcmp(noticedVer_, latest.c_str()) != 0) {
+      strncpy(noticedVer_, latest.c_str(), sizeof(noticedVer_) - 1);
+      noticedVer_[sizeof(noticedVer_) - 1] = '\0';
+      Serial.print("  NEW VERSION! ");
+      Serial.print(FIRMWARE_VERSION);
+      Serial.print(" -> ");
+      Serial.print(latest);
+      Serial.println(" - type `update` to flash.");
+    }
+  } else {
+    // Already on latest (or newer than the manifest, e.g. a dev build):
+    // clear any stale notice and stay silent.
+    updateAvailable_ = false;
+    latestVer_[0] = '\0';
+    noticedVer_[0] = '\0';
+  }
+}
+
 bool OTAHandler::checkForUpdate(bool doInstall, bool staUp, bool verbose,
                                 String &reply, String &stageUrl) {
   stageUrl = "";
@@ -154,55 +257,9 @@ bool OTAHandler::checkForUpdate(bool doInstall, bool staUp, bool verbose,
     reply = "  No home network: cloud OTA needs STA (the fallback AP has no internet).";
     return false;
   }
-  // Small GET only: a ~200-byte JSON fetch, safe inline at verb time even
-  // with the SDK sessions up. The firmware bytes still flow in the
-  // pre-SDK updater tick (see loopCloud).
-  String payload;
-  {
-    WiFiClientSecure client;
-    if (OTA_USE_INSECURE) {
-      client.setInsecure();
-    } else {
-      client.useBuiltinCACertBundle();
-    }
-    client.setTimeout(15000);
-    HTTPClient http;
-    http.setTimeout(15000);
-    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-    String url = String(OTA_VERSION_URL) + "?t=" + String(millis());
-    if (!http.begin(client, url)) {
-      reply = "  Check failed: HTTP setup failed (out of memory?).";
-      return false;
-    }
-    http.addHeader("Cache-Control", "no-cache");
-    http.addHeader("Pragma", "no-cache");
-    int code = http.GET();
-    if (code != 200) {
-      reply = String("  Check failed: version.json GET ") + code + ".";
-      http.end();
-      return false;
-    }
-    payload = http.getString();
-    http.end();
-  }
-  JsonDocument doc;
-  if (deserializeJson(doc, payload)) {
-    reply = "  Check failed: version.json did not parse.";
-    return false;
-  }
-  String latest = doc["version"] | "";
-  // Per-chip asset (counter releases ship two .bins); legacy single
-  // bin_url kept as fallback so a cloud-ota-shaped file still works.
-  String legacy = doc["bin_url"] | "";
-#if defined(CONFIG_IDF_TARGET_ESP32S3)
-  String binUrl = doc["s3_bin_url"] | legacy;
-#else
-  String binUrl = doc["classic_bin_url"] | legacy;
-#endif
-  latest.trim();
-  binUrl.trim();
-  if (latest == "" || binUrl == "") {
-    reply = "  Check failed: version.json missing version/bin URL.";
+  String latest, binUrl;
+  if (!fetchLatest(latest, binUrl)) {
+    reply = "  Check failed: version.json unreachable or bad (HTTP/parse).";
     return false;
   }
   int cmp = compareVersions(String(FIRMWARE_VERSION), latest);
