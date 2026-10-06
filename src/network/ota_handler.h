@@ -113,6 +113,12 @@ public:
   bool cloudRebootDue() const { return rebootDue; }
   void consumeCloudReboot() { rebootDue = false; }
 
+  // Raised once when the ARMED boot check staged a release: the version
+  // fetch already fragmented this tick's heap, so the download must wait
+  // for the next boot's pristine window. Same deferred-reboot consumption.
+  bool cloudCheckRebootDue() const { return checkStagedReboot_; }
+  void consumeCloudCheckReboot() { checkStagedReboot_ = false; }
+
   // Wired once at boot (.ino): the download entry drops the SDK keep-alive
   // sessions through this before probing github.com (see loopCloud).
   void setCloudPush(CloudPush *c) { cloud_ = c; }
