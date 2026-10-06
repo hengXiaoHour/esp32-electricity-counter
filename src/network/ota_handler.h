@@ -5,6 +5,8 @@
 #include "ota_url.h"
 
 class CloudPush;
+class NVSManager;
+typedef void *SemaphoreHandle_t;
 
 // Local (LAN) ArduinoOTA plus cloud (GitHub release) updates, one progress
 // signal for both: updateLED(), updateEcoMode() and the dashboard's OTA
