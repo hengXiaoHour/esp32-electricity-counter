@@ -592,9 +592,12 @@ def main():
           "`ap_ssid`, `ap_pass`" in arch and "set_ap" in arch and "reset_ap" in arch)
 
     # --- firmware version / size ---------------------------------------
+    # The stamp moves on every release (build.py bumps it), so pin the FORMAT
+    # not the value - manifest==stamp consistency is asserted separately below.
     m = re.search(r'#define FIRMWARE_VERSION "([^"]+)"', cfg)
-    c.add("FIRMWARE_VERSION is the 3.2.12 cloud-OTA release",
-          m and m.group(1) == "3.2.12", "found %s" % (m.group(1) if m else "none"))
+    c.add("FIRMWARE_VERSION is a dotted x.y.z stamp",
+          m and re.match(r"^\d+\.\d+\.\d+$", m.group(1)) is not None,
+          "found %s" % (m.group(1) if m else "none"))
 
     # --- cloud OTA: github release .bin -> inactive slot -> reboot --------
     # One code path for serial / dashboard / cloud: the click becomes a
