@@ -168,7 +168,8 @@ void OTAHandler::loopCloud() {
   // passes but HTTPS fails, it is TLS (clock or heap). The validator only
   // ever arms github.com links, so the probe target is fixed.
   uint32_t heap0 = ESP.getFreeHeap();
-  bool clockOk = time(nullptr) > 1700000000L;
+  // clockOk was established by the wait above: chain validation refuses a
+  // stale clock, so reaching here means time is real.
   {
     NetworkClient probe;
     probe.setTimeout(5000);
