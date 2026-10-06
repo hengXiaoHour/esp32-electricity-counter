@@ -43,6 +43,22 @@ public:
   // 200-char cloud ack, so it stays terse by construction).
   bool startCloudUpdate(const char *url, bool staUp, String &reply);
 
+  // Serial-first version check (cloud-ota proven pattern): fetches
+  // OTA_VERSION_URL (version.json), compares against FIRMWARE_VERSION, and
+  // - when doInstall and a newer release exists - validates the per-chip
+  // asset URL through the same ota_url_validate gate. Returns true when an
+  // image was SELECTED for staging: the CALLER persists stageUrl to NVS
+  // and reboots (same path as cmdOta). Small GET only, safe to run inline
+  // at verb time even with the SDK sessions up; the firmware download
+  // itself still happens in the pre-SDK updater tick. `reply` is one short
+  // console line either way.
+  bool checkForUpdate(bool doInstall, bool staUp, bool verbose,
+                      String &reply, String &stageUrl);
+
+  // -1/0/1 dotted-decimal compare, cloud-ota compareVersion verbatim
+  // ("1.10.0" beats "1.9.9"; missing parts read as 0).
+  static int compareVersions(const String &a, const String &b);
+
   // Store for the NVS staged link + last updater error (wired once at boot).
   // The mutex guards the two commits this makes per attempt (consume +
   // failure record) against sensorTask's energy save on the same handle.
