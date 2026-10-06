@@ -279,11 +279,9 @@ void OTAHandler::loopCloud() {
   // Stage the failure, don't just print a number. HTTP -1 means "never
   // connected", which conflates DNS, routing and TLS - so probe plain TCP
   // first (cheap, no TLS): if it fails the router/DNS is the problem; if it
-  // passes but HTTPS fails, it is TLS (clock or heap). The validator only
-  // ever arms github.com links, so the probe target is fixed.
+  // passes but HTTPS fails, it is TLS (heap). The validator only ever arms
+  // github.com links, so the probe target is fixed.
   uint32_t heap0 = ESP.getFreeHeap();
-  // clockOk was established by the wait above: chain validation refuses a
-  // stale clock, so reaching here means time is real.
   {
     NetworkClient probe;
     probe.setTimeout(5000);
@@ -296,104 +294,43 @@ void OTAHandler::loopCloud() {
     probe.stop();
   }
 
-  // Raw-TLS probe: handshake WITHOUT validation, then stop. Sends no HTTP
-  // and moves no firmware bytes - it only splits "TLS cannot handshake here
-  // at all (memory/protocol)" from "handshake works, validation rejects the
-  // chain (bundle/root)". The real download below always uses `client`.
-  bool rawTlsOk = false;
-  {
-    NetworkClientSecure probe;
-    probe.setInsecure();
-    probe.setTimeout(8000);
-    rawTlsOk = probe.connect("github.com", 443);
-    probe.stop();
+  // cloud-ota proven transport: HTTPUpdate over an insecure client, same as
+  // the rig that flashes reliably. No chain validation (see config.h note);
+  // the image itself is still validated by Update.end() inside HTTPUpdate,
+  // and a bad write keeps the old firmware. rebootOnUpdate(false) so the
+  // sketch reboots through the deferred path and the counters flush first.
+  WiFiClientSecure otaClient;
+  if (OTA_USE_INSECURE) {
+    otaClient.setInsecure();
+  } else {
+    otaClient.useBuiltinCACertBundle();
   }
-
-  NetworkClientSecure client;
-  client.useBuiltinCACertBundle();  // full chain validation, no PEM to maintain
-  client.setTimeout(30000);
-  HTTPClient http;
-  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);  // github.com -> CDN
-  http.setRedirectLimit(5);
-  http.setTimeout(30000);
-  if (!http.begin(client, cloudUrl)) {
-    strncpy(cloudErr, "HTTP setup failed (out of memory?).", sizeof(cloudErr) - 1);
-    cloudActive = false;
-    return;
-  }
-
-  int code = http.GET();
-  if (code != HTTP_CODE_OK) {
-    if (code < 0) {
-      snprintf(cloudErr, sizeof(cloudErr),
-               "TLS failed (heap %lu/max %lu, clock %s, raw-TLS %s).",
-               (unsigned long)heap0, (unsigned long)ESP.getMaxAllocHeap(),
-               clockOk ? "ok" : "STALE?", rawTlsOk ? "ok" : "NO");
-    } else {
-      snprintf(cloudErr, sizeof(cloudErr), "download refused: HTTP %d.", code);
-    }
-    http.end();
-    cloudActive = false;
-    return;
-  }
-  int total = http.getSize();
-  if (total <= 0) {
-    strncpy(cloudErr, "download has no known size - refusing.", sizeof(cloudErr) - 1);
-    http.end();
-    cloudActive = false;
-    return;
-  }
-  if ((size_t)total > ESP.getFreeSketchSpace()) {
-    snprintf(cloudErr, sizeof(cloudErr), "image %d B does not fit the %u B slot.",
-             total, (unsigned)ESP.getFreeSketchSpace());
-    http.end();
-    cloudActive = false;
-    return;
-  }
-
-  Update.onProgress([this](size_t done, size_t all) {
-    if (all > 0) cloudProgress = (uint8_t)((done * 100) / all);
+  otaClient.setTimeout(30000);
+  httpUpdate.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);  // github.com -> CDN
+  httpUpdate.rebootOnUpdate(false);
+  httpUpdate.onProgress([this](size_t cur, size_t total) {
+    if (total > 0) cloudProgress = (uint8_t)((cur * 100) / total);
   });
-  if (!Update.begin((size_t)total)) {
-    snprintf(cloudErr, sizeof(cloudErr), "Update.begin failed (err %d).",
-             (int)Update.getError());
-    http.end();
-    cloudActive = false;
-    return;
+  cloudProgress = 0;
+  t_httpUpdate_return ret = httpUpdate.update(otaClient, String(cloudUrl));
+  switch (ret) {
+    case HTTP_UPDATE_OK:
+      cloudProgress = 100;
+      cloudActive = false;  // banner's job is done; the reboot line takes over
+      rebootDue = true;  // the sketch reboots via the deferred path (NVS flush)
+      return;
+    case HTTP_UPDATE_NO_UPDATES:
+      strncpy(cloudErr, "board reports no updates.", sizeof(cloudErr) - 1);
+      break;
+    case HTTP_UPDATE_FAILED:
+    default:
+      snprintf(cloudErr, sizeof(cloudErr), "FAILED err %d: %s (heap %lu).",
+               (int)httpUpdate.getLastError(),
+               httpUpdate.getLastErrorString().c_str(),
+               (unsigned long)heap0);
+      break;
   }
-
-  WiFiClient *stream = http.getStreamPtr();
-  uint8_t buf[1024];
-  size_t remaining = (size_t)total;
-  bool ok = true;
-  while (ok && remaining > 0 && http.connected()) {
-    size_t want = remaining < sizeof(buf) ? remaining : sizeof(buf);
-    int n = stream->readBytes(buf, want);
-    if (n <= 0) { ok = false; break; }
-    if (Update.write(buf, (size_t)n) != (size_t)n) { ok = false; break; }
-    remaining -= (size_t)n;
-    cloudProgress = (uint8_t)(((total - (int)remaining) * 100) / total);
-    vTaskDelay(1);  // let IDLE run: a minute-long tight loop trips the WDT
-  }
-  http.end();
-
-  if (!ok || remaining != 0) {
-    snprintf(cloudErr, sizeof(cloudErr), "download stalled (%u B short).",
-             (unsigned)remaining);
-    Update.abort();
-    cloudActive = false;
-    return;
-  }
-  if (!Update.end(true)) {
-    snprintf(cloudErr, sizeof(cloudErr), "image invalid (err %d) - old firmware kept.",
-             (int)Update.getError());
-    cloudActive = false;
-    return;
-  }
-
-  cloudProgress = 100;
-  cloudActive = false;  // banner's job is done; the reboot line takes over
-  rebootDue = true;  // the sketch reboots via the deferred path (NVS flush)
+  cloudActive = false;
 }
 
 void OTAHandler::cloudStatus(String &out) {
