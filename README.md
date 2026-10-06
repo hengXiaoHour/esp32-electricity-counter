@@ -173,7 +173,9 @@ python3 scripts/build.py --version X.Y.Z
 
 Or over serial: `version` (compiled stamp + chip), `update` (check
 `version.json`, stage the matching asset, reboot into the updater),
-`ota <url>` / `ota status`. A tag page or any non-release
+`ota <url>` / `ota status`. The board also checks `version.json` by itself
+once an hour and prints one `NEW VERSION!` line per release (silent when
+already latest) — `ota status` keeps showing it until you `update`. A tag page or any non-release
 link is refused before anything is armed. A failed or oversize download
 keeps the old firmware running; counters and settings survive the reboot.
 
