@@ -1290,12 +1290,9 @@ function zeroSubCardDisplay(idx) {
   const barPct = card.querySelector('.bar-pct');
   if (barPct) barPct.textContent = '0%';
   const fill = card.querySelector('.bar-fill');
-  if (fill) {
-    fill.style.strokeDashoffset = String(2 * Math.PI * 34);
-    fill.setAttribute('class', 'ring-fill bar-fill');
-  }
-  const box = card.querySelector('.ring-box');
-  if (box) box.className = 'ring-box';
+  if (fill) fill.style.width = '0%';
+  const knob = card.querySelector('.wave-knob');
+  if (knob) knob.style.left = '0%';
 }
 
 function sendResetCounter(idx) {
