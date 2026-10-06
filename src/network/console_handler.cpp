@@ -292,6 +292,14 @@ void ConsoleHandler::exec(const String &line, String &out) {
     pendingDefer = true;
     pendingOutput = "";
 
+  } else if (cmd == "defstate") {
+    // Cross-core deferred-handoff diagnostics (Core-0 view). If a deferred
+    // command acks but never runs, this shows whether Core 1 consumed the
+    // flag yet (runDeferred clears it first thing).
+    consoleAppendf(out, "  deferred=%d cmd='%s' loopIters=%u",
+                   pendingDefer ? 1 : 0, pendingCmd.c_str(),
+                   (unsigned)g_loopIters);
+
   } else if (cmd.startsWith("test_force_rollover")) {
     // Guarded CLI form of the JSON test verb: the bare verb is a dry run
     // that only describes what WOULD happen. Only the exact word CONFIRM
