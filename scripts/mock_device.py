@@ -56,6 +56,11 @@ ASSETS = {
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 PIN_EXEMPT_VERBS = ("set_time", "verify_pin")
 
+# Mirrors FIRMWARE_VERSION in src/config.h for the serial-first OTA verbs.
+# Bump together with the firmware stamp (check_docs pins version.json to the
+# stamp; this mock tracks it so E2E still tests a board that exists).
+FW_VERSION = "3.2.12"
+
 DEFAULTS = {
     "voltage_cal": 260.0,
     # Sized by NUM_CHANNELS in src/config.h (5); check_docs.py compares these
@@ -429,9 +434,9 @@ class State:
                 if parts[:1] == ["ota"] and len(parts) == 2 and parts[1] == "status":
                     return True, "  OTA: idle (no cloud download staged or run).", False
                 if parts[:1] == ["version"] and len(parts) == 1:
-                    return True, "  FW: 3.2.12 (esp32)", False
+                    return True, "  FW: %s (esp32)" % FW_VERSION, False
                 if parts[:1] == ["update"] and len(parts) == 1:
-                    return True, "  Already on latest (3.2.12 >= 3.2.12).", False
+                    return True, "  Already on latest (%s >= %s)." % (FW_VERSION, FW_VERSION), False
                 if parts[:1] == ["ota"] and len(parts) == 2:
                     url = parts[1]
                     if (url.startswith("https://github.com/")
