@@ -571,6 +571,14 @@ def main():
           mcfg and mmock and mcfg.group(1) == mmock.group(1),
           "config.h=%s mock=%s" % (mcfg.group(1) if mcfg else "?",
                                    mmock.group(1) if mmock else "?"))
+    # Same deliberate duplication for the firmware stamp: the mock fakes the
+    # serial-first `version` / `update` verbs, so it must track the stamp.
+    vcfg = re.search(r'#define FIRMWARE_VERSION "([^"]+)"', read("src/config.h"))
+    vmock = re.search(r'FW_VERSION\s*=\s*"([^"]+)"', read("scripts/mock_device.py"))
+    r.add("the mock board's firmware stamp matches src/config.h",
+          vcfg and vmock and vcfg.group(1) == vmock.group(1),
+          "config.h=%s mock=%s" % (vcfg.group(1) if vcfg else "?",
+                                   vmock.group(1) if vmock else "?"))
 
     bad = r.out()
     return 1 if bad else 0
