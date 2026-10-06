@@ -143,11 +143,18 @@ int OTAHandler::compareVersions(const String &a, const String &b) {
   return 0;
 }
 
+void OTAHandler::prepareTlsWindow() {
+  if (cloud_) cloud_->releaseSessions();
+  vTaskDelay(pdMS_TO_TICKS(200));  // let LWIP release the closed PCBs
+}
+
 bool OTAHandler::fetchLatest(String &latest, String &binUrl, String *detail) {
-  // Small GET only: a ~200-byte JSON fetch, safe inline at verb time even
-  // with the SDK sessions up. The firmware bytes still flow in the
-  // pre-SDK updater tick (see loopCloud). `detail` carries the short failure
-  // reason for the `update` verb; the auto-poll passes null and stays silent.
+  // Small GET only: a ~200-byte JSON fetch. The CALLER frees the SDK
+  // sessions first (see prepareTlsWindow) - with them up the max block
+  // sits at ~34 KB and no handshake completes. The firmware bytes still
+  // flow in the pre-SDK updater tick (see loopCloud). `detail` carries the
+  // short failure reason for the `update` verb; the auto-poll passes null
+  // and stays silent.
   latest = "";
   binUrl = "";
   WiFiClientSecure client;
