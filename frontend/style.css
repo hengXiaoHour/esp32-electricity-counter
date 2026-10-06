@@ -213,7 +213,7 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
 
 /* Monthly-budget ring (circular progress, replaces the old horizontal bar).
    Track uses the same input-well colour as the old track; the sweep uses the
-   same three status colours (fill -> warn -> trip at the same 75/90 cuts), so
+   same three status colours (ok green -> warn amber -> trip red at the same 75/90 cuts), so
    a barely-full ring reads calm blue-grey while an almost-full one pulses. */
 .load-bar-container.ring-wrap { display: flex; align-items: center; gap: 14px; padding: 10px 16px 12px; }
 .ring-box { position: relative; width: 84px; height: 84px; flex: 0 0 auto; }
