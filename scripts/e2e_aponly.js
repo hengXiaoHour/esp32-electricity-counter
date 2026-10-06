@@ -749,8 +749,8 @@ function check(name, cond, detail) {
         otaTexts.some(t => /OTA: idle/.test(t)), JSON.stringify(otaTexts));
   check('BOARD refuses a non-release link',
         otaTexts.some(t => /Not started/.test(t)), JSON.stringify(otaTexts));
-  check('BOARD arms a release-shaped link',
-        otaTexts.some(t => /OTA started from "esp32-classic-9\.9\.9\.bin"/.test(t)),
+  check('BOARD stages a release-shaped link',
+        otaTexts.some(t => /Staged "esp32-classic-9\.9\.9\.bin"/.test(t)),
         JSON.stringify(otaTexts));
 
   // Full click path with the release API stubbed: no live-GitHub dependency,

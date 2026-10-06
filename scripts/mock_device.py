@@ -424,16 +424,18 @@ class State:
                                        " at 00:00 local time (UTC+7) on day %d each month (NVS level)" % (day, day)), False
                 # Cloud OTA, same shape as ConsoleHandler::cmdOta: `ota status`
                 # reports, `ota <url>` validates the release-link shape and
-                # arms (the mock never downloads - it records the arm).
+                # stages (the mock records the stage - it never reboots or
+                # downloads).
                 if parts[:1] == ["ota"] and len(parts) == 2 and parts[1] == "status":
-                    return True, "  OTA: idle (no cloud download yet this boot).", False
+                    return True, "  OTA: idle (no cloud download staged or run).", False
                 if parts[:1] == ["ota"] and len(parts) == 2:
                     url = parts[1]
                     if (url.startswith("https://github.com/")
                             and "/releases/download/" in url
                             and url.endswith(".bin")):
                         self.applied.append(("ota", url))
-                        return True, ("  OTA started from \"%s\" - progress above,"
+                        return True, ("  Staged \"%s\" - rebooting into the updater,"
+                                       " banner above while it downloads,"
                                        " `ota status` for detail." % url.rsplit("/", 1)[-1]), False
                     return True, "  Not started: not a release download link.", False
                 return True, "  Unknown command. Type 'help'.", False
