@@ -442,6 +442,12 @@ void setup() {
   Serial.println();
 
   DEBUG_LOG("  %-19s%s\n", "NVS", "OK"); nvs.begin();
+  // The last explicit-check note ("already on latest X") belongs to the
+  // firmware that wrote it, not this one: drop it every boot (the boot
+  // check rewrites it when the user armed one). ota_err stays - a failed
+  // updater run must survive until the next attempt supersedes it.
+  nvs.clearOtaMsg();
+  nvs.commit();
 
   // No sensor on some chips (and zero-init would read as a plausible 0.0°C),
   // so start unknown until the first 1 Hz sample lands in updateSharedData().

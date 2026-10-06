@@ -266,7 +266,7 @@ void ConsoleHandler::exec(const String &line, String &out) {
   } else if (cmd == "ota") {
     consoleAppendf(out, "%s", "  Usage: ota <https://github.com/.../releases/download/.../*.bin>");
     consoleAppendf(out, "%s", "         ota status   (updater state, survives reboot)");
-    consoleAppendf(out, "%s", "         update       (check version.json + stage, serial-first)");
+    consoleAppendf(out, "%s", "         update       (check version.json, arms a boot check when runtime TLS can't)");
     consoleAppendf(out, "%s", "         version      (compiled firmware stamp)");
 
   } else if (cmd == "led" || cmd.startsWith("led ")) {
