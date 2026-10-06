@@ -126,6 +126,8 @@ private:
   // flash every tick). Set when NVS holds ota_url and cleared on consume.
   bool havePending_ = false;
   char pendUrl_[OTA_URL_MAX_LEN + 1] = {0};
+  // One-shot NVS failure record per attempt (no flash churn every tick).
+  bool errSaved_ = false;
   // Frees the biggest contiguous holders (the Firebase keep-alive
   // sessions) + lets LWIP release their PCBs, so the TLS handshake below
   // gets a clean shot at runtime. Same trick the updater tick uses before
