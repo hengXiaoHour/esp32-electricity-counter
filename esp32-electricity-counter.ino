@@ -526,6 +526,9 @@ void setup() {
   // re-validates (NVS outlives any firmware version). Disabled unless all
   // three agree - a half-configured cloud pushes nothing.
   cloudPush.begin(&nvs);
+  // Download entry drops the SDK keep-alive sessions first (3.2.6: 34 KB
+  // largest block cannot handshake), so wire the releaser here.
+  otaHandler.setCloudPush(&cloudPush);
   statusLED.setMode(LED_OFF);
   DEBUG_LOG("  %-19sAP @ %s (always)\n", "WiFi", WiFi.softAPIP().toString().c_str());
   DEBUG_LOG("  %-19s\"%s\" / \"%s\"\n", "Network", wifiMgr.getSSID(), wifiMgr.getPass());

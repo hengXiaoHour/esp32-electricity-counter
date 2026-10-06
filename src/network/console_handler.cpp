@@ -244,7 +244,7 @@ void ConsoleHandler::exec(const String &line, String &out) {
   } else if (cmd == "cloud diag") {
     cmdCloudDiag(out);
 
-  } else if (cmd == "ota status") {
+  } else if (cmd == "ota status" || cmd.equalsIgnoreCase("ota status")) {
     if (otaHandler) otaHandler->cloudStatus(out);
     else consoleAppendf(out, "%s", "  OTA not available");
 
