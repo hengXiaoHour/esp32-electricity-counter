@@ -59,7 +59,7 @@ PIN_EXEMPT_VERBS = ("set_time", "verify_pin")
 # Mirrors FIRMWARE_VERSION in src/config.h for the serial-first OTA verbs.
 # Bump together with the firmware stamp (check_docs pins version.json to the
 # stamp; this mock tracks it so E2E still tests a board that exists).
-FW_VERSION = "3.2.16"
+FW_VERSION = "3.2.17"
 
 DEFAULTS = {
     "voltage_cal": 260.0,
