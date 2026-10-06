@@ -191,8 +191,12 @@ void ConsoleHandler::exec(const String &line, String &out) {
     } else if (!statusLed) {
       consoleAppendf(out, "%s", "  StatusLED not available");
     } else {
-      pendingDefer = true;
+      // Order matters: the command BEFORE the flag. loop() on Core 1
+      // consumes the flag and reads the command - flag-first lets it grab
+      // a stale command and swallow this one silently (2026-10-06: serial
+      // `reboot` acked but never reset).
       pendingCmd = cmd;
+      pendingDefer = true;
       pendingOutput = "";
       consoleAppendf(out, "%s", "  LED test started (non-blocking)");
     }
