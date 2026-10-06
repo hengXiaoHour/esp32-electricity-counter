@@ -47,6 +47,9 @@ public:
   // True once begin() has been called with the required references.
   bool isReady() const { return ready; }
 
+  // True if a deferred command was requested but not yet run.
+  bool hasDeferred() const { return pendingDefer; }
+
   // Task diagnostics for `info` (defined in the sketch, set in setup()).
   // g_loopIters proves the Core-1 Arduino loop is alive; the handles feed
   // uxTaskGetStackHighWaterMark so a silent loopTask death shows up as a
