@@ -25,7 +25,7 @@ try:
     cc = list(cc)
     termios.tcsetattr(fd, termios.TCSANOW, [iflag, oflag, cflag, lflag, 115200, 115200, cc])
     try:  # clear DTR/RTS: asserting them holds the chip in reset
-        # Mask is DTR|RTS bites (0x2|0x4 = 6), NOT 3: mask 3 clears LE+DTR
+        # Mask is DTR|RTS bits (0x2|0x4 = 6), NOT 3: mask 3 clears LE+DTR
         # and leaves RTS asserted, which halts a CP210x/CH340 board after a
         # 64-byte ROM banner (looks dead). Verified on /dev/ttyUSB0.
         fcntl.ioctl(fd, termios.TIOCMBIC, struct.pack('I', 6))
