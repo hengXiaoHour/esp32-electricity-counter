@@ -1110,26 +1110,25 @@ function createChannelCardElement(idx) {
   card.innerHTML = `
     <div class="card-header">
       <span class="ch-title name-field">Channel ${idx + 1}</span>
-      <span class="ch-status-badge ok">OK</span>
+      <span class="badges"><span class="inuse-chip hidden">IN USE</span><span class="ch-status-badge ok">OK</span></span>
     </div>
-    <div class="ch-readings">
-      <div class="read-row"><span class="label">PWR</span><span class="val mono"><span class="val-w">0</span><span class="unit">W</span></span></div>
-      <div class="read-row"><span class="label">CUR</span><span class="val mono"><span class="val-a">0.00</span><span class="unit">A</span></span></div>
-      <div class="read-row"><span class="label">ENG</span><span class="val mono"><span class="val-kwh">0.00</span><span class="unit">kWh</span></span></div>
-    </div>
-    <div class="load-bar-container ring-wrap">
-      <div class="ring-box">
-        <svg class="ring" viewBox="0 0 84 84" aria-hidden="true">
-          <circle class="ring-track" cx="42" cy="42" r="34"></circle>
-          <circle class="ring-fill bar-fill" cx="42" cy="42" r="34" transform="rotate(-90 42 42)"></circle>
-        </svg>
-        <span class="ring-pct bar-pct mono">0%</span>
+    <div class="card-mid">
+      <div class="ring-col">
+        <div class="ring-box">
+          <svg class="ring" viewBox="0 0 84 84" aria-hidden="true">
+            <circle class="ring-track" cx="42" cy="42" r="34"></circle>
+            <circle class="ring-fill bar-fill" cx="42" cy="42" r="34" transform="rotate(-90 42 42)"></circle>
+          </svg>
+          <span class="ring-pct bar-pct mono">0%</span>
+        </div>
+        <span class="limit-text mono">LIMIT -- kWh/mo</span>
       </div>
-      <div class="ring-meta"><span class="limit-text mono">LIMIT -- kWh/mo</span></div>
-    </div>
-    <div class="ch-submetrics">
-      <span>PF: <strong class="val-pf mono">1.00</strong></span>
-      <span class="mono">Monthly</span>
+      <div class="ch-readings">
+        <div class="read-row"><span class="label">PWR</span><span class="val mono"><span class="val-w">0</span><span class="unit">W</span></span></div>
+        <div class="read-row"><span class="label">CUR</span><span class="val mono"><span class="val-a">0.00</span><span class="unit">A</span></span></div>
+        <div class="read-row"><span class="label">ENG</span><span class="val mono"><span class="val-kwh">0.00</span><span class="unit">kWh</span></span></div>
+        <div class="read-row"><span class="label">PF</span><span class="val mono"><span class="val-pf">1.00</span><span class="unit"></span></span></div>
+      </div>
     </div>
     <div class="card-actions admin-only">
       <button class="btn-sm" onclick="openEditModal(${idx})">Edit</button>

@@ -1189,10 +1189,10 @@ function updateChannelCardElement(card, ch, idx) {
   if (barPct) barPct.textContent = pct.toFixed(0) + '%';
 
   // Circular sweep: dashoffset C*(1-p) draws p% of the ring starting at the
-  // top. Same 75/90 cuts as the old bar: calm fill below, pulsing amber when
-  // almost full, fast red pulse when over.
+  // top. Green while cruising, pulsing amber past 75%, fast red pulse from
+  // 85% so an almost-full budget already reads danger.
   const RING_C = 2 * Math.PI * 34;
-  const state = pct > 90 ? 'over' : pct > 75 ? 'warn' : '';
+  const state = pct >= 85 ? 'over' : pct > 75 ? 'warn' : '';
   const fill = card.querySelector('.bar-fill');
   if (fill) {
     fill.style.strokeDashoffset = String(RING_C * (1 - pct / 100));
