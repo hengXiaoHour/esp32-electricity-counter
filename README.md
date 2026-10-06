@@ -161,10 +161,19 @@ that single path, so there is no second verb to keep in step. The board
 downloads the file straight from github.com into its inactive OTA slot,
 verifies it, reboots, and the About card shows the new version (the card
 renders the compiled `FIRMWARE_VERSION`, so a release binary is stamped
-with `./scripts/build.sh --version X.Y.Z` before compiling — flashing a
-`.bin` still stamped with the old number shows the old number forever).
+before compiling — flashing a `.bin` still stamped with the old number
+shows the old number forever).
 
-Or over serial: `ota <url>` / `ota status`. A tag page or any non-release
+Releases are cut with one command (stamp + both targets + manifest +
+GitHub release holding both `.bin` files):
+
+```bash
+python3 scripts/build.py --version X.Y.Z
+```
+
+Or over serial: `version` (compiled stamp + chip), `update` (check
+`version.json`, stage the matching asset, reboot into the updater),
+`ota <url>` / `ota status`. A tag page or any non-release
 link is refused before anything is armed. A failed or oversize download
 keeps the old firmware running; counters and settings survive the reboot.
 
