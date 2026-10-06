@@ -54,7 +54,7 @@ CLOUD_BAR = """    <!-- Cloud device panel: lives in Settings so the header stat
         <div class="cal-field">
           <span class="mono conn-txt"><span id="cloudDot" class="led" title="cloud freshness"></span> <span id="cloudFresh">connecting&hellip;</span></span>
         </div>
-        <span id="staleTag" class="stale-tag hidden">STALE</span>
+        <span id="staleTag" class="stale-tag hidden">OFFLINE</span>
       </div>
       <div class="cal-row-single">
         <label>Google:</label>
