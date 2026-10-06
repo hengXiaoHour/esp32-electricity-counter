@@ -1298,9 +1298,11 @@ function zeroSubCardDisplay(idx) {
   if (barPct) barPct.textContent = '0%';
   const fill = card.querySelector('.bar-fill');
   if (fill) {
-    fill.style.width = '0%';
-    fill.className = 'progress-fill';
+    fill.setAttribute('stroke-dashoffset', String(2 * Math.PI * 34));
+    fill.setAttribute('class', 'ring-fill bar-fill');
   }
+  const box = card.querySelector('.ring-box');
+  if (box) box.className = 'ring-box';
 }
 
 function sendResetCounter(idx) {
