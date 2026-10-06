@@ -238,6 +238,12 @@ void networkTask(void *pvParameters) {
       otaHandler.consumeCloudReboot();
       consoleHandler.requestReboot("  (cloud OTA complete - restarting)");
     }
+    // An armed boot check staged a release: reboot into the pristine-window
+    // download (same-tick download would fail on the fetch-fragmented heap).
+    if (otaHandler.cloudCheckRebootDue()) {
+      otaHandler.consumeCloudCheckReboot();
+      consoleHandler.requestReboot("  (update staged - rebooting into the updater)");
+    }
     updateEcoMode();
     // Second pump for the buzzer state machine (sensorTask pumps it too): the
     // 20ms network tick is what makes the 40ms beep timings land exactly.
