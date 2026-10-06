@@ -14,18 +14,21 @@ class NVSManager;
 // banner all read isInProgress()/getProgress(), so whichever transport is
 // running shows the same way. Only one transport can run at a time.
 //
-// Cloud path (3.2.9 reboot-to-updater): `ota <url>` (serial / dashboard
-// console / cloud console) only STAGES the link into NVS and reboots; the
-// first network tick with STA + clock picks it up and downloads BEFORE the
-// Firebase sessions exist, against a clean heap. 3.2.7 proved a 34 KB
-// largest block cannot finish even an insecure handshake at runtime, and
-// freed blocks scatter instead of coalescing - so no runtime download is
-// attempted any more. On success the handler does NOT reboot itself - it
-// raises cloudRebootDue(), and the sketch routes that through
-// ConsoleHandler::requestReboot so the energy counters are flushed to NVS
-// first (a reboot that loses a month of counters is not an update, it is
-// data loss). On failure the board keeps running with the error readable
-// via `ota status` (kept in NVS, so it survives the updater reboot too).
+// Cloud path (serial-first, cloud-ota proven pattern): `update` checks
+// version.json and stages the per-chip asset, or `ota <url>` stages a
+// direct link; either way the board reboots and the first network tick with
+// STA downloads it BEFORE the Firebase sessions exist, against a clean heap.
+// 3.2.7 proved a 34 KB largest block cannot finish even an insecure
+// handshake at runtime, and freed blocks scatter instead of coalescing - so
+// no runtime download is attempted any more. The download uses HTTPUpdate
+// over an insecure client (the rig that flashes reliably), with Update.end()
+// image validation keeping a bad write from booting. On success the handler
+// does NOT reboot itself - it raises cloudRebootDue(), and the sketch routes
+// that through ConsoleHandler::requestReboot so the energy counters are
+// flushed to NVS first (a reboot that loses a month of counters is not an
+// update, it is data loss). On failure the board keeps running with the
+// error readable via `ota status` (kept in NVS, so it survives the updater
+// reboot too).
 class OTAHandler {
 public:
   void begin(const char *hostname = "esp32-elec-counter");
