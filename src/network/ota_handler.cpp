@@ -498,10 +498,20 @@ void OTAHandler::cloudStatus(String &out) {
   } else if (havePending_) {
     out += "  OTA: staged, waiting for a home link (fallback AP has no internet).";
   } else if (updateAvailable_) {
+    // Notice AND error together when both exist: 3.2.15 proved a failed
+    // download hides behind the re-announced notice every boot, making the
+    // failure invisible. Both lines are facts; show both.
     snprintf(line, sizeof(line),
              "  NEW VERSION! %s -> %s - type `update` to flash.",
              FIRMWARE_VERSION, latestVer_);
     out += line;
+    if (nvs_) {
+      char e[128];
+      if (nvs_->loadOtaErr(e, sizeof(e))) {
+        snprintf(line, sizeof(line), "\n  OTA: last updater run failed: %s", e);
+        out += line;
+      }
+    }
   } else if (nvs_ && nvs_->loadOtaCheck()) {
     out += "  OTA: check armed, waiting for a home link (fallback AP has no internet).";
   } else if (nvs_) {
