@@ -81,6 +81,14 @@ private:
   char cloudUrl[OTA_URL_MAX_LEN + 1] = {0};
   char cloudErr[128] = {0};
   CloudPush *cloud_ = nullptr;
+  NVSManager *nvs_ = nullptr;
+  SemaphoreHandle_t mutex_ = nullptr;
+  // RAM copy of a staged link (read once per boot so loop() never polls
+  // flash every tick). Set when NVS holds ota_url and cleared on consume.
+  bool havePending_ = false;
+  char pendUrl_[OTA_URL_MAX_LEN + 1] = {0};
+  // One-shot NVS failure record per attempt (no flash churn every tick).
+  bool errSaved_ = false;
 
   void loopCloud();
 };
