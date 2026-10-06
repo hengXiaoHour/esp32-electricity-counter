@@ -256,6 +256,7 @@ void OTAHandler::pollTick() {
     return;
   }
   lastPollMs_ = now;
+  prepareTlsWindow();
   String latest, binUrl;
   if (!fetchLatest(latest, binUrl)) {
     return;  // failed fetch stays silent; `update` reports it on demand
@@ -298,6 +299,7 @@ bool OTAHandler::checkForUpdate(bool doInstall, bool staUp, bool verbose,
     reply = "  No home network: cloud OTA needs STA (the fallback AP has no internet).";
     return false;
   }
+  prepareTlsWindow();
   String latest, binUrl, why_not;
   if (!fetchLatest(latest, binUrl, &why_not)) {
     reply = String("  Check failed: ") + why_not;

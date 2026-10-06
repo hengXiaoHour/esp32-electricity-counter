@@ -562,6 +562,8 @@ def main():
              "noticedVer_" in ota_cpp_s and "updateAvailable_" in ota_cpp_s),
             ("version check stages DNS vs TLS like the updater tick",
              "probe.connect(host.c_str(), 443)" in ota_cpp_s),
+            ("version check frees the big TLS holders before the handshake",
+             "prepareTlsWindow()" in ota_cpp_s),
             ("auto-poll interval lives in config",
              "OTA_CHECK_INTERVAL_MS" in read("src/config.h"))]:
         if not present:
