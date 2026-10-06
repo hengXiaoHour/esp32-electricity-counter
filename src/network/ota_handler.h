@@ -136,6 +136,7 @@ private:
   // the dashboard banner can never show during a ~60 s fetch.
   bool cloudActive = false;
   bool rebootDue = false;
+  bool checkStagedReboot_ = false;
   uint8_t cloudProgress = 0;
   char cloudUrl[OTA_URL_MAX_LEN + 1] = {0};
   char cloudErr[128] = {0};
