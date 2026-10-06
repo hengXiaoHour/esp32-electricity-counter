@@ -379,11 +379,6 @@ OTAHandler::CheckOutcome OTAHandler::checkForUpdate(bool staUp,
             " found, but its link is bad: " + (why ? why : "bad URL.");
     return CHECK_BAD_LINK;
   }
-  if (!doInstall) {
-    reply = String("  NEW VERSION! ") + FIRMWARE_VERSION + " -> " + latest +
-            " - type `update` to flash.";
-    return CHECK_STAGED;
-  }
   const char *base = strrchr(binUrl.c_str(), '/');
   reply = String("  NEW VERSION ") + FIRMWARE_VERSION + " -> " + latest +
           ": staged \"" + (base ? base + 1 : binUrl.c_str()) +
