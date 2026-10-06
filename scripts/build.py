@@ -193,10 +193,10 @@ def main():
          "--notes", "OTA %s" % new_ver, "--target", branch], cwd=ROOT)
     if result.returncode != 0:
         print("gh release failed (maybe tag exists). Trying upload...")
-        run(["gh", "release", "upload", "v%s" % new_ver, str(s3_asset),
+        run(["gh", "release", "upload", tag, str(s3_asset),
              str(classic_asset), "--clobber"], check=False)
-    print("\nDone! Release v%s ready: https://github.com/%s/releases/tag/v%s"
-          % (new_ver, slug, new_ver))
+    print("\nDone! Release %s ready: https://github.com/%s/releases/tag/%s"
+          % (tag, slug, tag))
     print("Boards on STA will offer it on the next `update` check.")
 
 
