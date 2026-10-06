@@ -214,14 +214,8 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
 .card.in-use { box-shadow: inset 3px 0 0 var(--ok); }
 .card.in-use.state-warn { border-color: var(--warn); box-shadow: inset 3px 0 0 var(--ok), 0 0 0 1px var(--warn-dim); }
 
-/* Card mid: ring left, readings right. One row, one alignment. */
-.card-mid { display: flex; align-items: center; gap: 16px; padding: 6px 16px 10px; }
-.ring-col { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 0 0 auto; }
-.ring-col .limit-text { font-size: 0.62rem; color: var(--text-3); white-space: nowrap; }
-
-/* Reading rows: fixed label column, values right-aligned with a fixed unit
-   column so W / A / kWh decimals line up instead of staggering. */
-.ch-readings { flex: 1; min-width: 0; }
+/* Card mid: readings full width, wave bar below. */
+.ch-readings { padding: 6px 16px; }
 .read-row { display: flex; justify-content: space-between; align-items: baseline; padding: 4px 0; }
 .read-row .label { flex: 0 0 34px; font-size: 0.68rem; color: var(--text-3); font-weight: 700; letter-spacing: 0.1em; }
 .read-row .val { font-size: 1.02rem; font-weight: 600; display: inline-flex; align-items: baseline; }
