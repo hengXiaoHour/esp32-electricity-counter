@@ -1,6 +1,6 @@
 {
-  "version": "3.2.12",
-  "s3_bin_url": "https://github.com/hengXiaoHour/esp32-electricity-counter/releases/download/3.2.12/esp32-s3-3.2.12.bin",
-  "classic_bin_url": "https://github.com/hengXiaoHour/esp32-electricity-counter/releases/download/3.2.12/esp32-classic-3.2.12.bin",
-  "notes": "Cloud-OTA serial-first target (3.2.12, same code as 3.2.11 updater)"
+  "version": "3.2.14",
+  "s3_bin_url": "https://github.com/hengXiaoHour/esp32-electricity-counter/releases/download/3.2.14/esp32-s3-3.2.14.bin",
+  "classic_bin_url": "https://github.com/hengXiaoHour/esp32-electricity-counter/releases/download/3.2.14/esp32-classic-3.2.14.bin",
+  "notes": "Release 3.2.14"
 }
