@@ -283,7 +283,11 @@ function cl_loadDevices() {
         o.textContent = cl_macFmt(k);
         sel.appendChild(o);
       });
-      var pick = keys.indexOf(CL_DEFAULT_MAC) >= 0 ? CL_DEFAULT_MAC : keys[0];
+      var saved = cl_savedMac();
+      var pick;
+      if (saved && keys.indexOf(saved) >= 0) pick = saved;
+      else if (keys.indexOf(CL_DEFAULT_MAC) >= 0) pick = CL_DEFAULT_MAC;
+      else pick = keys[0];
       sel.value = pick;
       cl_selectDevice(pick);
     })
