@@ -611,6 +611,31 @@ void ConsoleHandler::cmdOta(const String &args, String &out) {
   requestReboot("  (OTA staged - rebooting into the updater)");
 }
 
+void ConsoleHandler::cmdUpdate(String &out) {
+  // Serial-first cloud OTA (cloud-ota proven pattern): check version.json,
+  // stage the per-chip asset when a newer release exists, reboot into the
+  // pre-SDK updater. Same NVS+deferred-reboot path as cmdOta, so counters
+  // flush first. No web button yet - serial only.
+  if (!otaHandler) {
+    consoleAppendf(out, "%s", "  OTA not available");
+    return;
+  }
+  String reply, stageUrl;
+  if (!otaHandler->checkForUpdate(true,
+                                  wifiMgr ? wifiMgr->stationUp() : false,
+                                  true, reply, stageUrl)) {
+    consoleAppendf(out, "%s", reply.c_str());
+    return;
+  }
+  bool locked = (xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE);
+  nvs->saveOtaPending(stageUrl.c_str());
+  nvs->clearOtaErr();
+  nvs->commit();
+  if (locked) xSemaphoreGive(*dataMutex);
+  consoleAppendf(out, "%s", reply.c_str());
+  requestReboot("  (update staged - rebooting into the updater)");
+}
+
 void ConsoleHandler::cmdClearWifi(String &out) {
   // Nothing reads WiFi credentials any more, so this only scrubs leftovers
   // from an older firmware in NVS. It is kept deliberately: it is the one way
