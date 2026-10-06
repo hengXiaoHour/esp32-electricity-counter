@@ -269,6 +269,16 @@ void OTAHandler::cloudStatus(String &out) const {
   } else if (cloudErr[0]) {
     snprintf(line, sizeof(line), "  OTA: last download failed: %s", cloudErr);
     out += line;
+  } else if (havePending_) {
+    out += "  OTA: staged, waiting for a home link (fallback AP has no internet).";
+  } else if (nvs_) {
+    char e[128];
+    if (nvs_->loadOtaErr(e, sizeof(e))) {
+      snprintf(line, sizeof(line), "  OTA: last updater run failed: %s", e);
+      out += line;
+    } else {
+      out += "  OTA: idle (no cloud download staged or run).";
+    }
   } else {
     out += "  OTA: idle (no cloud download since boot).";
   }
