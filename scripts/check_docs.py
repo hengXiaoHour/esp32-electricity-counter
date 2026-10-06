@@ -606,10 +606,25 @@ def main():
           _ota_verb is not None and 'startsWith("ota ")' in ch and
           '"ota status"' in ch and "ota <url>" in ch,
           "the click would have no verb to land on")
+    c.add("the console offers serial-first version and update verbs",
+          '== "version"' in ch and '== "update"' in ch and
+          "cmdUpdate" in ch and "update" in ch and "version" in ch,
+          "serial verification has no verb to land on")
     c.add("the OTA verb validates the link shape through the host-tested helper",
           _ota_verb is not None and "startCloudUpdate" in _ota_verb_b,
           "a tag page (HTML) would be flashed as firmware")
-    c.add("the OTA shape helper is unit-tested and the suite runs in verify_all",
+    c.add("the update verb checks version.json through the staged path",
+          _ota_verb is not None and "checkForUpdate" in ch,
+          "update would bypass the version gate")
+    c.add("the version.json manifest matches the compiled stamp",
+          (ROOT / "version.json").exists() and
+          json.loads(read("version.json")).get("version") ==
+          (m.group(1) if m else None),
+          "version.json drifted from FIRMWARE_VERSION")
+    c.add("the manifest names a per-chip asset for both targets",
+          "s3_bin_url" in read("version.json") and
+          "classic_bin_url" in read("version.json"),
+          "one target has no OTA asset")
           "test_ota_url" in verify_sh and "OTA_URL_MAX_LEN" in read("scripts/test_ota_url.c"),
           "validation without a runner")
     c.add("cloud OTA refuses without a home link (fallback AP has no internet)",
