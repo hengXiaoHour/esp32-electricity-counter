@@ -623,6 +623,9 @@ def main():
           "bootCheck" in ota_cpp and "bootCheckDone_" in ota_cpp and
           "OTA_CHECK_INTERVAL_MS" not in cfg and "pollTick" not in ota_cpp,
           "runtime TLS cannot handshake on this heap, so a runtime poll would only fail")
+    c.add("a staged download runs before any version fetch (fetch fragments the heap)",
+          ota_cpp.index("loadOtaPending") < ota_cpp.index("if (!bootCheckDone_"),
+          "a post-fetch download fails silently like 3.2.15 did")
     c.add("the version.json manifest matches the compiled stamp",
           (ROOT / "version.json").exists() and
           json.loads(read("version.json")).get("version") ==
