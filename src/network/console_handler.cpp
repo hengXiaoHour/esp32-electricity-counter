@@ -614,28 +614,42 @@ void ConsoleHandler::cmdOta(const String &args, String &out) {
 }
 
 void ConsoleHandler::cmdUpdate(String &out) {
-  // Serial-first cloud OTA (cloud-ota proven pattern): check version.json,
-  // stage the per-chip asset when a newer release exists, reboot into the
-  // pre-SDK updater. Same NVS+deferred-reboot path as cmdOta, so counters
-  // flush first. No web button yet - serial only.
+  // Two-tier check. Fast path: runtime version.json fetch (works on clean
+  // heaps). Fallback: arm a boot check and reboot - the first STA tick then
+  // runs the fetch on the clean heap, where even a 34 KB-max board succeeds.
+  // Classic boards almost always take the fallback; that is expected, not a
+  // failure. No web button yet - serial only.
   if (!otaHandler) {
     consoleAppendf(out, "%s", "  OTA not available");
     return;
   }
   String reply, stageUrl;
-  if (!otaHandler->checkForUpdate(true,
-                                  wifiMgr ? wifiMgr->stationUp() : false,
-                                  true, reply, stageUrl)) {
+  OTAHandler::CheckOutcome oc = otaHandler->checkForUpdate(
+      wifiMgr ? wifiMgr->stationUp() : false, true, reply, stageUrl);
+  if (oc == OTAHandler::CHECK_STAGED) {
+    bool locked = (xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE);
+    nvs->saveOtaPending(stageUrl.c_str());
+    nvs->clearOtaErr();
+    nvs->clearOtaMsg();
+    nvs->commit();
+    if (locked) xSemaphoreGive(*dataMutex);
+    consoleAppendf(out, "%s", reply.c_str());
+    requestReboot("  (update staged - rebooting into the updater)");
+    return;
+  }
+  if (oc != OTAHandler::CHECK_RETRYABLE) {
     consoleAppendf(out, "%s", reply.c_str());
     return;
   }
+  // Runtime link blocked (DNS/TLS/heap): persist the intent and reboot into
+  // the clean heap. The outcome lands in `ota status` after boot.
   bool locked = (xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE);
-  nvs->saveOtaPending(stageUrl.c_str());
-  nvs->clearOtaErr();
+  nvs->saveOtaCheck();
   nvs->commit();
   if (locked) xSemaphoreGive(*dataMutex);
   consoleAppendf(out, "%s", reply.c_str());
-  requestReboot("  (update staged - rebooting into the updater)");
+  consoleAppendf(out, "%s", "  (check armed - rebooting, `ota status` after boot)");
+  requestReboot("  (update armed - rebooting into the clean-heap check)");
 }
 
 void ConsoleHandler::cmdClearWifi(String &out) {
