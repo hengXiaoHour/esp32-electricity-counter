@@ -173,19 +173,24 @@ def main():
         return
 
     # --- 6. Commit + push + release -------------------------------------
+    # Pushes the CURRENT branch (not hardcoded main: releases are cut from
+    # the branch that built them) and tags the release on it.
     if shutil.which("gh") is None:
         print("ERROR: gh CLI not found; commit/push manually.")
         sys.exit(1)
+    branch = subprocess.check_output(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=ROOT,
+        text=True).strip()
     run(["git", "add", "src/config.h", "scripts/mock_device.py", "version.json"])
     subprocess.run(["git", "commit", "-m", "chore: bump OTA to %s" % new_ver],
                    cwd=ROOT)
-    run(["git", "push", "origin", "main"])
-    subprocess.run(["git", "tag", "-d", "v%s" % new_ver], cwd=ROOT,
+    run(["git", "push", "origin", branch])
+    subprocess.run(["git", "tag", "-d", tag], cwd=ROOT,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     result = subprocess.run(
-        ["gh", "release", "create", "v%s" % new_ver, str(s3_asset),
-         str(classic_asset), "--title", "v%s" % new_ver,
-         "--notes", "OTA %s" % new_ver, "--target", "main"], cwd=ROOT)
+        ["gh", "release", "create", tag, str(s3_asset),
+         str(classic_asset), "--title", tag,
+         "--notes", "OTA %s" % new_ver, "--target", branch], cwd=ROOT)
     if result.returncode != 0:
         print("gh release failed (maybe tag exists). Trying upload...")
         run(["gh", "release", "upload", "v%s" % new_ver, str(s3_asset),
