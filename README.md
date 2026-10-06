@@ -223,6 +223,8 @@ Serial console (`help` for the list): `status`, `wifi`, `set_ap`, `setwifi`,
 
 3.2.4 notes: version-stamp re-test from the USB-flashed 3.2.3 board — same code, proving Check → Update end to end.
 
+3.2.12 notes: stamp-only target for the 3.2.11 updater — same code. Expecting the same 34 KB wall; its failure line closes the structural case, then OTA goes around board-TLS.
+
 3.2.11 notes: updater wins the race — consumes the staged link on STA (no clock needed), then waits for the clock INSIDE the updater, so no SDK tick can ever start first. Same heap wall expected if the ceiling is structural; the failure line's max number decides.
 
 3.2.10 notes: stamp-only proof for the 3.2.9 updater — same code, taken over the air after one USB flash of 3.2.9.
