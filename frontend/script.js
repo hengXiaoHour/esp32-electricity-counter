@@ -1110,7 +1110,7 @@ function createChannelCardElement(idx) {
   card.innerHTML = `
     <div class="card-header">
       <span class="ch-title name-field">Channel ${idx + 1}</span>
-      <span class="ch-status-badge ok">OK</span>
+      <span class="ch-status-badge ok hidden"></span>
     </div>
     <div class="ch-readings">
       <div class="read-row"><span class="label">PWR</span><span class="val mono"><span class="val-w">0</span><span class="unit">W</span></span></div>
