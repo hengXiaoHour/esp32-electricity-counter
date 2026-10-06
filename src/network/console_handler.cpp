@@ -248,6 +248,18 @@ void ConsoleHandler::exec(const String &line, String &out) {
     if (otaHandler) otaHandler->cloudStatus(out);
     else consoleAppendf(out, "%s", "  OTA not available");
 
+  } else if (cmd == "version") {
+    // cloud-ota parity: the compiled stamp, plus the chip so the right
+    // release asset can be picked without guessing.
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+    consoleAppendf(out, "  FW: %s (esp32s3)", FIRMWARE_VERSION);
+#else
+    consoleAppendf(out, "  FW: %s (esp32)", FIRMWARE_VERSION);
+#endif
+
+  } else if (cmd == "update") {
+    cmdUpdate(out);
+
   } else if (cmd.startsWith("ota ")) {
     cmdOta(cmd.substring(4), out);
 
