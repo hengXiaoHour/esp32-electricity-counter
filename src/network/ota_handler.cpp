@@ -259,7 +259,7 @@ void OTAHandler::loopCloud() {
   rebootDue = true;  // the sketch reboots via the deferred path (NVS flush)
 }
 
-void OTAHandler::cloudStatus(String &out) const {
+void OTAHandler::cloudStatus(String &out) {
   char line[160];
   if (cloudBusy || cloudActive) {
     snprintf(line, sizeof(line), "  OTA: downloading %u%%", (unsigned)cloudProgress);

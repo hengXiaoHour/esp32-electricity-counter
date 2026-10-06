@@ -52,7 +52,9 @@ public:
   }
 
   // One-line state for `ota status` (serial + both dashboards' consoles).
-  void cloudStatus(String &out) const;
+  // Reads NVS for a staged link / last failure, so it stays truthful across
+  // the updater reboot (hence non-const).
+  void cloudStatus(String &out);
 
   // Raised once when a download verified and is ready to boot. The sketch
   // consumes it into a deferred reboot; until then the board keeps running
