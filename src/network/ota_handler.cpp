@@ -48,12 +48,21 @@ void OTAHandler::begin(const char *hostname) {
 
 void OTAHandler::loop() {
   ArduinoOTA.handle();
-  // Boot check FIRST: the first tick with a home link runs the version
-  // fetch on the clean heap, before the SDK sessions exist. When it stages
-  // a release the pending-consume block below picks it up on this same tick,
-  // so check + download share one clean window with no extra reboot.
-  if (!bootCheckDone_) bootCheck();
-  // First tick with a home link consumes a staged link: this runs BEFORE the
+  // Staged download FIRST: the first tick with a home link consumes a
+  // staged link BEFORE anything else runs TLS, so the download below
+  // handshakes against a boot-fresh heap. 3.2.15 proved the order matters:
+  // bootCheck's version fetch ran first, fragmented the heap, and the
+  // staged download failed silently right after it. A staged download
+  // owns the window; the version check waits.
+  // (Runs before the cloud SDK ever starts - push runs later on this same
+  // tick. The CLOCK is not required here - loopCloud waits for it inside
+  // the updater, still before anything else can run. No stall when STA is
+  // down: the stage simply waits for a later tick.)
+  if (!cloudBusy && !cloudActive && !havePending_ && nvs_) {
+    havePending_ = nvs_->loadOtaPending(pendUrl_, sizeof(pendUrl_));
+  }
+  if (!cloudBusy && !cloudActive && havePending_) {
+    if (WiFi.status() == WL_CONNECTED) {
   // cloud SDK ever starts (push runs later on this same tick), so the
   // download below handshakes against a boot-fresh heap. The CLOCK is not
   // required here - loopCloud waits for it inside the updater, still before
