@@ -63,7 +63,7 @@ public:
     CHECK_NO_NET,
     CHECK_RETRYABLE
   };
-  CheckOutcome checkForUpdate(bool doInstall, bool staUp, bool verbose,
+  CheckOutcome checkForUpdate(bool staUp, bool verbose,
                              String &reply, String &stageUrl);
 
   // Shared version.json fetch behind checkForUpdate and the auto-poll below:

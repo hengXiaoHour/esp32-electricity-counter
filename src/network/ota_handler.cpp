@@ -338,7 +338,7 @@ void OTAHandler::bootCheck() {
   // Unprompted + latest: silent by design (no spam).
 }
 
-OTAHandler::CheckOutcome OTAHandler::checkForUpdate(bool doInstall, bool staUp,
+OTAHandler::CheckOutcome OTAHandler::checkForUpdate(bool staUp,
                                                        bool verbose,
                                                        String &reply,
                                                        String &stageUrl) {
