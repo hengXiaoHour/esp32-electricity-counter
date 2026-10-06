@@ -570,8 +570,8 @@ def main():
              "probe.connect(host.c_str(), 443)" in ota_cpp_s),
             ("version check frees the big TLS holders before the handshake",
              "prepareTlsWindow()" in ota_cpp_s),
-            ("auto-poll interval lives in config",
-             "OTA_CHECK_INTERVAL_MS" in read("src/config.h"))]:
+            ("runtime poll is gone (it could never handshake, only disrupt pushes)",
+             "pollTick" not in ota_cpp_s and "OTA_CHECK_INTERVAL_MS" not in read("src/config.h")),
         if not present:
             ota_missing.append(what)
     r.add("the cloud-OTA feature is still wired end to end", not ota_missing,
