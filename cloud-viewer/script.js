@@ -1117,9 +1117,15 @@ function createChannelCardElement(idx) {
       <div class="read-row"><span class="label">CUR</span><span class="val mono"><span class="val-a">0.00</span><span class="unit">A</span></span></div>
       <div class="read-row"><span class="label">ENG</span><span class="val mono"><span class="val-kwh">0.00</span><span class="unit">kWh</span></span></div>
     </div>
-    <div class="load-bar-container">
-      <div class="bar-meta"><span class="limit-text mono">LIMIT -- kWh/mo</span><span class="bar-pct">0%</span></div>
-      <div class="progress-track"><div class="progress-fill bar-fill"></div></div>
+    <div class="load-bar-container ring-wrap">
+      <div class="ring-box">
+        <svg class="ring" viewBox="0 0 84 84" aria-hidden="true">
+          <circle class="ring-track" cx="42" cy="42" r="34"></circle>
+          <circle class="ring-fill bar-fill" cx="42" cy="42" r="34" transform="rotate(-90 42 42)"></circle>
+        </svg>
+        <span class="ring-pct bar-pct mono">0%</span>
+      </div>
+      <div class="ring-meta"><span class="limit-text mono">LIMIT -- kWh/mo</span></div>
     </div>
     <div class="ch-submetrics">
       <span>PF: <strong class="val-pf mono">1.00</strong></span>
@@ -1182,11 +1188,18 @@ function updateChannelCardElement(card, ch, idx) {
   const barPct = card.querySelector('.bar-pct');
   if (barPct) barPct.textContent = pct.toFixed(0) + '%';
 
+  // Circular sweep: dashoffset C*(1-p) draws p% of the ring starting at the
+  // top. Same 75/90 cuts as the old bar: calm fill below, pulsing amber when
+  // almost full, fast red pulse when over.
+  const RING_C = 2 * Math.PI * 34;
+  const state = pct > 90 ? 'over' : pct > 75 ? 'warn' : '';
   const fill = card.querySelector('.bar-fill');
   if (fill) {
-    fill.style.width = pct + '%';
-    fill.className = 'progress-fill ' + (pct > 90 ? 'over' : pct > 75 ? 'warn' : '');
+    fill.style.strokeDashoffset = String(RING_C * (1 - pct / 100));
+    fill.setAttribute('class', 'ring-fill bar-fill' + (state ? ' ' + state : ''));
   }
+  const box = card.querySelector('.ring-box');
+  if (box) box.className = 'ring-box' + (state ? ' ' + state : '');
 
   const limitText = card.querySelector('.limit-text');
   if (limitText) limitText.textContent = `LIMIT ${monthlyKwhLimit.toFixed(1)} kWh/mo`;
@@ -1285,9 +1298,11 @@ function zeroSubCardDisplay(idx) {
   if (barPct) barPct.textContent = '0%';
   const fill = card.querySelector('.bar-fill');
   if (fill) {
-    fill.style.width = '0%';
-    fill.className = 'progress-fill';
+    fill.style.strokeDashoffset = String(2 * Math.PI * 34);
+    fill.setAttribute('class', 'ring-fill bar-fill');
   }
+  const box = card.querySelector('.ring-box');
+  if (box) box.className = 'ring-box';
 }
 
 function sendResetCounter(idx) {

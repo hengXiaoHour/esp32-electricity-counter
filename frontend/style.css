@@ -221,9 +221,9 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
 .ring circle { fill: none; stroke-width: 8; stroke-linecap: round; }
 .ring-track { stroke: var(--bg-input); }
 .ring-fill {
-  stroke: var(--fill); stroke-dasharray: 213.6; stroke-dashoffset: 213.6;
+  stroke: var(--ok); stroke-dasharray: 213.6; stroke-dashoffset: 213.6;
   transition: stroke-dashoffset 0.6s ease, stroke 0.3s;
-  filter: drop-shadow(0 0 4px rgba(90, 138, 160, 0.35));
+  filter: drop-shadow(0 0 4px rgba(62, 201, 114, 0.35));
 }
 .ring-box.warn .ring-fill { stroke: var(--warn); animation: ringPulseWarn 1.6s ease-in-out infinite; }
 .ring-box.over .ring-fill { stroke: var(--trip); animation: ringPulseOver 0.9s ease-in-out infinite; }
