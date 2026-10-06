@@ -79,11 +79,13 @@ public:
 
   // First-STA-tick check, called from loop(): runs fetchLatest on the
   // boot-clean heap (same conditions the Firebase session itself is
-  // established under) and EITHER stages a newer release for the download
-  // below in the same window (armed `update`) OR announces it once on
-  // serial + `ota status` (unprompted). Already-on-latest and failed
-  // fetches stay silent unless the check was armed - then the outcome is
-  // recorded for `ota status`. Runs once per boot; never stages unprompted.
+  // established under) and EITHER stages a newer release + reboots into the
+  // pristine-window download (armed `update`) OR announces it once on
+  // serial + `ota status` (unprompted). Same-tick download is FORBIDDEN:
+  // the fetch fragments the heap and 3.2.15 proved the download then fails.
+  // Already-on-latest and failed fetches stay silent unless the check was
+  // armed - then the outcome is recorded for `ota status`. Runs once per
+  // boot; never stages unprompted.
   void bootCheck();
 
   // True once the poll has seen a newer release (cleared when the manifest
