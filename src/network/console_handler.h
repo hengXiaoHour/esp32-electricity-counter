@@ -50,14 +50,6 @@ public:
   // True if a deferred command was requested but not yet run.
   bool hasDeferred() const { return pendingDefer; }
 
-  // Task diagnostics for `info` (defined in the sketch, set in setup()).
-  // g_loopIters proves the Core-1 Arduino loop is alive; the handles feed
-  // uxTaskGetStackHighWaterMark so a silent loopTask death shows up as a
-  // number instead of a mystery.
-  extern volatile uint32_t g_loopIters;
-  extern TaskHandle_t g_networkTask;
-  extern TaskHandle_t g_sensorTask;
-
   // True if test led is currently running (driven by loop()).
   bool isLedTestRunning() const { return ledTestActive; }
 
@@ -136,6 +128,14 @@ private:
 
   static void ledTestStep(ConsoleHandler *self);
 };
+
+// Task diagnostics for `info` (defined in the sketch, set in setup()).
+// g_loopIters proves the Core-1 Arduino loop is alive; the handles feed
+// uxTaskGetStackHighWaterMark so a silent loopTask death shows up as a
+// number instead of a mystery.
+extern volatile uint32_t g_loopIters;
+extern TaskHandle_t g_networkTask;
+extern TaskHandle_t g_sensorTask;
 
 // Escapes a text blob for embedding inside a JSON string literal.
 String consoleJsonEscape(const String &s);
