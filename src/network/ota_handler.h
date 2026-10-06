@@ -126,8 +126,13 @@ private:
   // flash every tick). Set when NVS holds ota_url and cleared on consume.
   bool havePending_ = false;
   char pendUrl_[OTA_URL_MAX_LEN + 1] = {0};
-  // One-shot NVS failure record per attempt (no flash churn every tick).
-  bool errSaved_ = false;
+  // Frees the biggest contiguous holders (the Firebase keep-alive
+  // sessions) + lets LWIP release their PCBs, so the TLS handshake below
+  // gets a clean shot at runtime. Same trick the updater tick uses before
+  // the download - without it the max block sits at ~34 KB and even an
+  // insecure handshake fails (3.2.7). The SDK reconnects on next use, so a
+  // failed check costs only a few seconds of stale pushes, not the link.
+  void prepareTlsWindow();
   // Auto-poll notice (RAM only): the release last announced this boot, the
   // release currently newer than this build, and when the poll last ran.
   // noticedVer_ is the anti-spam latch - one serial line per release.
