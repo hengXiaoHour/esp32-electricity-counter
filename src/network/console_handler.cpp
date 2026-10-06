@@ -346,6 +346,11 @@ void ConsoleHandler::runDeferred() {
   } else if (cmd == "reboot") {
     if (note.length() > 0) consoleAppendf(pendingOutput, "%s", note.c_str());
     cmdReboot(pendingOutput);
+  } else {
+    // A consumed flag with no matching command means Core 1 interleaved
+    // between the flag and command writes - the old flag-first order did
+    // exactly this. Never swallow it silently again.
+    consoleAppendf(pendingOutput, "  Lost deferred command: '%s'", cmd.c_str());
   }
 }
 
