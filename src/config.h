@@ -87,8 +87,6 @@
 // reliably. Trust comes from the /cmd downlink only the admin Gmail can
 // write + Update.end() image validation, same as the cloud-ota rig.
 #define OTA_VERSION_URL "https://raw.githubusercontent.com/hengXiaoHour/esp32-electricity-counter/main/version.json"
-#define OTA_CHECK_INTERVAL_MS 30000
-#define OTA_AUTO_UPDATE false
 #define OTA_USE_INSECURE true
 
 // ==============================
