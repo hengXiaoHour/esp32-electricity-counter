@@ -1,6 +1,7 @@
 #include "ota_handler.h"
 #include "ota_url.h"
 #include "cloud_push.h"
+#include "../utils/nvs_manager.h"
 
 #include <ArduinoOTA.h>
 #include <HTTPClient.h>
@@ -45,31 +46,70 @@ void OTAHandler::begin(const char *hostname) {
 
 void OTAHandler::loop() {
   ArduinoOTA.handle();
-  if (cloudBusy) loopCloud();
+  // First tick with a home link + valid clock consumes a staged link: this
+  // runs BEFORE the cloud SDK ever starts (push runs later on this same
+  // tick), so the download below handshakes against a clean heap. No stall
+  // when the clock is stale - the stage simply waits for a later tick.
+  if (!cloudBusy && !cloudActive && !havePending_ && nvs_) {
+    havePending_ = nvs_->loadOtaPending(pendUrl_, sizeof(pendUrl_));
+  }
+  if (!cloudBusy && !cloudActive && havePending_) {
+    if (WiFi.status() == WL_CONNECTED && time(nullptr) > 1700000000L) {
+      strncpy(cloudUrl, pendUrl_, sizeof(cloudUrl) - 1);
+      cloudUrl[sizeof(cloudUrl) - 1] = '\0';
+      havePending_ = false;
+      cloudErr[0] = '\0';
+      errSaved_ = false;
+      cloudProgress = 0;
+      if (nvs_) {
+        bool locked = (mutex_ && xSemaphoreTake(mutex_, pdMS_TO_TICKS(100)) == pdTRUE);
+        nvs_->clearOtaPending();
+        nvs_->clearOtaErr();
+        nvs_->commit();
+        if (locked) xSemaphoreGive(*mutex_);
+      }
+      cloudBusy = true;
+    }
+  }
+  if (cloudBusy) {
+    loopCloud();
+    // One NVS failure record per attempt: the updater reboot would otherwise
+    // erase why it failed. Committed under the mutex (sensorTask shares the
+    // handle); a later stage or a verified image clears it.
+    if (!cloudBusy && !cloudActive && !rebootDue && cloudErr[0] && !errSaved_) {
+      errSaved_ = true;
+      if (nvs_) {
+        bool locked = (mutex_ && xSemaphoreTake(mutex_, pdMS_TO_TICKS(100)) == pdTRUE);
+        nvs_->saveOtaErr(cloudErr);
+        nvs_->commit();
+        if (locked) xSemaphoreGive(*mutex_);
+      }
+    }
+  }
 }
 
-void OTAHandler::startCloudUpdate(const char *url, bool staUp, String &reply) {
+bool OTAHandler::startCloudUpdate(const char *url, bool staUp, String &reply) {
   if (inProgress || cloudBusy) {
     reply = "  An update is already running - wait for it to finish.";
-    return;
+    return false;
   }
   if (!staUp) {
     reply = "  No home network: cloud OTA needs STA (the fallback AP has no internet).";
-    return;
+    return false;
   }
   const char *why = nullptr;
   if (!url || !ota_url_validate(url, &why)) {
     reply = String("  Not started: ") + (why ? why : "bad URL.");
-    return;
+    return false;
   }
-  strncpy(cloudUrl, url, sizeof(cloudUrl) - 1);
-  cloudUrl[sizeof(cloudUrl) - 1] = '\0';
-  cloudErr[0] = '\0';
-  cloudProgress = 0;
-  cloudBusy = true;
-  const char *base = strrchr(cloudUrl, '/');
-  reply = String("  OTA started from \"") + (base ? base + 1 : cloudUrl) +
-          "\" - banner above while it downloads, `ota status` for detail.";
+  // Staged, not downloaded: the caller persists the link and reboots (see
+  // cmdOta). The updater tick above does the download pre-SDK, so the reply
+  // promises the reboot + banner, never live progress - snapshots stall
+  // during the blocking fetch, so percent cannot stream.
+  const char *base = strrchr(url, '/');
+  reply = String("  Staged \"") + (base ? base + 1 : url) +
+          "\" - rebooting into the updater, banner above while it downloads, `ota status` for detail.";
+  return true;
 }
 
 // Downloads the armed URL into the inactive OTA slot, then raises
