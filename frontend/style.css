@@ -221,35 +221,34 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
 .read-row .val { font-size: 1.02rem; font-weight: 600; display: inline-flex; align-items: baseline; }
 .read-row .val .unit { display: inline-block; min-width: 2.6em; font-size: 0.68rem; color: var(--text-2); font-weight: 400; margin-left: 4px; }
 
-/* Monthly-budget ring (circular progress). */
-.ring-box { position: relative; width: 84px; height: 84px; flex: 0 0 auto; }
-.ring { width: 84px; height: 84px; display: block; }
-.ring circle { fill: none; stroke-width: 8; stroke-linecap: round; }
-.ring-track { stroke: var(--bg-input); }
-.ring-fill {
-  stroke: var(--ok); stroke-dasharray: 213.6; stroke-dashoffset: 213.6;
-  transition: stroke-dashoffset 0.6s ease, stroke 0.3s;
-  filter: drop-shadow(0 0 4px rgba(62, 201, 114, 0.35));
+/* Monthly-budget wave bar: thin groove full width, a scrolling white sine
+   for the filled part, one white knob riding the leading edge. White at every
+   level on purpose - the number, not the colour, carries the meaning. */
+.load-bar-container { padding: 10px 16px 12px; }
+.bar-meta { display: flex; justify-content: space-between; font-size: 0.66rem; color: var(--text-3); font-family: var(--font-mono); margin-bottom: 8px; }
+.bar-meta .bar-pct { color: var(--text); }
+.wave-track { position: relative; height: 14px; margin: 0 7px; }
+.wave-track::before {
+  content: ''; position: absolute; left: -7px; right: -7px; top: 50%; height: 2px;
+  transform: translateY(-50%); background: rgba(255, 255, 255, 0.12); border-radius: 2px;
 }
-.ring-box.warn .ring-fill { stroke: var(--warn); animation: ringPulseWarn 1.6s ease-in-out infinite; }
-.ring-box.over .ring-fill { stroke: var(--trip); animation: ringPulseOver 0.9s ease-in-out infinite; }
-.ring-pct {
-  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  font-size: 0.78rem; color: var(--text-2);
+.wave-fill {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 0%;
+  background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='10'><path d='M0 5 Q6 0 12 5 T24 5' fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round'/></svg>") repeat-x center;
+  background-size: 24px 10px;
+  animation: waveSlide 1.1s linear infinite;
+  transition: width 0.6s ease;
 }
-.ring-box.warn .ring-pct { color: var(--warn); }
-.ring-box.over .ring-pct { color: var(--trip); font-weight: 700; }
-@keyframes ringPulseWarn {
-  0%, 100% { filter: drop-shadow(0 0 3px rgba(229, 164, 59, 0.25)); }
-  50% { filter: drop-shadow(0 0 9px rgba(229, 164, 59, 0.65)); }
+.wave-knob {
+  position: absolute; top: 50%; left: 0%; width: 13px; height: 13px; border-radius: 50%;
+  background: var(--text); box-shadow: 0 0 9px rgba(255, 255, 255, 0.55);
+  transform: translate(-50%, -50%);
+  transition: left 0.6s ease;
 }
-@keyframes ringPulseOver {
-  0%, 100% { filter: drop-shadow(0 0 3px rgba(226, 74, 59, 0.35)); }
-  50% { filter: drop-shadow(0 0 12px rgba(226, 74, 59, 0.8)); }
-}
+@keyframes waveSlide { from { background-position-x: 0; } to { background-position-x: 24px; } }
 @media (prefers-reduced-motion: reduce) {
-  .ring-fill { transition: none; }
-  .ring-box.warn .ring-fill, .ring-box.over .ring-fill { animation: none; }
+  .wave-fill { animation: none; transition: none; }
+  .wave-knob { transition: none; }
 }
 .card-actions { display: flex; justify-content: space-between; gap: 8px; padding: 8px 16px 12px; }
 /* height (not padding) so a .btn-sm lines up exactly with the field beside it,
