@@ -195,6 +195,7 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
 .card.state-off { opacity: 0.6; }
 .card-header { display: flex; justify-content: space-between; align-items: center; padding: 13px 16px 9px; }
 .ch-title { font-weight: 700; font-size: 0.82rem; letter-spacing: 0.06em; text-transform: uppercase; }
+.badges { display: flex; align-items: center; gap: 6px; }
 .ch-status-badge {
   font-size: 0.6rem; font-weight: 700; padding: 2px 8px; border-radius: 3px;
   font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em;
@@ -203,19 +204,30 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
 .ch-status-badge.warning { background: var(--warn-dim); color: var(--warn); }
 .ch-status-badge.tripped { background: var(--trip-dim); color: var(--trip); animation: pulse 0.7s infinite alternate; }
 .ch-status-badge.off { background: rgba(255, 255, 255, 0.04); color: var(--off); }
+.inuse-chip {
+  font-size: 0.6rem; font-weight: 700; padding: 2px 8px; border-radius: 3px;
+  font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em;
+  background: var(--ok-dim); color: var(--ok); border: 1px solid rgba(62, 201, 114, 0.4);
+}
+/* In use (PF > 0.1): a green edge inside the border, so it never shifts layout
+   and never fights the amber/red budget borders - the chip names it too. */
+.card.in-use { box-shadow: inset 3px 0 0 var(--ok); }
+.card.in-use.state-warn { border-color: var(--warn); box-shadow: inset 3px 0 0 var(--ok), 0 0 0 1px var(--warn-dim); }
 
-/* Reading rows (label left, value right) */
-.ch-readings { padding: 6px 16px; }
+/* Card mid: ring left, readings right. One row, one alignment. */
+.card-mid { display: flex; align-items: center; gap: 16px; padding: 6px 16px 10px; }
+.ring-col { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 0 0 auto; }
+.ring-col .limit-text { font-size: 0.62rem; color: var(--text-3); white-space: nowrap; }
+
+/* Reading rows: fixed label column, values right-aligned with a fixed unit
+   column so W / A / kWh decimals line up instead of staggering. */
+.ch-readings { flex: 1; min-width: 0; }
 .read-row { display: flex; justify-content: space-between; align-items: baseline; padding: 4px 0; }
-.read-row .label { font-size: 0.68rem; color: var(--text-3); font-weight: 700; letter-spacing: 0.1em; }
-.read-row .val { font-size: 1.02rem; font-weight: 600; }
-.read-row .val .unit { font-size: 0.68rem; color: var(--text-2); font-weight: 400; margin-left: 2px; }
+.read-row .label { flex: 0 0 34px; font-size: 0.68rem; color: var(--text-3); font-weight: 700; letter-spacing: 0.1em; }
+.read-row .val { font-size: 1.02rem; font-weight: 600; display: inline-flex; align-items: baseline; }
+.read-row .val .unit { display: inline-block; min-width: 2.6em; font-size: 0.68rem; color: var(--text-2); font-weight: 400; margin-left: 4px; }
 
-/* Monthly-budget ring (circular progress, replaces the old horizontal bar).
-   Track uses the same input-well colour as the old track; the sweep uses the
-   same three status colours (ok green -> warn amber past 75% -> trip red from 85%), so
-   a barely-full ring reads calm blue-grey while an almost-full one pulses. */
-.load-bar-container.ring-wrap { display: flex; align-items: center; gap: 14px; padding: 10px 16px 12px; }
+/* Monthly-budget ring (circular progress). */
 .ring-box { position: relative; width: 84px; height: 84px; flex: 0 0 auto; }
 .ring { width: 84px; height: 84px; display: block; }
 .ring circle { fill: none; stroke-width: 8; stroke-linecap: round; }
@@ -233,7 +245,6 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
 }
 .ring-box.warn .ring-pct { color: var(--warn); }
 .ring-box.over .ring-pct { color: var(--trip); font-weight: 700; }
-.ring-meta { display: flex; flex-direction: column; gap: 2px; font-size: 0.66rem; color: var(--text-3); font-family: var(--font-mono); }
 @keyframes ringPulseWarn {
   0%, 100% { filter: drop-shadow(0 0 3px rgba(229, 164, 59, 0.25)); }
   50% { filter: drop-shadow(0 0 9px rgba(229, 164, 59, 0.65)); }
@@ -246,9 +257,6 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
   .ring-fill { transition: none; }
   .ring-box.warn .ring-fill, .ring-box.over .ring-fill { animation: none; }
 }
-
-/* Secondary metrics + actions */
-.ch-submetrics { display: flex; justify-content: space-between; padding: 4px 16px 8px; font-size: 0.7rem; color: var(--text-3); border-top: 1px solid rgba(255, 255, 255, 0.04); }
 .card-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 8px 16px 12px; }
 /* height (not padding) so a .btn-sm lines up exactly with the field beside it,
    and inline-flex so its label stays optically centred at that height. */

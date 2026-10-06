@@ -257,7 +257,7 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
   .ring-fill { transition: none; }
   .ring-box.warn .ring-fill, .ring-box.over .ring-fill { animation: none; }
 }
-.card-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 8px 16px 12px; }
+.card-actions { display: flex; justify-content: flex-start; gap: 8px; padding: 8px 16px 12px; }
 /* height (not padding) so a .btn-sm lines up exactly with the field beside it,
    and inline-flex so its label stays optically centred at that height. */
 .btn-sm {
