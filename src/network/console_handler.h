@@ -85,6 +85,11 @@ private:
 
   // Deferred command (blocking/destructive — runs from loop()).
   bool pendingDefer;
+  // Written on Core 0 (serial/WS console), consumed on Core 1 (loop()).
+  // Volatile: without it the Core-1 read can be cached in a register and a
+  // deferred reboot silently never fires (2026-10-06: three sessions acked
+  // "rebooting" with no reset following).
+  volatile bool pendingDeferCrossCore;
   String pendingCmd;
   String pendingOutput;
   String pendingRebootNote;
