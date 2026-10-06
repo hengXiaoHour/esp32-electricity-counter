@@ -63,16 +63,6 @@ void OTAHandler::loop() {
   }
   if (!cloudBusy && !cloudActive && havePending_) {
     if (WiFi.status() == WL_CONNECTED) {
-  // cloud SDK ever starts (push runs later on this same tick), so the
-  // download below handshakes against a boot-fresh heap. The CLOCK is not
-  // required here - loopCloud waits for it inside the updater, still before
-  // anything else can run. No stall when STA is down: the stage simply waits
-  // for a later tick.
-  if (!cloudBusy && !cloudActive && !havePending_ && nvs_) {
-    havePending_ = nvs_->loadOtaPending(pendUrl_, sizeof(pendUrl_));
-  }
-  if (!cloudBusy && !cloudActive && havePending_) {
-    if (WiFi.status() == WL_CONNECTED) {
       strncpy(cloudUrl, pendUrl_, sizeof(cloudUrl) - 1);
       cloudUrl[sizeof(cloudUrl) - 1] = '\0';
       havePending_ = false;
