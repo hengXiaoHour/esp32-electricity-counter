@@ -492,13 +492,21 @@ void OTAHandler::cloudStatus(String &out) {
              "  NEW VERSION! %s -> %s - type `update` to flash.",
              FIRMWARE_VERSION, latestVer_);
     out += line;
+  } else if (nvs_ && nvs_->loadOtaCheck()) {
+    out += "  OTA: check armed, waiting for a home link (fallback AP has no internet).";
   } else if (nvs_) {
     char e[128];
     if (nvs_->loadOtaErr(e, sizeof(e))) {
       snprintf(line, sizeof(line), "  OTA: last updater run failed: %s", e);
       out += line;
     } else {
-      out += "  OTA: idle (no cloud download staged or run).";
+      char m[96];
+      if (nvs_->loadOtaMsg(m, sizeof(m))) {
+        snprintf(line, sizeof(line), "  OTA: %s", m);
+        out += line;
+      } else {
+        out += "  OTA: idle (no cloud download staged or run).";
+      }
     }
   } else {
     out += "  OTA: idle (no cloud download since boot).";
