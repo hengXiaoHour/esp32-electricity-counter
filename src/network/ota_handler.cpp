@@ -240,56 +240,102 @@ bool OTAHandler::fetchLatest(String &latest, String &binUrl, String *detail) {
   return true;
 }
 
-void OTAHandler::pollTick() {
-  // Notify-only: never stage, never reboot. Skips while the updater owns
-  // the radio path (staged link, active download, verified image waiting
-  // for its deferred reboot, or the LAN updater running).
-  if (inProgress || cloudBusy || cloudActive || havePending_ || rebootDue) {
-    return;
-  }
+void OTAHandler::bootCheck() {
+  // Once per boot, on the first tick with STA: the heap is at its cleanest
+  // here (only WiFi + listen sockets allocated - the same conditions the
+  // Firebase session itself is established under), so this fetch succeeds
+  // where any runtime retry cannot. Never stages unprompted: without an
+  // armed `update` a newer release is ANNOUNCED (serial + status), never
+  // downloaded.
   if (WiFi.status() != WL_CONNECTED) {
-    return;  // offline: retry next tick, timer untouched so reconnect checks soon
+    return;  // offline boot: retry next tick, done flag untouched
   }
-  unsigned long now = millis();
-  if (lastPollMs_ == 0) {
-    // First boot: let STA/DHCP settle before the first fetch.
-    if (now < 60000UL) {
-      return;
+  bootCheckDone_ = true;
+  bool armed = nvs_ ? nvs_->loadOtaCheck() : false;
+  String latest, binUrl, detail;
+  prepareTlsWindow();  // no sessions exist yet pre-SDK; harmless no-op here
+  if (!fetchLatest(latest, binUrl, &detail)) {
+    if (armed) {
+      bool locked = (mutex_ && xSemaphoreTake(mutex_, pdMS_TO_TICKS(100)) == pdTRUE);
+      if (nvs_) {
+        nvs_->clearOtaCheck();
+        nvs_->saveOtaErr(("check failed: " + detail).c_str());
+        nvs_->clearOtaMsg();
+        nvs_->commit();
+      }
+      if (locked) xSemaphoreGive(mutex_);
+    } else {
+      Serial.print("  OTA check failed: ");
+      Serial.println(detail);
     }
-  } else if (now - lastPollMs_ < (unsigned long)OTA_CHECK_INTERVAL_MS) {
     return;
-  }
-  lastPollMs_ = now;
-  prepareTlsWindow();
-  String latest, binUrl;
-  if (!fetchLatest(latest, binUrl)) {
-    return;  // failed fetch stays silent; `update` reports it on demand
   }
   if (compareVersions(String(FIRMWARE_VERSION), latest) < 0) {
     const char *why = nullptr;
     if (!ota_url_validate(binUrl.c_str(), &why)) {
-      return;  // bad link stays silent here; `update` names it
+      String bad = String("new version ") + latest +
+                   " has a bad link: " + (why ? why : "bad URL.");
+      if (armed) {
+        bool locked = (mutex_ && xSemaphoreTake(mutex_, pdMS_TO_TICKS(100)) == pdTRUE);
+        if (nvs_) {
+          nvs_->clearOtaCheck();
+          nvs_->saveOtaErr(bad.c_str());
+          nvs_->clearOtaMsg();
+          nvs_->commit();
+        }
+        if (locked) xSemaphoreGive(mutex_);
+      }
+      Serial.print("  ");
+      Serial.println(bad);
+      return;
     }
-    updateAvailable_ = true;
-    strncpy(latestVer_, latest.c_str(), sizeof(latestVer_) - 1);
-    latestVer_[sizeof(latestVer_) - 1] = '\0';
-    // Anti-spam latch: one serial line per release per boot.
-    if (strcmp(noticedVer_, latest.c_str()) != 0) {
-      strncpy(noticedVer_, latest.c_str(), sizeof(noticedVer_) - 1);
-      noticedVer_[sizeof(noticedVer_) - 1] = '\0';
+    if (armed) {
+      // Stage for the pending-consume block below on THIS tick: check +
+      // download share one clean window, no second reboot.
+      bool locked = (mutex_ && xSemaphoreTake(mutex_, pdMS_TO_TICKS(100)) == pdTRUE);
+      if (nvs_) {
+        nvs_->clearOtaCheck();
+        nvs_->saveOtaPending(binUrl.c_str());
+        nvs_->clearOtaErr();
+        nvs_->clearOtaMsg();
+        nvs_->commit();
+      }
+      if (locked) xSemaphoreGive(mutex_);
+      const char *base = strrchr(binUrl.c_str(), '/');
+      Serial.print("  NEW VERSION ");
+      Serial.print(FIRMWARE_VERSION);
+      Serial.print(" -> ");
+      Serial.print(latest);
+      Serial.print(": staged \"");
+      Serial.print(base ? base + 1 : binUrl.c_str());
+      Serial.println("\" - downloading in the updater window.");
+    } else {
+      updateAvailable_ = true;
+      strncpy(latestVer_, latest.c_str(), sizeof(latestVer_) - 1);
+      latestVer_[sizeof(latestVer_) - 1] = '\0';
       Serial.print("  NEW VERSION! ");
       Serial.print(FIRMWARE_VERSION);
       Serial.print(" -> ");
       Serial.print(latest);
       Serial.println(" - type `update` to flash.");
     }
-  } else {
-    // Already on latest (or newer than the manifest, e.g. a dev build):
-    // clear any stale notice and stay silent.
-    updateAvailable_ = false;
-    latestVer_[0] = '\0';
-    noticedVer_[0] = '\0';
+    return;
   }
+  // Already on latest (or newer than the manifest, e.g. a dev build).
+  if (armed) {
+    String msg = String("already on latest (") + FIRMWARE_VERSION + ").";
+    bool locked = (mutex_ && xSemaphoreTake(mutex_, pdMS_TO_TICKS(100)) == pdTRUE);
+    if (nvs_) {
+      nvs_->clearOtaCheck();
+      nvs_->clearOtaErr();
+      nvs_->saveOtaMsg(msg.c_str());
+      nvs_->commit();
+    }
+    if (locked) xSemaphoreGive(mutex_);
+    Serial.print("  ");
+    Serial.println(msg);
+  }
+  // Unprompted + latest: silent by design (no spam).
 }
 
 bool OTAHandler::checkForUpdate(bool doInstall, bool staUp, bool verbose,
