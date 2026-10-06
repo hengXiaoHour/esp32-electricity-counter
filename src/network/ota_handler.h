@@ -49,14 +49,22 @@ public:
   // Serial-first version check (cloud-ota proven pattern): fetches
   // OTA_VERSION_URL (version.json), compares against FIRMWARE_VERSION, and
   // - when doInstall and a newer release exists - validates the per-chip
-  // asset URL through the same ota_url_validate gate. Returns true when an
-  // image was SELECTED for staging: the CALLER persists stageUrl to NVS
-  // and reboots (same path as cmdOta). Small GET only, safe to run inline
-  // at verb time even with the SDK sessions up; the firmware download
-  // itself still happens in the pre-SDK updater tick. `reply` is one short
-  // console line either way.
-  bool checkForUpdate(bool doInstall, bool staUp, bool verbose,
-                      String &reply, String &stageUrl);
+  // asset URL through the same ota_url_validate gate. Returns STAGED when an
+  // image was SELECTED: the CALLER persists stageUrl to NVS and reboots
+  // (same path as cmdOta). LATEST / BAD_LINK / BUSY / NO_NET are definitive
+  // answers (no reboot needed); RETRYABLE means the runtime link could not
+  // run the check at all (DNS/TLS/heap) and the caller should arm a boot
+  // check instead - it is NOT a verdict on the release.
+  enum CheckOutcome {
+    CHECK_STAGED,
+    CHECK_LATEST,
+    CHECK_BAD_LINK,
+    CHECK_BUSY,
+    CHECK_NO_NET,
+    CHECK_RETRYABLE
+  };
+  CheckOutcome checkForUpdate(bool doInstall, bool staUp, bool verbose,
+                             String &reply, String &stageUrl);
 
   // Shared version.json fetch behind checkForUpdate and the auto-poll below:
   // true with `latest` + per-chip `binUrl` filled, false on any failure
