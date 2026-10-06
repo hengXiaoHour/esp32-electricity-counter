@@ -203,18 +203,32 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
 .ch-status-badge.warning { background: var(--warn-dim); color: var(--warn); }
 .ch-status-badge.tripped { background: var(--trip-dim); color: var(--trip); animation: pulse 0.7s infinite alternate; }
 .ch-status-badge.off { background: rgba(255, 255, 255, 0.04); color: var(--off); }
-/* In use (PF > 0.1): white neon glow all around the card. One rule for every
-   status so an in-use card always reads the same - the status badge still
-   names OK/WARN/TRIP, the glow only says "live". */
+/* In use (PF > 0.1): white neon glow all around the card. Alarms always win:
+   a tripped channel glows red and a warning channel glows amber even while
+   live, so the glow never masks a fault. */
 .card.in-use {
   border-color: rgba(255, 255, 255, 0.6);
   box-shadow: 0 0 10px rgba(255, 255, 255, 0.22), 0 0 26px rgba(255, 255, 255, 0.10);
   animation: inuseGlow 1.6s ease-in-out infinite alternate;
 }
-.card.in-use.state-warn, .card.in-use.state-trip, .card.in-use.state-off {
-  border-color: rgba(255, 255, 255, 0.6);
-  box-shadow: 0 0 10px rgba(255, 255, 255, 0.22), 0 0 26px rgba(255, 255, 255, 0.10);
-  animation: inuseGlow 1.6s ease-in-out infinite alternate;
+.card.in-use.state-warn {
+  border-color: var(--warn);
+  box-shadow: 0 0 0 1px var(--warn-dim), 0 0 14px rgba(229, 164, 59, 0.25);
+  animation: inuseGlowWarn 1.6s ease-in-out infinite alternate;
+}
+.card.in-use.state-trip {
+  border-color: var(--trip);
+  box-shadow: 0 0 18px var(--trip-dim);
+  animation: tripGlow 1.2s infinite alternate;
+}
+.card.in-use.state-off {
+  border-color: var(--border);
+  box-shadow: none;
+  animation: none;
+}
+@keyframes inuseGlowWarn {
+  from { box-shadow: 0 0 0 1px var(--warn-dim), 0 0 6px rgba(229, 164, 59, 0.12); }
+  to { box-shadow: 0 0 0 1px var(--warn-dim), 0 0 18px rgba(229, 164, 59, 0.35); }
 }
 @keyframes inuseGlow {
   from { box-shadow: 0 0 8px rgba(255, 255, 255, 0.16), 0 0 18px rgba(255, 255, 255, 0.07); }
