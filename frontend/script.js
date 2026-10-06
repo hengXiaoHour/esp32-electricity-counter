@@ -1152,8 +1152,10 @@ function updateChannelCardElement(card, ch, idx) {
       badge.textContent = 'OFF';
       badge.className = 'ch-status-badge off';
     } else {
-      badge.textContent = 'OK';
-      badge.className = 'ch-status-badge ok';
+      // No OK badge: a healthy channel shows just its title. WARN / TRIPPED /
+      // OFF still show so alarms are never silent.
+      badge.textContent = '';
+      badge.className = 'ch-status-badge ok hidden';
     }
   }
 

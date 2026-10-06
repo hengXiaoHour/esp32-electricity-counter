@@ -1110,7 +1110,7 @@ function createChannelCardElement(idx) {
   card.innerHTML = `
     <div class="card-header">
       <span class="ch-title name-field">Channel ${idx + 1}</span>
-      <span class="badges"><span class="inuse-chip hidden">IN USE</span><span class="ch-status-badge ok">OK</span></span>
+      <span class="ch-status-badge ok">OK</span>
     </div>
     <div class="ch-readings">
       <div class="read-row"><span class="label">PWR</span><span class="val mono"><span class="val-w">0</span><span class="unit">W</span></span></div>
@@ -1168,8 +1168,6 @@ function updateChannelCardElement(card, ch, idx) {
   // it is live.
   const inUse = pfVal > 0.1;
   card.className = 'card channel-card ' + statusCls + (inUse ? ' in-use' : '');
-  const useChip = card.querySelector('.inuse-chip');
-  if (useChip) useChip.classList.toggle('hidden', !inUse);
 
   const valA = card.querySelector('.val-a');
   if (valA) valA.textContent = currentVal.toFixed(2);

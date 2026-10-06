@@ -195,7 +195,6 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
 .card.state-off { opacity: 0.6; }
 .card-header { display: flex; justify-content: space-between; align-items: center; padding: 13px 16px 9px; }
 .ch-title { font-weight: 700; font-size: 0.82rem; letter-spacing: 0.06em; text-transform: uppercase; }
-.badges { display: flex; align-items: center; gap: 6px; }
 .ch-status-badge {
   font-size: 0.6rem; font-weight: 700; padding: 2px 8px; border-radius: 3px;
   font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em;
@@ -204,13 +203,6 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
 .ch-status-badge.warning { background: var(--warn-dim); color: var(--warn); }
 .ch-status-badge.tripped { background: var(--trip-dim); color: var(--trip); animation: pulse 0.7s infinite alternate; }
 .ch-status-badge.off { background: rgba(255, 255, 255, 0.04); color: var(--off); }
-.inuse-chip {
-  font-size: 0.6rem; font-weight: 700; padding: 2px 8px; border-radius: 3px;
-  font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em;
-  background: rgba(255, 255, 255, 0.08); color: var(--text);
-  border: 1px solid rgba(255, 255, 255, 0.45);
-  box-shadow: 0 0 8px rgba(255, 255, 255, 0.25);
-}
 /* In use (PF > 0.1): white neon glow all around the card. One rule for every
    status so an in-use card always reads the same - the status badge still
    names OK/WARN/TRIP, the glow only says "live". */
