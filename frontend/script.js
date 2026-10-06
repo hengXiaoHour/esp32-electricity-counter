@@ -1168,8 +1168,6 @@ function updateChannelCardElement(card, ch, idx) {
   // it is live.
   const inUse = pfVal > 0.1;
   card.className = 'card channel-card ' + statusCls + (inUse ? ' in-use' : '');
-  const useChip = card.querySelector('.inuse-chip');
-  if (useChip) useChip.classList.toggle('hidden', !inUse);
 
   const valA = card.querySelector('.val-a');
   if (valA) valA.textContent = currentVal.toFixed(2);
