@@ -1515,12 +1515,13 @@ function setResetDay() {
 }
 
 // ============ Firmware update (cloud OTA) ============
-// Release files live on the public GitHub repo; the board downloads the
-// matching .bin straight from github.com and flashes its inactive OTA slot,
-// then reboots. Same console-line path as setResetDay above, so the local
-// and cloud viewers share it with zero transport code: the admin's click
-// becomes `ota <url>` on the board, progress rides the OTA banner, and the
-// About card changes when the new binary reports its version.
+// Release files live on the public GitHub repo; the admin's click stages the
+// matching .bin link on the board, which reboots into a clean updater that
+// downloads it from github.com into the inactive OTA slot, then reboots
+// again. Same console-line path as setResetDay above, so the local and cloud
+// viewers share it with zero transport code: the click becomes `ota <url>`
+// on the board, progress rides the OTA banner after the updater reboot, and
+// the About card changes when the new binary reports its version.
 const FW_REPO = 'hengXiaoHour/esp32-electricity-counter';
 let fwRunningVer = '';
 let fwChip = '';
@@ -1574,7 +1575,7 @@ function startFirmwareUpdate() {
   if (btn) btn.disabled = true;
   setTimeout(() => { if (btn) btn.disabled = false; }, 8000);
   sendCommand({ cmd: 'console', line: 'ota ' + fwAssetUrl }).then(() => {
-    showToast('Update started — progress shows at the top', 6000);
+    showToast('Update staged — board reboots into the updater (~1 min)', 6000);
   }).catch(() => {});
 }
 
