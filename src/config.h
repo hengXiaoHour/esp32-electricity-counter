@@ -89,6 +89,12 @@
 #define OTA_VERSION_URL "https://raw.githubusercontent.com/hengXiaoHour/esp32-electricity-counter/main/version.json"
 #define OTA_USE_INSECURE true
 
+// Auto-check (cloud-ota parity, notify-only): the network tick polls
+// version.json every OTA_CHECK_INTERVAL_MS and prints ONE serial line per
+// new release. Already-on-latest and failed checks stay silent - no spam.
+// It never stages or reboots by itself; `update` stays the trigger.
+#define OTA_CHECK_INTERVAL_MS 3600000
+
 // ==============================
 // Station WiFi (STA) - the DEFAULT path. The board joins this home network on
 // boot; the AP below is fallback-only and stays OFF unless the home link fails.
