@@ -250,26 +250,9 @@ void OTAHandler::loopCloud() {
   if (cloud_) cloud_->releaseSessions();
   vTaskDelay(pdMS_TO_TICKS(200));  // let LWIP release the closed PCBs
 
-  // Chain validation needs a real clock. The consume above deliberately does
-  // not wait for it - this does, INSIDE the updater, so no SDK tick can ever
-  // slip in first. Bounded: a board whose NTP is broken still boots after
-  // ~60 s (the stage was already consumed: one attempt per stage).
-  for (int i = 0; i < 60; i++) {
-    if (WiFi.status() != WL_CONNECTED) {
-      strncpy(cloudErr, "STA dropped while waiting for the clock.", sizeof(cloudErr) - 1);
-      cloudActive = false;
-      return;
-    }
-    if (time(nullptr) > 1700000000L) break;
-    vTaskDelay(pdMS_TO_TICKS(1000));  // feed IDLE/WDT while NTP lands
-  }
-  bool clockOk = time(nullptr) > 1700000000L;
-  if (!clockOk) {
-    strncpy(cloudErr, "no clock for updater (NTP broken?).", sizeof(cloudErr) - 1);
-    cloudActive = false;
-    return;
-  }
-
+  // Insecure transport needs no clock (no chain to validate), so unlike
+  // the 3.2.x validated downloader there is no NTP wait here - the cloud-ota
+  // rig flashes with whatever clock it has. Only the link matters.
   if (WiFi.status() != WL_CONNECTED) {
     strncpy(cloudErr, "STA dropped before the download began.", sizeof(cloudErr) - 1);
     cloudActive = false;
