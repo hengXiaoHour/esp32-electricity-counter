@@ -227,11 +227,7 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
 .read-row .val { font-size: 1.02rem; font-weight: 600; display: inline-flex; align-items: baseline; }
 .read-row .val .unit { display: inline-block; min-width: 2.6em; font-size: 0.68rem; color: var(--text-2); font-weight: 400; margin-left: 4px; }
 
-/* Monthly-budget ring (circular progress, replaces the old horizontal bar).
-   Track uses the same input-well colour as the old track; the sweep uses the
-   same three status colours (ok green -> warn amber past 75% -> trip red from 85%), so
-   a barely-full ring reads calm blue-grey while an almost-full one pulses. */
-.load-bar-container.ring-wrap { display: flex; align-items: center; gap: 14px; padding: 10px 16px 12px; }
+/* Monthly-budget ring (circular progress). */
 .ring-box { position: relative; width: 84px; height: 84px; flex: 0 0 auto; }
 .ring { width: 84px; height: 84px; display: block; }
 .ring circle { fill: none; stroke-width: 8; stroke-linecap: round; }
