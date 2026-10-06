@@ -14,7 +14,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="style.css?v=e5c6737e">
+<link rel="stylesheet" href="style.css?v=dfe1f015">
 <script>
 // The board is always on location.host, so there is no session to restore and
 // nothing to decide before the first paint. This only hides the connect panel
@@ -176,7 +176,7 @@
         <div class="cal-field">
           <span class="mono conn-txt"><span id="cloudDot" class="led" title="cloud freshness"></span> <span id="cloudFresh">connecting&hellip;</span></span>
         </div>
-        <span id="staleTag" class="stale-tag hidden">STALE</span>
+        <span id="staleTag" class="stale-tag hidden">OFFLINE</span>
       </div>
       <div class="cal-row-single">
         <label>Google:</label>
@@ -446,8 +446,8 @@
   </div>
 </div>
 
-<script src="script.js?v=e5c6737e"></script>
-<script src="cloud.js?v=e5c6737e"></script>
+<script src="script.js?v=dfe1f015"></script>
+<script src="cloud.js?v=dfe1f015"></script>
 <script>
 if ('serviceWorker' in navigator && window.isSecureContext) {
   window.addEventListener('load', function () {
