@@ -597,7 +597,7 @@ static void handleSerialCommand(const String &cmd) {
 }
 
 void loop() {
-  g_loopIters++;
+  g_loopIters = g_loopIters + 1;  // (++ is deprecated on volatile in C++20)
   // Drive the non-blocking LED test state machine + deferred console commands.
   consoleHandler.runDeferred();
   consoleHandler.loop();
