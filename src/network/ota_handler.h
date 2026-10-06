@@ -82,13 +82,6 @@ public:
   // recorded for `ota status`. Runs once per boot; never stages unprompted.
   void bootCheck();
 
-  // Periodic poll, called from loop(): every OTA_CHECK_INTERVAL_MS with STA
-  // up it fetches the manifest and - only when a NEWER release appears that
-  // this boot has not announced yet - prints one serial line and remembers
-  // it for `ota status`. Already-on-latest, bad links and failed fetches
-  // stay silent. Never stages, never reboots (notify-only by design).
-  void pollTick();
-
   // True once the poll has seen a newer release (cleared when the manifest
   // no longer names anything newer, e.g. right after flashing it).
   bool updateAvailable() const { return updateAvailable_; }
