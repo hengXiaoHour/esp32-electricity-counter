@@ -65,6 +65,7 @@ private:
   uint8_t cloudProgress = 0;
   char cloudUrl[OTA_URL_MAX_LEN + 1] = {0};
   char cloudErr[128] = {0};
+  CloudPush *cloud_ = nullptr;
 
   void loopCloud();
 };

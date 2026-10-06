@@ -1,5 +1,6 @@
 #include "ota_handler.h"
 #include "ota_url.h"
+#include "cloud_push.h"
 
 #include <ArduinoOTA.h>
 #include <HTTPClient.h>
@@ -82,6 +83,16 @@ void OTAHandler::loopCloud() {
   cloudBusy = false;  // one attempt per arm; startCloudUpdate re-arms
   cloudProgress = 0;
   cloudActive = true;  // banner + LED for the whole fetch, cleared on exit
+
+  // 3.2.6 proved a 34 KB largest block cannot finish even an INSECURE
+  // handshake, and the two Firebase keep-alive sessions are the biggest
+  // contiguous holders on a cloud-enabled board. Drop them first so the
+  // download below handshakes against a clean heap; the SDK reconnects on
+  // next use (failed download resumes pushing by itself, verified one
+  // reboots anyway). Same-task blocking means nothing can re-establish
+  // mid-download: push/poll run after this on the same networkTask tick.
+  if (cloud_) cloud_->releaseSessions();
+  vTaskDelay(pdMS_TO_TICKS(200));  // let LWIP release the closed PCBs
 
   if (WiFi.status() != WL_CONNECTED) {
     strncpy(cloudErr, "STA dropped before the download began.", sizeof(cloudErr) - 1);
