@@ -485,7 +485,11 @@ void ConsoleHandler::flushEnergy() {
 
 void ConsoleHandler::cmdReboot(String &out) {
   consoleAppendf(out, "%s", "  Rebooting...");
+  // Bisect 2026-10-06: Core 1 reaches runDeferred (consume line prints) but
+  // the board never resets. Step prints locate the wedge; all temporary.
+  Serial.println("  [reboot] handler entered");
   flushEnergy();
+  Serial.println("  [reboot] flushed");
   // No nvs->end() here on purpose. The handle must stay OPEN until the reset:
   // end() makes every read return its default (last_month reads as 0), so the
   // sensor task's rollover check, which keeps running during the delay below,
