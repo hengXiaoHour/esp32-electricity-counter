@@ -88,6 +88,14 @@ public:
   // briefly: the WS console runs on a different task than loop().
   void diag(String &out, SemaphoreHandle_t *mutex);
 
+  // Drops both SDK keep-alive TLS sessions (push + poll). OTAHandler calls
+  // this at download entry: 3.2.6 proved a 34 KB largest block cannot finish
+  // even an insecure handshake, and the two Firebase sessions are the
+  // biggest contiguous holders on a cloud-enabled board. The SDK reconnects
+  // on next use, so a failed download resumes pushing by itself; a verified
+  // one reboots anyway. Safe when the SDK never started (no-op).
+  void releaseSessions();
+
   // 1 s pushes stay cheap ONLY because the transport below holds one
   // persistent keep-alive TLS session: a fresh 1-2 s handshake per push
   // outlasted the interval and starved networkTask. The downlink rides the
