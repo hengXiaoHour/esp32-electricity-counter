@@ -1187,18 +1187,12 @@ function updateChannelCardElement(card, ch, idx) {
   const barPct = card.querySelector('.bar-pct');
   if (barPct) barPct.textContent = pct.toFixed(0) + '%';
 
-  // Circular sweep: dashoffset C*(1-p) draws p% of the ring starting at the
-  // top. Green while cruising, pulsing amber past 75%, fast red pulse from
-  // 85% so an almost-full budget already reads danger.
-  const RING_C = 2 * Math.PI * 34;
-  const state = pct >= 85 ? 'over' : pct > 75 ? 'warn' : '';
+  // Wave bar: white at every level by design (no warn/over recolour), the fill
+  // width and the knob glide together on the same transition.
   const fill = card.querySelector('.bar-fill');
-  if (fill) {
-    fill.style.strokeDashoffset = String(RING_C * (1 - pct / 100));
-    fill.setAttribute('class', 'ring-fill bar-fill' + (state ? ' ' + state : ''));
-  }
-  const box = card.querySelector('.ring-box');
-  if (box) box.className = 'ring-box' + (state ? ' ' + state : '');
+  if (fill) fill.style.width = pct + '%';
+  const knob = card.querySelector('.wave-knob');
+  if (knob) knob.style.left = pct + '%';
 
   const limitText = card.querySelector('.limit-text');
   if (limitText) limitText.textContent = `LIMIT ${monthlyKwhLimit.toFixed(1)} kWh/mo`;
