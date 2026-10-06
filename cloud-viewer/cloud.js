@@ -16,6 +16,7 @@
  */
 var CL_ADMIN_EMAIL = 'heng.xiao.hour@gmail.com';
 var CL_DEFAULT_MAC = 'EC64C998B0EC';
+var CL_MAC_KEY = 'esp32counter_cloud_mac';
 var CL_STALE_MS = 30000;
 var CL_ACK_TIMEOUT_MS = 12000;
 // Observed cadence: the threshold follows the board instead of assuming it.
