@@ -355,6 +355,8 @@ function sendTime() {
   sendCommand({ cmd: 'set_time', t: Math.floor(Date.now() / 1000) }).catch(function () {});
 }
 
+var cl_queue = Promise.resolve();
+
 function sendCommand(obj) {
   if (!cl_mac) {
     showToast('Pick a device first');
@@ -364,6 +366,18 @@ function sendCommand(obj) {
     requirePin();
     return Promise.reject(new Error('admin required'));
   }
+  // Serialize: /cmd holds ONE frame and the board polls every ~2s, so two
+  // immediate writes clobber (saveModalSettings sends set_monthly_kwh then
+  // set_name - the limit never arrived, local WS worked because it has no
+  // single slot). Queue so each ack lands before the next write.
+  var run = function () { return cl_sendOne(obj); };
+  var result = cl_queue.then(run, run);
+  // Keep the chain alive: a write failure must not stall later commands.
+  cl_queue = result.catch(function () {});
+  return result;
+}
+
+function cl_sendOne(obj) {
   // Wipe password-style fields the moment they leave the page.
   if (obj.cmd === 'set_ap') { var a = document.getElementById('apPass'); if (a) a.value = ''; }
   if (obj.cmd === 'setwifi') { var s = document.getElementById('staPass'); if (s) s.value = ''; }
