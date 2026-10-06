@@ -280,16 +280,16 @@ void ConsoleHandler::exec(const String &line, String &out) {
     if (!nvs) {
       consoleAppendf(out, "%s", "  NVS not available");
     } else {
-      pendingDefer = true;
       pendingCmd = cmd;
+      pendingDefer = true;
       pendingOutput = "";
       consoleAppendf(out, "%s", "  NVS debug running (deferred)");
     }
 
   } else if (cmd == "reboot") {
     consoleAppendf(out, "%s", "  Rebooting... (deferred)");
-    pendingDefer = true;
     pendingCmd = cmd;
+    pendingDefer = true;
     pendingOutput = "";
 
   } else if (cmd.startsWith("test_force_rollover")) {
