@@ -171,11 +171,12 @@ GitHub release holding both `.bin` files):
 python3 scripts/build.py --version X.Y.Z
 ```
 
-Or over serial: `version` (compiled stamp + chip), `update` (check
-`version.json`, stage the matching asset, reboot into the updater),
-`ota <url>` / `ota status`. The board also checks `version.json` by itself
-once an hour and prints one `NEW VERSION!` line per release (silent when
-already latest) — `ota status` keeps showing it until you `update`. A tag page or any non-release
+Or over serial: `version` (compiled stamp + chip), `update` (tries the
+check at runtime, arms a boot check + reboots when runtime TLS can't run
+it), `ota <url>` / `ota status`. The first tick with a home link also
+checks `version.json` by itself on the clean heap and prints one
+`NEW VERSION!` line per release (silent when already latest) — `ota status`
+keeps showing it until you `update`. A tag page or any non-release
 link is refused before anything is armed. A failed or oversize download
 keeps the old firmware running; counters and settings survive the reboot.
 
