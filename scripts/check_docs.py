@@ -631,19 +631,19 @@ def main():
     c.add("cloud OTA refuses without a home link (fallback AP has no internet)",
           _ota_verb is not None and "stationUp()" in _ota_verb_b,
           "a download would be armed with nowhere to go")
-    c.add("the download validates the TLS chain (setInsecure lives only on the fenced probe)",
-          "useBuiltinCACertBundle()" in ota_cpp and
-          ota_cpp.count("setInsecure") == 1 and "probe.setInsecure()" in ota_cpp,
-          "a radio-link attacker could serve any image")
+    c.add("the download rides the cloud-ota transport (HTTPUpdate, insecure by design)",
+          "httpUpdate.update(" in ota_cpp and
+          "OTA_USE_INSECURE" in ota_cpp and "setInsecure()" in ota_cpp,
+          "the downloader left the proven HTTPUpdate shape")
     c.add("the download follows the release redirect to the CDN",
           "setFollowRedirects(" in ota_cpp,
           "github.com answers 302 and the fetch would die there")
-    c.add("the image must fit the inactive slot before flashing",
-          "getFreeSketchSpace()" in ota_cpp and "Update.begin(" in ota_cpp,
-          "an oversize write bricks the slot")
-    c.add("the image is verified before boot, aborted otherwise",
-          "Update.end(" in ota_cpp and "Update.abort()" in ota_cpp,
+    c.add("a bad image keeps the old firmware (HTTPUpdate validates before boot)",
+          "HTTP_UPDATE_OK" in ota_cpp and "HTTP_UPDATE_FAILED" in ota_cpp,
           "a corrupt download would boot")
+    c.add("the updater never reboots itself (counters flush through the deferred path)",
+          "rebootOnUpdate(false)" in ota_cpp,
+          "a self-reboot would lose unflushed counters")
     c.add("the download yields so the watchdog survives a minute-long fetch",
           "vTaskDelay(" in ota_cpp,
           "the task watchdog would reboot mid-flash")
@@ -668,14 +668,10 @@ def main():
           "cloudActive = true" in ota_cpp and "cloudActive = false" in ota_cpp and
           "return inProgress || cloudBusy || cloudActive;" in ota_h,
           "the flag clears on entry and the banner can never show")
-    c.add("a failed download names the stage (TCP probe vs TLS)",
+    c.add("a failed download names the stage (TCP probe vs HTTPUpdate error)",
           "no route to github.com:443" in ota_cpp and
-          "raw-TLS %s" in ota_cpp and "getMaxAllocHeap" in ota_cpp,
+          "getLastErrorString()" in ota_cpp and "heap %lu" in ota_cpp,
           "HTTP -1 alone cannot tell DNS from TLS")
-    c.add("the raw-TLS probe is fenced: handshake only, never the download",
-          ota_cpp.count("setInsecure") == 1 and "probe.stop()" in ota_cpp and
-          "http.begin(client, cloudUrl)" in ota_cpp,
-          "an insecure client must never carry firmware bytes")
     c.add("the arm reply promises the banner, not live progress",
           "banner above while it downloads" in ota_cpp and
           "progress above" not in ota_cpp,
