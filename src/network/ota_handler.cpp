@@ -219,6 +219,6 @@ void OTAHandler::cloudStatus(String &out) const {
     snprintf(line, sizeof(line), "  OTA: last download failed: %s", cloudErr);
     out += line;
   } else {
-    out += "  OTA: idle (no cloud download yet this boot).";
+    out += "  OTA: idle (no cloud download since boot).";
   }
 }
