@@ -14,10 +14,14 @@ class NVSManager;
 // banner all read isInProgress()/getProgress(), so whichever transport is
 // running shows the same way. Only one transport can run at a time.
 //
-// Cloud path (serial-first, cloud-ota proven pattern): `update` checks
-// version.json and stages the per-chip asset, or `ota <url>` stages a
-// direct link; either way the board reboots and the first network tick with
-// STA downloads it BEFORE the Firebase sessions exist, against a clean heap.
+// Cloud path (boot-window): `update` tries the version check at runtime
+// first and - when the runtime link cannot run TLS (34 KB wall) - arms an
+// NVS flag and reboots; `ota <url>` stages a direct link. Either way the
+// first network tick with STA checks/downloads BEFORE the Firebase
+// sessions exist, against a boot-clean heap. No runtime polling exists on
+// purpose: with the SDK, web server and sockets up, no handshake completes
+// (measured 3.2.14), so a runtime poll would only add hourly session drops
+// for zero benefit.
 // 3.2.7 proved a 34 KB largest block cannot finish even an insecure
 // handshake at runtime, and freed blocks scatter instead of coalescing - so
 // no runtime download is attempted any more. The download uses HTTPUpdate
