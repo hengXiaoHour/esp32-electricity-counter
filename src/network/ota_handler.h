@@ -126,6 +126,13 @@ private:
   char pendUrl_[OTA_URL_MAX_LEN + 1] = {0};
   // One-shot NVS failure record per attempt (no flash churn every tick).
   bool errSaved_ = false;
+  // Auto-poll notice (RAM only): the release last announced this boot, the
+  // release currently newer than this build, and when the poll last ran.
+  // noticedVer_ is the anti-spam latch - one serial line per release.
+  bool updateAvailable_ = false;
+  char latestVer_[32] = {0};
+  char noticedVer_[32] = {0};
+  unsigned long lastPollMs_ = 0;
 
   void loopCloud();
 };
