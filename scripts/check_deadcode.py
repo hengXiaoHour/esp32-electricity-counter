@@ -518,12 +518,20 @@ def main():
     for what, present in [
             ("console dispatch (ota <url>)", 'startsWith("ota ")' in ch),
             ("console dispatch (ota status)", '== "ota status"' in ch),
+            ("console dispatch (version)", '== "version"' in ch),
+            ("console dispatch (update)", '== "update"' in ch),
             ("console help lists ota", "ota <url>" in ch),
+            ("console help lists update", "update" in ch and "version" in ch),
             ("console calls the handler", has("startCloudUpdate", ch)),
+            ("console checks versions", has("checkForUpdate", ch)),
             ("URL validator validates", has("ota_url_validate", ota_url_s)),
             ("handler arms from the validator",
              "ota_url_validate" in ota_cpp_s),
+            ("version check fetches the manifest", "OTA_VERSION_URL" in ota_cpp_s),
+            ("version compare exists", has("compareVersions", ota_h_s)),
             ("download runs from loop", "loopCloud()" in ota_cpp_s),
+            ("download uses HTTPUpdate", "httpUpdate.update(" in ota_cpp_s),
+            ("updater never self-reboots", "rebootOnUpdate(false)" in ota_cpp_s),
             ("verified image raises the reboot flag",
              has("cloudRebootDue", ota_h_s)),
             ("sketch consumes the flag into a deferred reboot",
@@ -546,8 +554,8 @@ def main():
             ("banner flag spans the download", "cloudActive" in ota_h_s),
             ("status reports mid-download", "cloudBusy || cloudActive" in ota_cpp_s),
             ("TCP probe stages the failure", "no route to github.com:443" in ota_cpp_s),
-            ("raw-TLS probe fenced off the download",
-             ota_cpp_s.count("setInsecure") == 1 and "probe.stop()" in ota_cpp_s)]:
+            ("insecure transport is the OTA_USE_INSECURE flag (never a stray call)",
+             "OTA_USE_INSECURE" in ota_cpp_s and "setInsecure()" in ota_cpp_s)]:
         if not present:
             ota_missing.append(what)
     r.add("the cloud-OTA feature is still wired end to end", not ota_missing,
