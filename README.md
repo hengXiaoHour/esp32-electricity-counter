@@ -223,6 +223,8 @@ Serial console (`help` for the list): `status`, `wifi`, `set_ap`, `setwifi`,
 
 3.2.4 notes: version-stamp re-test from the USB-flashed 3.2.3 board — same code, proving Check → Update end to end.
 
+3.2.8 notes: version-stamp re-test on the 3.2.7 downloader — same code, proving Check → Update end to end over the air (flash 3.2.7 once over USB, then take this one remotely).
+
 3.2.7 notes: frees the two Firebase keep-alive TLS sessions at download entry (`ota status` on 3.2.6: heap 78 KB but largest block 34 KB, raw-TLS NO — fragmentation, not the chain). `CloudPush::releaseSessions()` + 200 ms settle before the github.com probe; SDK reconnects on next use. `ota status` now answers in any case.
 
 3.2.6 notes: visible-text re-test — Firmware hint gains "Takes about a minute" and the `ota status` idle line reads "since boot", proving Check → Update end to end with observable strings on both sides.
