@@ -1171,6 +1171,14 @@ function updateChannelCardElement(card, ch, idx) {
   const pfVal = typeof ch.pf === 'number' ? ch.pf : 1.0;
   const monthlyKwhLimit = typeof ch.mkwh === 'number' ? ch.mkwh : 48;
 
+  // In use = actually drawing current (PF > 0.1): orthogonal to the budget
+  // state, so an idle channel never glows and a tripped one can still show
+  // it is live.
+  const inUse = pfVal > 0.1;
+  card.className = 'card channel-card ' + statusCls + (inUse ? ' in-use' : '');
+  const useChip = card.querySelector('.inuse-chip');
+  if (useChip) useChip.classList.toggle('hidden', !inUse);
+
   const valA = card.querySelector('.val-a');
   if (valA) valA.textContent = currentVal.toFixed(2);
 
