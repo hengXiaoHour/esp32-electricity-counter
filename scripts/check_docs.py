@@ -625,6 +625,7 @@ def main():
           "s3_bin_url" in read("version.json") and
           "classic_bin_url" in read("version.json"),
           "one target has no OTA asset")
+    c.add("the OTA shape helper is unit-tested and the suite runs in verify_all",
           "test_ota_url" in verify_sh and "OTA_URL_MAX_LEN" in read("scripts/test_ota_url.c"),
           "validation without a runner")
     c.add("cloud OTA refuses without a home link (fallback AP has no internet)",
