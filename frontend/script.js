@@ -1142,8 +1142,15 @@ function updateChannelCardElement(card, ch, idx) {
 
   const statusClasses = ['state-ok', 'state-warn', 'state-trip', 'state-off'];
   const statusIdx = typeof ch.s === 'number' ? ch.s : 0;
-  card.className = 'card channel-card ' + (statusClasses[statusIdx] || 'state-ok');
+  // In use = actually drawing current (PF > 0.1): an orthogonal accent to the
+  // budget state above, so an idle channel never glows and a tripped one can
+  // still show it is live.
+  const inUse = pfVal > 0.1;
+  card.className = 'card channel-card ' + (statusClasses[statusIdx] || 'state-ok') + (inUse ? ' in-use' : '');
   card.dataset.ch = idx;
+
+  const useChip = card.querySelector('.inuse-chip');
+  if (useChip) useChip.classList.toggle('hidden', !inUse);
 
   const nameEl = card.querySelector('.name-field');
   if (nameEl) nameEl.textContent = ch.n || ('Channel ' + (idx + 1));
