@@ -332,6 +332,11 @@ void ConsoleHandler::runDeferred() {
   pendingOutput = "";
   String note = pendingRebootNote;
   pendingRebootNote = "";
+  // Core-1 proof of consumption: if the flag is seen but the handler below
+  // wedges, this line (not the handler's output) tells us which side died.
+  Serial.print("  [deferred] running '");
+  Serial.print(cmd);
+  Serial.println("'");
 
   if (cmd == "test led") {
     ledTestActive = true;
