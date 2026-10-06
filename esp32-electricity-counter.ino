@@ -529,6 +529,9 @@ void setup() {
   // Download entry drops the SDK keep-alive sessions first (3.2.6: 34 KB
   // largest block cannot handshake), so wire the releaser here.
   otaHandler.setCloudPush(&cloudPush);
+  // Reboot-to-updater (3.2.9): staged link + last-error record live in NVS,
+  // committed under the same mutex as every other settings write.
+  otaHandler.setStore(&nvs, &dataMutex);
   statusLED.setMode(LED_OFF);
   DEBUG_LOG("  %-19sAP @ %s (always)\n", "WiFi", WiFi.softAPIP().toString().c_str());
   DEBUG_LOG("  %-19s\"%s\" / \"%s\"\n", "Network", wifiMgr.getSSID(), wifiMgr.getPass());
