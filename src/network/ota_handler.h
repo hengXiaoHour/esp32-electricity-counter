@@ -145,13 +145,12 @@ private:
   // insecure handshake fails (3.2.7). The SDK reconnects on next use, so a
   // failed check costs only a few seconds of stale pushes, not the link.
   void prepareTlsWindow();
-  // Auto-poll notice (RAM only): the release last announced this boot, the
-  // release currently newer than this build, and when the poll last ran.
-  // noticedVer_ is the anti-spam latch - one serial line per release.
+  // Boot-check notice (RAM only): the release currently newer than this
+  // build, set by bootCheck's unprompted path and read by `ota status`.
+  // One boot = one check, so no anti-spam latch is needed.
   bool updateAvailable_ = false;
   char latestVer_[32] = {0};
-  char noticedVer_[32] = {0};
-  unsigned long lastPollMs_ = 0;
+  bool bootCheckDone_ = false;
 
   void loopCloud();
 };

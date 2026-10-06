@@ -48,6 +48,11 @@ void OTAHandler::begin(const char *hostname) {
 
 void OTAHandler::loop() {
   ArduinoOTA.handle();
+  // Boot check FIRST: the first tick with a home link runs the version
+  // fetch on the clean heap, before the SDK sessions exist. When it stages
+  // a release the pending-consume block below picks it up on this same tick,
+  // so check + download share one clean window with no extra reboot.
+  if (!bootCheckDone_) bootCheck();
   // First tick with a home link consumes a staged link: this runs BEFORE the
   // cloud SDK ever starts (push runs later on this same tick), so the
   // download below handshakes against a boot-fresh heap. The CLOCK is not
