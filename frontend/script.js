@@ -1195,7 +1195,7 @@ function updateChannelCardElement(card, ch, idx) {
   const state = pct > 90 ? 'over' : pct > 75 ? 'warn' : '';
   const fill = card.querySelector('.bar-fill');
   if (fill) {
-    fill.setAttribute('stroke-dashoffset', String(RING_C * (1 - pct / 100)));
+    fill.style.strokeDashoffset = String(RING_C * (1 - pct / 100));
     fill.setAttribute('class', 'ring-fill bar-fill' + (state ? ' ' + state : ''));
   }
   const box = card.querySelector('.ring-box');
