@@ -164,13 +164,13 @@ function cl_refreshStale() {
   var fr = document.getElementById('cloudFresh');
   if (fr) {
     fr.textContent = !cl_lastRxMs ? 'connecting…'
-      : (stale ? 'STALE — board quiet >' + Math.round(ms / 1000) + 's'
+      : (stale ? 'OFFLINE — board quiet >' + Math.round(ms / 1000) + 's'
                : 'live (' + cl_cadenceLabel() + ' pushes)');
   }
   var cs = document.getElementById('connStatus');
   if (cs && cl_mac) {
     cs.textContent = !cl_lastRxMs ? 'Connected'
-      : (stale ? 'Stale (board quiet >' + Math.round(ms / 1000) + 's)' : 'Connected');
+      : (stale ? 'Offline' : 'Connected');
   }
 }
 
