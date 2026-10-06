@@ -619,10 +619,10 @@ def main():
     c.add("the update verb checks version.json through the staged path",
           _ota_verb is not None and "checkForUpdate" in ch,
           "update would bypass the version gate")
-    c.add("the board auto-polls version.json and notifies once per release (never stages)",
-          "pollTick" in ota_cpp and "OTA_CHECK_INTERVAL_MS" in cfg and
-          "noticedVer_" in ota_cpp and "updateAvailable_" in ota_cpp,
-          "a new release would sit on GitHub with the board silent about it")
+    c.add("the board checks version.json on the first STA tick (clean heap), not at runtime",
+          "bootCheck" in ota_cpp and "bootCheckDone_" in ota_cpp and
+          "OTA_CHECK_INTERVAL_MS" not in cfg and "pollTick" not in ota_cpp,
+          "runtime TLS cannot handshake on this heap, so a runtime poll would only fail")
     c.add("the version.json manifest matches the compiled stamp",
           (ROOT / "version.json").exists() and
           json.loads(read("version.json")).get("version") ==
