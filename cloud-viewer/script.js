@@ -1112,23 +1112,15 @@ function createChannelCardElement(idx) {
       <span class="ch-title name-field">Channel ${idx + 1}</span>
       <span class="badges"><span class="inuse-chip hidden">IN USE</span><span class="ch-status-badge ok">OK</span></span>
     </div>
-    <div class="card-mid">
-      <div class="ring-col">
-        <div class="ring-box">
-          <svg class="ring" viewBox="0 0 84 84" aria-hidden="true">
-            <circle class="ring-track" cx="42" cy="42" r="34"></circle>
-            <circle class="ring-fill bar-fill" cx="42" cy="42" r="34" transform="rotate(-90 42 42)"></circle>
-          </svg>
-          <span class="ring-pct bar-pct mono">0%</span>
-        </div>
-        <span class="limit-text mono">LIMIT -- kWh/mo</span>
-      </div>
-      <div class="ch-readings">
-        <div class="read-row"><span class="label">PWR</span><span class="val mono"><span class="val-w">0</span><span class="unit">W</span></span></div>
-        <div class="read-row"><span class="label">CUR</span><span class="val mono"><span class="val-a">0.00</span><span class="unit">A</span></span></div>
-        <div class="read-row"><span class="label">ENG</span><span class="val mono"><span class="val-kwh">0.00</span><span class="unit">kWh</span></span></div>
-        <div class="read-row"><span class="label">PF</span><span class="val mono"><span class="val-pf">1.00</span><span class="unit"></span></span></div>
-      </div>
+    <div class="ch-readings">
+      <div class="read-row"><span class="label">PWR</span><span class="val mono"><span class="val-w">0</span><span class="unit">W</span></span></div>
+      <div class="read-row"><span class="label">CUR</span><span class="val mono"><span class="val-a">0.00</span><span class="unit">A</span></span></div>
+      <div class="read-row"><span class="label">ENG</span><span class="val mono"><span class="val-kwh">0.00</span><span class="unit">kWh</span></span></div>
+      <div class="read-row"><span class="label">PF</span><span class="val mono"><span class="val-pf">1.00</span><span class="unit"></span></span></div>
+    </div>
+    <div class="load-bar-container">
+      <div class="bar-meta"><span class="limit-text mono">LIMIT -- kWh/mo</span><span class="bar-pct mono">0%</span></div>
+      <div class="wave-track"><div class="wave-fill bar-fill"></div><span class="wave-knob"></span></div>
     </div>
     <div class="card-actions admin-only">
       <button class="btn-sm" onclick="openEditModal(${idx})">Edit</button>
@@ -1195,18 +1187,12 @@ function updateChannelCardElement(card, ch, idx) {
   const barPct = card.querySelector('.bar-pct');
   if (barPct) barPct.textContent = pct.toFixed(0) + '%';
 
-  // Circular sweep: dashoffset C*(1-p) draws p% of the ring starting at the
-  // top. Green while cruising, pulsing amber past 75%, fast red pulse from
-  // 85% so an almost-full budget already reads danger.
-  const RING_C = 2 * Math.PI * 34;
-  const state = pct >= 85 ? 'over' : pct > 75 ? 'warn' : '';
+  // Wave bar: white at every level by design (no warn/over recolour), the fill
+  // width and the knob glide together on the same transition.
   const fill = card.querySelector('.bar-fill');
-  if (fill) {
-    fill.style.strokeDashoffset = String(RING_C * (1 - pct / 100));
-    fill.setAttribute('class', 'ring-fill bar-fill' + (state ? ' ' + state : ''));
-  }
-  const box = card.querySelector('.ring-box');
-  if (box) box.className = 'ring-box' + (state ? ' ' + state : '');
+  if (fill) fill.style.width = pct + '%';
+  const knob = card.querySelector('.wave-knob');
+  if (knob) knob.style.left = pct + '%';
 
   const limitText = card.querySelector('.limit-text');
   if (limitText) limitText.textContent = `LIMIT ${monthlyKwhLimit.toFixed(1)} kWh/mo`;
@@ -1304,12 +1290,9 @@ function zeroSubCardDisplay(idx) {
   const barPct = card.querySelector('.bar-pct');
   if (barPct) barPct.textContent = '0%';
   const fill = card.querySelector('.bar-fill');
-  if (fill) {
-    fill.style.strokeDashoffset = String(2 * Math.PI * 34);
-    fill.setAttribute('class', 'ring-fill bar-fill');
-  }
-  const box = card.querySelector('.ring-box');
-  if (box) box.className = 'ring-box';
+  if (fill) fill.style.width = '0%';
+  const knob = card.querySelector('.wave-knob');
+  if (knob) knob.style.left = '0%';
 }
 
 function sendResetCounter(idx) {

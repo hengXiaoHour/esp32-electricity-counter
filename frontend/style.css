@@ -207,12 +207,27 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
 .inuse-chip {
   font-size: 0.6rem; font-weight: 700; padding: 2px 8px; border-radius: 3px;
   font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em;
-  background: var(--ok-dim); color: var(--ok); border: 1px solid rgba(62, 201, 114, 0.4);
+  background: rgba(255, 255, 255, 0.08); color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.25);
 }
-/* In use (PF > 0.1): a green edge inside the border, so it never shifts layout
-   and never fights the amber/red budget borders - the chip names it too. */
-.card.in-use { box-shadow: inset 3px 0 0 var(--ok); }
-.card.in-use.state-warn { border-color: var(--warn); box-shadow: inset 3px 0 0 var(--ok), 0 0 0 1px var(--warn-dim); }
+/* In use (PF > 0.1): white neon glow all around the card. One rule for every
+   status so an in-use card always reads the same - the status badge still
+   names OK/WARN/TRIP, the glow only says "live". */
+.card.in-use {
+  border-color: rgba(255, 255, 255, 0.6);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.22), 0 0 26px rgba(255, 255, 255, 0.10);
+  animation: inuseGlow 1.6s ease-in-out infinite alternate;
+}
+.card.in-use.state-warn, .card.in-use.state-trip, .card.in-use.state-off {
+  border-color: rgba(255, 255, 255, 0.6);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.22), 0 0 26px rgba(255, 255, 255, 0.10);
+  animation: inuseGlow 1.6s ease-in-out infinite alternate;
+}
+@keyframes inuseGlow {
+  from { box-shadow: 0 0 8px rgba(255, 255, 255, 0.16), 0 0 18px rgba(255, 255, 255, 0.07); }
+  to { box-shadow: 0 0 14px rgba(255, 255, 255, 0.32), 0 0 32px rgba(255, 255, 255, 0.14); }
+}
 
 /* Card mid: readings full width, wave bar below. */
 .ch-readings { padding: 6px 16px; }
@@ -249,6 +264,7 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
 @media (prefers-reduced-motion: reduce) {
   .wave-fill { animation: none; transition: none; }
   .wave-knob { transition: none; }
+  .card.in-use, .card.in-use.state-warn, .card.in-use.state-trip, .card.in-use.state-off { animation: none; }
 }
 .card-actions { display: flex; justify-content: space-between; gap: 8px; padding: 8px 16px 12px; }
 /* height (not padding) so a .btn-sm lines up exactly with the field beside it,
