@@ -253,7 +253,7 @@ void ConsoleHandler::exec(const String &line, String &out) {
 
   } else if (cmd == "ota") {
     consoleAppendf(out, "%s", "  Usage: ota <https://github.com/.../releases/download/.../*.bin>");
-    consoleAppendf(out, "%s", "         ota status   (download state this boot)");
+    consoleAppendf(out, "%s", "         ota status   (updater state, survives reboot)");
 
   } else if (cmd == "led" || cmd.startsWith("led ")) {
     cmdLed(cmd.length() > 3 ? cmd.substring(4) : "", out);
@@ -888,7 +888,7 @@ void ConsoleHandler::cmdHelp(String &out) {
   consoleAppendf(out, "%s", "    setcloud <host> <email> <pass> Sign in + push to realtime DB (reboots)");
   consoleAppendf(out, "%s", "    cloud diag            Show cloud session (account, token age/length/aud)");
   consoleAppendf(out, "%s", "    ota <url>             Download + flash a github release .bin (STA only, reboots)");
-  consoleAppendf(out, "%s", "    ota status            Cloud-download state this boot");
+  consoleAppendf(out, "%s", "    ota status            Updater state, survives reboot");
   consoleAppendf(out, "%s", "    clearcloud          Stop remote monitoring (no reboot)");
   consoleAppendf(out, "%s", "    set_ap <name> <pw>  Rename the network + set password (reboots)");
   consoleAppendf(out, "%s", "    reset_ap            Restore the default network name (reboots)");
