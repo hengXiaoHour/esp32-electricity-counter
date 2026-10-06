@@ -161,6 +161,24 @@ bool OTAHandler::fetchLatest(String &latest, String &binUrl, String *detail) {
   http.setTimeout(15000);
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
   String url = String(OTA_VERSION_URL) + "?t=" + String(millis());
+  // Stage the failure first: HTTP -1 means "never connected", which
+  // conflates DNS, routing and TLS - so probe plain TCP first (cheap, no
+  // TLS): if it fails the router/DNS is the problem; if it passes but
+  // HTTPS fails, it is TLS (heap). Same split the updater tick uses.
+  {
+    String host = String(OTA_VERSION_URL);
+    host.replace("https://", "");
+    host.replace("http://", "");
+    int slash = host.indexOf('/');
+    if (slash > 0) host = host.substring(0, slash);
+    NetworkClient probe;
+    probe.setTimeout(5000);
+    if (!probe.connect(host.c_str(), 443)) {
+      if (detail) *detail = String("no route to ") + host + ":443 (DNS/router?).";
+      return false;
+    }
+    probe.stop();
+  }
   if (!http.begin(client, url)) {
     if (detail) *detail = "HTTP setup failed (out of memory?).";
     return false;
@@ -168,6 +186,17 @@ bool OTAHandler::fetchLatest(String &latest, String &binUrl, String *detail) {
   http.addHeader("Cache-Control", "no-cache");
   http.addHeader("Pragma", "no-cache");
   int code = http.GET();
+  if (code < 0) {
+    if (detail) {
+      char buf[96];
+      snprintf(buf, sizeof(buf), "TLS failed (heap %lu/max %lu).",
+               (unsigned long)ESP.getFreeHeap(),
+               (unsigned long)ESP.getMaxAllocHeap());
+      *detail = buf;
+    }
+    http.end();
+    return false;
+  }
   if (code != 200) {
     if (detail) *detail = String("version.json GET ") + code + ".";
     http.end();
