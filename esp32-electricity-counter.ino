@@ -563,8 +563,8 @@ void setup() {
   // gone with the old cloud SDK: the small REST push + cmd poll run inline on
   // networkTask instead (STA-only, 1 s push / 2 s poll over one keep-alive),
   // so there is still exactly one Core 0 task.
-  xTaskCreatePinnedToCore(networkTask, "network", 8192, NULL, 2, NULL, 0);
-  xTaskCreatePinnedToCore(sensorTask, "sensor", 8192, NULL, 2, NULL, 1);
+  xTaskCreatePinnedToCore(networkTask, "network", 8192, NULL, 2, &g_networkTask, 0);
+  xTaskCreatePinnedToCore(sensorTask, "sensor", 8192, NULL, 2, &g_sensorTask, 1);
 
   Serial.println();
 }
@@ -597,6 +597,7 @@ static void handleSerialCommand(const String &cmd) {
 }
 
 void loop() {
+  g_loopIters++;
   // Drive the non-blocking LED test state machine + deferred console commands.
   consoleHandler.runDeferred();
   consoleHandler.loop();

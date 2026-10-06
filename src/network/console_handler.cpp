@@ -876,6 +876,14 @@ void ConsoleHandler::cmdInfo(String &out) {
   consoleAppendf(out, "  %-16s%d", "Channels:", NUM_CHANNELS);
   consoleAppendf(out, "  %-16s%d-bit, %.1fV ref", "ADC:", ADC_RESOLUTION, ADC_REFERENCE_V);
   consoleAppendf(out, "  %-16s%u bytes", "Free heap:", (unsigned)ESP.getFreeHeap());
+  // Task diagnostics: a wedged Core-1 loop shows up here as a frozen iter
+  // count or a dead stack watermark instead of a silent mystery.
+  TaskHandle_t lt = xTaskGetHandle("loopTask");
+  consoleAppendf(out, "  %-16s%u iters", "Loop:", (unsigned)g_loopIters);
+  consoleAppendf(out, "  %-16sloop=%u net=%u sen=%u words free", "Stacks:",
+                 lt ? (unsigned)uxTaskGetStackHighWaterMark(lt) : 0,
+                 g_networkTask ? (unsigned)uxTaskGetStackHighWaterMark(g_networkTask) : 0,
+                 g_sensorTask ? (unsigned)uxTaskGetStackHighWaterMark(g_sensorTask) : 0);
 }
 
 void ConsoleHandler::cmdWifi(String &out) {
