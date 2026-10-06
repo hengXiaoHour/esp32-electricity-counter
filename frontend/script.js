@@ -1188,11 +1188,20 @@ function updateChannelCardElement(card, ch, idx) {
   const barPct = card.querySelector('.bar-pct');
   if (barPct) barPct.textContent = pct.toFixed(0) + '%';
 
+  // Circular sweep: dashoffset C*(1-p) draws p% of the ring starting at the
+  // top. Same 75/90 cuts as the old bar: calm fill below, pulsing amber when
+  // almost full, fast red pulse when over.
+  const RING_C = 2 * Math.PI * 34;
+  const state = pct > 90 ? 'over' : pct > 75 ? 'warn' : '';
   const fill = card.querySelector('.bar-fill');
   if (fill) {
-    fill.style.width = pct + '%';
-    fill.className = 'progress-fill ' + (pct > 90 ? 'over' : pct > 75 ? 'warn' : '');
+    fill.style.strokeDashoffset = String(RING_C * (1 - pct / 100));
+    fill.className.baseVal !== undefined
+      ? (fill.setAttribute('class', 'ring-fill bar-fill' + (state ? ' ' + state : '')))
+      : (fill.className = 'ring-fill bar-fill' + (state ? ' ' + state : ''));
   }
+  const box = card.querySelector('.ring-box');
+  if (box) box.className = 'ring-box' + (state ? ' ' + state : '');
 
   const limitText = card.querySelector('.limit-text');
   if (limitText) limitText.textContent = `LIMIT ${monthlyKwhLimit.toFixed(1)} kWh/mo`;
