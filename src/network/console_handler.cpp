@@ -361,6 +361,8 @@ String ConsoleHandler::takePendingOutput() {
 }
 
 void ConsoleHandler::requestReboot(const char *reason) {
+  // Order: command BEFORE the flag (see the exec() setters). loop() on
+  // Core 1 consumes the flag first - flag-first loses the command.
   pendingRebootNote = reason ? String(reason) : "";
   pendingCmd = "reboot";
   pendingOutput = "";
