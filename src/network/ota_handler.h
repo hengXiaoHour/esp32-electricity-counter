@@ -4,6 +4,8 @@
 #include "../config.h"
 #include "ota_url.h"
 
+class CloudPush;
+
 // Local (LAN) ArduinoOTA plus cloud (GitHub release) updates, one progress
 // signal for both: updateLED(), updateEcoMode() and the dashboard's OTA
 // banner all read isInProgress()/getProgress(), so whichever transport is
@@ -42,6 +44,10 @@ public:
   // the OLD firmware.
   bool cloudRebootDue() const { return rebootDue; }
   void consumeCloudReboot() { rebootDue = false; }
+
+  // Wired once at boot (.ino): the download entry drops the SDK keep-alive
+  // sessions through this before probing github.com (see loopCloud).
+  void setCloudPush(CloudPush *c) { cloud_ = c; }
 
 private:
   bool inProgress;
