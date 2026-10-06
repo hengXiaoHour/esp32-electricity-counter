@@ -177,6 +177,30 @@ void NVSManager::saveOtaErr(const char *err) {
 void NVSManager::clearOtaErr() {
   prefs.remove("ota_err");
 }
+bool NVSManager::loadOtaCheck() {
+  return prefs.getUChar("ota_check", 0) != 0;
+}
+void NVSManager::saveOtaCheck() {
+  prefs.putUChar("ota_check", 1);
+  // No commit() here: staged-write rule, the caller commits under dataMutex.
+}
+void NVSManager::clearOtaCheck() {
+  prefs.remove("ota_check");
+}
+bool NVSManager::loadOtaMsg(char *msgOut, size_t msgLen) {
+  if (!msgOut || msgLen == 0) return false;
+  String m = prefs.getString("ota_msg", "");
+  if (m.length() == 0) return false;
+  strncpy(msgOut, m.c_str(), msgLen - 1);
+  msgOut[msgLen - 1] = '\0';
+  return true;
+}
+void NVSManager::saveOtaMsg(const char *msg) {
+  prefs.putString("ota_msg", msg ? msg : "");
+}
+void NVSManager::clearOtaMsg() {
+  prefs.remove("ota_msg");
+}
 
 // --- Channel Config ---
 
