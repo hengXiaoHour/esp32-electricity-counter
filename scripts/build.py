@@ -152,13 +152,17 @@ def main():
     print("assets: %s, %s" % (s3_asset.name, classic_asset.name))
 
     # --- 5. Manifest ----------------------------------------------------
+    # Tag carries the v prefix (v3.2.14 precedent) and the manifest URLs must
+    # match it EXACTLY: 3.2.14 shipped no-v URLs against a v-tag and every
+    # staged download 404'd. This rule is load-bearing, not cosmetic.
     slug = repo_slug()
+    tag = "v%s" % new_ver
     data = {
         "version": new_ver,
         "s3_bin_url": "https://github.com/%s/releases/download/%s/%s"
-                      % (slug, new_ver, s3_asset.name),
+                      % (slug, tag, s3_asset.name),
         "classic_bin_url": "https://github.com/%s/releases/download/%s/%s"
-                           % (slug, new_ver, classic_asset.name),
+                           % (slug, tag, classic_asset.name),
         "notes": "Release %s" % new_ver,
     }
     VERSION_JSON.write_text(json.dumps(data, indent=2) + "\n")
