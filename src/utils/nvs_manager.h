@@ -85,6 +85,23 @@ public:
   void saveOtaErr(const char *err);
   void clearOtaErr();
 
+  // Armed version check (boot-window OTA). Runtime TLS is impossible on this
+  // heap (max block ~34 KB even with the SDK sessions dropped), so `update`
+  // only PERSISTS this flag and reboots when the runtime check cannot run;
+  // the first network tick with STA then checks version.json on the clean
+  // heap and downloads in the same window. Same staged-write rule: the
+  // caller commits under dataMutex.
+  bool loadOtaCheck();
+  void saveOtaCheck();
+  void clearOtaCheck();
+  // Last explicit-check outcome ("already on latest 3.2.14"), shown by
+  // `ota status`. Written only by a check the user armed, cleared on every
+  // boot in setup() so a new firmware never displays the old one's result.
+  // Newest wins against ota_err in both directions (see callers).
+  bool loadOtaMsg(char *msgOut, size_t msgLen);
+  void saveOtaMsg(const char *msg);
+  void clearOtaMsg();
+
   // Per-channel name
   bool loadChannelName(uint8_t channel, char *name, size_t nameLen);
   void saveChannelName(uint8_t channel, const char *name);
