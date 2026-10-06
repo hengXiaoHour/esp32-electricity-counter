@@ -1117,9 +1117,15 @@ function createChannelCardElement(idx) {
       <div class="read-row"><span class="label">CUR</span><span class="val mono"><span class="val-a">0.00</span><span class="unit">A</span></span></div>
       <div class="read-row"><span class="label">ENG</span><span class="val mono"><span class="val-kwh">0.00</span><span class="unit">kWh</span></span></div>
     </div>
-    <div class="load-bar-container">
-      <div class="bar-meta"><span class="limit-text mono">LIMIT -- kWh/mo</span><span class="bar-pct">0%</span></div>
-      <div class="progress-track"><div class="progress-fill bar-fill"></div></div>
+    <div class="load-bar-container ring-wrap">
+      <div class="ring-box">
+        <svg class="ring" viewBox="0 0 84 84" aria-hidden="true">
+          <circle class="ring-track" cx="42" cy="42" r="34"></circle>
+          <circle class="ring-fill bar-fill" cx="42" cy="42" r="34" transform="rotate(-90 42 42)"></circle>
+        </svg>
+        <span class="ring-pct bar-pct mono">0%</span>
+      </div>
+      <div class="ring-meta"><span class="limit-text mono">LIMIT -- kWh/mo</span></div>
     </div>
     <div class="ch-submetrics">
       <span>PF: <strong class="val-pf mono">1.00</strong></span>
