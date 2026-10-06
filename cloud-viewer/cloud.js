@@ -299,6 +299,7 @@ function cl_loadDevices() {
 
 function cl_selectDevice(mac) {
   cl_mac = mac;
+  cl_saveMac(mac);
   cl_status('No command sent yet.');
   if (cl_latestRef) { cl_latestRef.off(); cl_latestRef = null; }
   if (cl_ackRef) { cl_ackRef.off(); cl_ackRef = null; }
