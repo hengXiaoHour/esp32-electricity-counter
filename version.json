@@ -1,6 +1,6 @@
 {
-  "version": "3.2.14",
-  "s3_bin_url": "https://github.com/hengXiaoHour/esp32-electricity-counter/releases/download/3.2.14/esp32-s3-3.2.14.bin",
-  "classic_bin_url": "https://github.com/hengXiaoHour/esp32-electricity-counter/releases/download/3.2.14/esp32-classic-3.2.14.bin",
-  "notes": "Release 3.2.14"
+  "version": "3.2.15",
+  "s3_bin_url": "https://github.com/hengXiaoHour/esp32-electricity-counter/releases/download/v3.2.15/esp32-s3-3.2.15.bin",
+  "classic_bin_url": "https://github.com/hengXiaoHour/esp32-electricity-counter/releases/download/v3.2.15/esp32-classic-3.2.15.bin",
+  "notes": "Release 3.2.15"
 }
