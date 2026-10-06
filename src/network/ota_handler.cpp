@@ -116,6 +116,118 @@ bool OTAHandler::startCloudUpdate(const char *url, bool staUp, String &reply) {
   return true;
 }
 
+int OTAHandler::compareVersions(const String &a, const String &b) {
+  // cloud-ota compareVersion verbatim: dotted-decimal, missing parts read
+  // as 0, so 1.10.0 beats 1.9.9 and "3.2" equals "3.2.0".
+  String aa = a, bb = b;
+  aa.trim();
+  bb.trim();
+  int ai = 0, bi = 0, apos = 0, bpos = 0;
+  while (apos < (int)aa.length() || bpos < (int)bb.length()) {
+    int aEnd = aa.indexOf('.', apos);
+    int bEnd = bb.indexOf('.', bpos);
+    if (aEnd == -1) aEnd = aa.length();
+    if (bEnd == -1) bEnd = bb.length();
+    ai = aa.substring(apos, aEnd).toInt();
+    bi = bb.substring(bpos, bEnd).toInt();
+    if (ai < bi) return -1;
+    if (ai > bi) return 1;
+    apos = aEnd + 1;
+    bpos = bEnd + 1;
+    if (apos > (int)aa.length()) apos = aa.length();
+    if (bpos > (int)bb.length()) bpos = bb.length();
+  }
+  return 0;
+}
+
+bool OTAHandler::checkForUpdate(bool doInstall, bool staUp, bool verbose,
+                                String &reply, String &stageUrl) {
+  stageUrl = "";
+  if (inProgress || cloudBusy || cloudActive) {
+    reply = "  An update is already running - wait for it to finish.";
+    return false;
+  }
+  if (!staUp) {
+    reply = "  No home network: cloud OTA needs STA (the fallback AP has no internet).";
+    return false;
+  }
+  // Small GET only: a ~200-byte JSON fetch, safe inline at verb time even
+  // with the SDK sessions up. The firmware bytes still flow in the
+  // pre-SDK updater tick (see loopCloud).
+  String payload;
+  {
+    WiFiClientSecure client;
+    if (OTA_USE_INSECURE) {
+      client.setInsecure();
+    } else {
+      client.useBuiltinCACertBundle();
+    }
+    client.setTimeout(15000);
+    HTTPClient http;
+    http.setTimeout(15000);
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+    String url = String(OTA_VERSION_URL) + "?t=" + String(millis());
+    if (!http.begin(client, url)) {
+      reply = "  Check failed: HTTP setup failed (out of memory?).";
+      return false;
+    }
+    http.addHeader("Cache-Control", "no-cache");
+    http.addHeader("Pragma", "no-cache");
+    int code = http.GET();
+    if (code != 200) {
+      reply = String("  Check failed: version.json GET ") + code + ".";
+      http.end();
+      return false;
+    }
+    payload = http.getString();
+    http.end();
+  }
+  JsonDocument doc;
+  if (deserializeJson(doc, payload)) {
+    reply = "  Check failed: version.json did not parse.";
+    return false;
+  }
+  String latest = doc["version"] | "";
+  // Per-chip asset (counter releases ship two .bins); legacy single
+  // bin_url kept as fallback so a cloud-ota-shaped file still works.
+  String legacy = doc["bin_url"] | "";
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+  String binUrl = doc["s3_bin_url"] | legacy;
+#else
+  String binUrl = doc["classic_bin_url"] | legacy;
+#endif
+  latest.trim();
+  binUrl.trim();
+  if (latest == "" || binUrl == "") {
+    reply = "  Check failed: version.json missing version/bin URL.";
+    return false;
+  }
+  int cmp = compareVersions(String(FIRMWARE_VERSION), latest);
+  if (cmp >= 0) {
+    reply = String("  Already on latest (") + FIRMWARE_VERSION + " >= " +
+            latest + ").";
+    if (verbose) reply += " Checked " + String(OTA_VERSION_URL) + ".";
+    return false;
+  }
+  const char *why = nullptr;
+  if (!ota_url_validate(binUrl.c_str(), &why)) {
+    reply = String("  New version ") + latest +
+            " found, but its link is bad: " + (why ? why : "bad URL.");
+    return false;
+  }
+  if (!doInstall) {
+    reply = String("  NEW VERSION! ") + FIRMWARE_VERSION + " -> " + latest +
+            " - type `update` to flash.";
+    return false;
+  }
+  const char *base = strrchr(binUrl.c_str(), '/');
+  reply = String("  NEW VERSION ") + FIRMWARE_VERSION + " -> " + latest +
+          ": staged \"" + (base ? base + 1 : binUrl.c_str()) +
+          "\" - rebooting into the updater, banner above while it downloads, `ota status` for detail.";
+  stageUrl = binUrl;
+  return true;
+}
+
 // Downloads the armed URL into the inactive OTA slot, then raises
 // rebootDue. Runs on the network task: every chunk yields (vTaskDelay) so
 // the IDLE task still feeds the task watchdog across a ~60 s download, and
