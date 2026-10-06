@@ -244,6 +244,16 @@ function cl_macFmt(id) {
   return id.toLowerCase().replace(/(..)(..)(..)(..)(..)(..)/, '$1:$2:$3:$4:$5:$6');
 }
 
+// Remember the picked board across reloads: otherwise every refresh falls
+// back to CL_DEFAULT_MAC even when the user lives on a second board.
+function cl_savedMac() {
+  try { return localStorage.getItem(CL_MAC_KEY); } catch (e) { return null; }
+}
+
+function cl_saveMac(mac) {
+  try { if (mac) localStorage.setItem(CL_MAC_KEY, mac); } catch (e) {}
+}
+
 function cl_loadDevices() {
   cl_status('Loading devices…');
   return fetch(CL_FIREBASE_CONFIG.databaseURL + '/devices.json?shallow=true')
