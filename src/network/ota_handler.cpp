@@ -433,7 +433,21 @@ void OTAHandler::loopCloud() {
   // first (cheap, no TLS): if it fails the router/DNS is the problem; if it
   // passes but HTTPS fails, it is TLS (heap). The validator only ever arms
   // github.com links, so the probe target is fixed.
+  // DIAG 2026-10-06: download gets TCP RST ("connection refused") with
+  // ~100KB free while the probe passes - print resolved IPs + max block to
+  // see whether it's DNS or fragmentation. Temporary.
   uint32_t heap0 = ESP.getFreeHeap();
+  {
+    IPAddress ip;
+    Serial.print("  [ota] dns github.com=");
+    Serial.print(WiFi.hostByName("github.com", ip) ? ip.toString() : "?");
+    Serial.print(" raw=");
+    Serial.print(WiFi.hostByName("raw.githubusercontent.com", ip) ? ip.toString() : "?");
+    Serial.print(" heap=");
+    Serial.print(heap0);
+    Serial.print("/max=");
+    Serial.println(ESP.getMaxAllocHeap());
+  }
   {
     NetworkClient probe;
     probe.setTimeout(5000);
