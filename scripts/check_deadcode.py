@@ -555,7 +555,13 @@ def main():
             ("status reports mid-download", "cloudBusy || cloudActive" in ota_cpp_s),
             ("TCP probe stages the failure", "no route to github.com:443" in ota_cpp_s),
             ("insecure transport is the OTA_USE_INSECURE flag (never a stray call)",
-             "OTA_USE_INSECURE" in ota_cpp_s and "setInsecure()" in ota_cpp_s)]:
+             "OTA_USE_INSECURE" in ota_cpp_s and "setInsecure()" in ota_cpp_s),
+            ("auto-poll runs from the network tick",
+             "pollTick()" in ota_cpp_s and "pollTick();" in ota_cpp_s),
+            ("auto-poll notifies once per release, never stages",
+             "noticedVer_" in ota_cpp_s and "updateAvailable_" in ota_cpp_s),
+            ("auto-poll interval lives in config",
+             "OTA_CHECK_INTERVAL_MS" in read("src/config.h"))]:
         if not present:
             ota_missing.append(what)
     r.add("the cloud-OTA feature is still wired end to end", not ota_missing,

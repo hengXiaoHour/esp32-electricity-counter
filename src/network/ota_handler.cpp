@@ -393,6 +393,11 @@ void OTAHandler::cloudStatus(String &out) {
     out += line;
   } else if (havePending_) {
     out += "  OTA: staged, waiting for a home link (fallback AP has no internet).";
+  } else if (updateAvailable_) {
+    snprintf(line, sizeof(line),
+             "  NEW VERSION! %s -> %s - type `update` to flash.",
+             FIRMWARE_VERSION, latestVer_);
+    out += line;
   } else if (nvs_) {
     char e[128];
     if (nvs_->loadOtaErr(e, sizeof(e))) {

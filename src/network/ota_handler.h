@@ -61,7 +61,9 @@ public:
   // Shared version.json fetch behind checkForUpdate and the auto-poll below:
   // true with `latest` + per-chip `binUrl` filled, false on any failure
   // (no STA here - the caller owns that decision). Small GET only.
-  bool fetchLatest(String &latest, String &binUrl);
+  // `detail` carries the short failure reason for the `update` verb; the
+  // auto-poll passes null and stays silent instead.
+  bool fetchLatest(String &latest, String &binUrl, String *detail = nullptr);
 
   // Periodic poll, called from loop(): every OTA_CHECK_INTERVAL_MS with STA
   // up it fetches the manifest and - only when a NEWER release appears that
