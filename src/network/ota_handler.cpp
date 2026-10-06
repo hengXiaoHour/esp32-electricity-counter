@@ -297,8 +297,10 @@ void OTAHandler::bootCheck() {
       return;
     }
     if (armed) {
-      // Stage for the pending-consume block below on THIS tick: check +
-      // download share one clean window, no second reboot.
+      // Stage + reboot: the version fetch above already fragmented this
+      // tick's heap, so a same-tick download would fail (3.2.15 proved it).
+      // The next boot takes the pending path with a pristine heap - one
+      // extra reboot for a reliable flash. Same deferred path as cmdUpdate.
       bool locked = (mutex_ && xSemaphoreTake(mutex_, pdMS_TO_TICKS(100)) == pdTRUE);
       if (nvs_) {
         nvs_->clearOtaCheck();
@@ -308,6 +310,7 @@ void OTAHandler::bootCheck() {
         nvs_->commit();
       }
       if (locked) xSemaphoreGive(mutex_);
+      checkStagedReboot_ = true;
       const char *base = strrchr(binUrl.c_str(), '/');
       Serial.print("  NEW VERSION ");
       Serial.print(FIRMWARE_VERSION);
@@ -315,7 +318,7 @@ void OTAHandler::bootCheck() {
       Serial.print(latest);
       Serial.print(": staged \"");
       Serial.print(base ? base + 1 : binUrl.c_str());
-      Serial.println("\" - downloading in the updater window.");
+      Serial.println("\" - rebooting into the updater, `ota status` for detail.");
     } else {
       updateAvailable_ = true;
       strncpy(latestVer_, latest.c_str(), sizeof(latestVer_) - 1);
