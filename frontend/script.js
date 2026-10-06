@@ -1298,7 +1298,7 @@ function zeroSubCardDisplay(idx) {
   if (barPct) barPct.textContent = '0%';
   const fill = card.querySelector('.bar-fill');
   if (fill) {
-    fill.setAttribute('stroke-dashoffset', String(2 * Math.PI * 34));
+    fill.style.strokeDashoffset = String(2 * Math.PI * 34);
     fill.setAttribute('class', 'ring-fill bar-fill');
   }
   const box = card.querySelector('.ring-box');
