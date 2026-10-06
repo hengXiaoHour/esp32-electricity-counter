@@ -428,6 +428,10 @@ class State:
                 # downloads).
                 if parts[:1] == ["ota"] and len(parts) == 2 and parts[1] == "status":
                     return True, "  OTA: idle (no cloud download staged or run).", False
+                if parts[:1] == ["version"] and len(parts) == 1:
+                    return True, "  FW: 3.2.12 (esp32)", False
+                if parts[:1] == ["update"] and len(parts) == 1:
+                    return True, "  Already on latest (3.2.12 >= 3.2.12).", False
                 if parts[:1] == ["ota"] and len(parts) == 2:
                     url = parts[1]
                     if (url.startswith("https://github.com/")
