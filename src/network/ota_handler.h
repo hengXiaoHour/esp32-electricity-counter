@@ -73,6 +73,15 @@ public:
   // auto-poll passes null and stays silent instead.
   bool fetchLatest(String &latest, String &binUrl, String *detail = nullptr);
 
+  // First-STA-tick check, called from loop(): runs fetchLatest on the
+  // boot-clean heap (same conditions the Firebase session itself is
+  // established under) and EITHER stages a newer release for the download
+  // below in the same window (armed `update`) OR announces it once on
+  // serial + `ota status` (unprompted). Already-on-latest and failed
+  // fetches stay silent unless the check was armed - then the outcome is
+  // recorded for `ota status`. Runs once per boot; never stages unprompted.
+  void bootCheck();
+
   // Periodic poll, called from loop(): every OTA_CHECK_INTERVAL_MS with STA
   // up it fetches the manifest and - only when a NEWER release appears that
   // this boot has not announced yet - prints one serial line and remembers
