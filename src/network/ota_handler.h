@@ -46,7 +46,7 @@ public:
   // Store for the NVS staged link + last updater error (wired once at boot).
   // The mutex guards the two commits this makes per attempt (consume +
   // failure record) against sensorTask's energy save on the same handle.
-  void setStore(NVSManager *n, SemaphoreHandle_t *m) {
+  void setStore(NVSManager *n, SemaphoreHandle_t m) {
     nvs_ = n;
     mutex_ = m;
   }
