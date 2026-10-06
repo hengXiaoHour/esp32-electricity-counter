@@ -96,6 +96,14 @@ void OTAHandler::loop() {
       }
     }
   }
+  // Version check runs AFTER any staged download, never before it: its TLS
+  // fetch fragments the heap, and 3.2.15 proved a post-fetch download fails.
+  // Skipped while a download is staged/running/waiting-reboot so the
+  // download always owns a pristine window.
+  if (!bootCheckDone_ && !havePending_ && !cloudBusy && !cloudActive &&
+      !rebootDue && !checkStagedReboot_) {
+    bootCheck();
+  }
 }
 
 bool OTAHandler::startCloudUpdate(const char *url, bool staUp, String &reply) {
