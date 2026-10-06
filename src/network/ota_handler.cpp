@@ -74,6 +74,7 @@ void OTAHandler::loop() {
         bool locked = (mutex_ && xSemaphoreTake(mutex_, pdMS_TO_TICKS(100)) == pdTRUE);
         nvs_->clearOtaPending();
         nvs_->clearOtaErr();
+        nvs_->clearOtaMsg();  // a fresh attempt supersedes old info
         nvs_->commit();
         if (locked) xSemaphoreGive(mutex_);
       }
@@ -90,14 +91,12 @@ void OTAHandler::loop() {
       if (nvs_) {
         bool locked = (mutex_ && xSemaphoreTake(mutex_, pdMS_TO_TICKS(100)) == pdTRUE);
         nvs_->saveOtaErr(cloudErr);
+        nvs_->clearOtaMsg();  // newest wins: a failed download supersedes old info
         nvs_->commit();
         if (locked) xSemaphoreGive(mutex_);
       }
     }
   }
-  // Auto-poll runs on the same tick (notify-only, never stages). It skips
-  // itself while a download is staged or running - see pollTick.
-  pollTick();
 }
 
 bool OTAHandler::startCloudUpdate(const char *url, bool staUp, String &reply) {
