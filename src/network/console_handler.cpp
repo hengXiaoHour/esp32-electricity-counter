@@ -928,6 +928,8 @@ void ConsoleHandler::cmdHelp(String &out) {
   consoleAppendf(out, "%s", "    cloud diag            Show cloud session (account, token age/length/aud)");
   consoleAppendf(out, "%s", "    ota <url>             Download + flash a github release .bin (STA only, reboots)");
   consoleAppendf(out, "%s", "    ota status            Updater state, survives reboot");
+  consoleAppendf(out, "%s", "    update                Check version.json + stage newer release (STA only, reboots)");
+  consoleAppendf(out, "%s", "    version               Compiled firmware stamp + chip");
   consoleAppendf(out, "%s", "    clearcloud          Stop remote monitoring (no reboot)");
   consoleAppendf(out, "%s", "    set_ap <name> <pw>  Rename the network + set password (reboots)");
   consoleAppendf(out, "%s", "    reset_ap            Restore the default network name (reboots)");
