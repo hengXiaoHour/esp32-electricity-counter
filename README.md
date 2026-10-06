@@ -223,6 +223,8 @@ Serial console (`help` for the list): `status`, `wifi`, `set_ap`, `setwifi`,
 
 3.2.4 notes: version-stamp re-test from the USB-flashed 3.2.3 board — same code, proving Check → Update end to end.
 
+3.2.10 notes: stamp-only proof for the 3.2.9 updater — same code, taken over the air after one USB flash of 3.2.9.
+
 3.2.9 notes: reboot-to-updater — `ota <url>` only stages the link into NVS and reboots; the first network tick with STA + clock downloads it BEFORE the SDK sessions exist (3.2.8 on 3.2.7: sessions freed but largest block stuck at 34 KB). Last failure kept in NVS so `ota status` survives the reboot; any-case status kept.
 
 3.2.8 notes: version-stamp re-test on the 3.2.7 downloader — same code, proving Check → Update end to end over the air (flash 3.2.7 once over USB, then take this one remotely).
