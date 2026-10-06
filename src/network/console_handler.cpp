@@ -497,7 +497,6 @@ void ConsoleHandler::cmdReboot(String &out) {
   // the restart (the 2026-10-05 reboot wipes). ESP.restart() needs nothing
   // closed — flushEnergy's commit already left flash consistent.
   delay(1000);
-  Serial.println("  [reboot] restarting now");
   ESP.restart();
 }
 
