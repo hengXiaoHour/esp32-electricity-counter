@@ -65,6 +65,10 @@ phone + browser (no tools needed).
 
 ### Option 1 — USB serial CLI
 
+Hands-free version of these steps: `python3 scripts/setup.py` finds the
+port, asks for home WiFi (and the optional cloud mirror), and prints the
+dashboard address. Or do it by hand:
+
 1. Plug the board into USB and open a serial monitor at **115200 baud**.
 2. Join your home WiFi (quotes when the name has spaces — the board
    reboots onto it):
