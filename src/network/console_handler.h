@@ -112,7 +112,6 @@ private:
   void cmdSetCloud(const String &args, String &out);
   void cmdClearCloud(String &out);
   void cmdCloudDiag(String &out);
-  void cmdOta(const String &args, String &out);
   void cmdSetAp(const String &args, String &out);
   void cmdResetAp(String &out);
   void cmdResetDay(const String &args, String &out);
