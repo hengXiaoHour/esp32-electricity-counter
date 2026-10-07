@@ -149,24 +149,14 @@ The Status line shows the MAC and the last-push age; enabling cloud keeps
 eco off (a napping radio cannot push). Nothing is ever pushed on the
 fallback AP.
 
-### Updating the firmware over the air
+### Updating the firmware (local only)
 
-Needs home WiFi (the fallback AP has no internet). Each release attaches
-ready-to-flash files named `esp32-classic-X.Y.Z.bin` /
-`esp32-s3-X.Y.Z.bin` under `.../releases/download/X.Y.Z/`.
-
-From a browser: Settings → Firmware → Check, then Update. The click sends
-one console line (`ota <url>`) — serial, dashboard and cloud console share
-that single path, so there is no second verb to keep in step. The board
-downloads the file straight from github.com into its inactive OTA slot,
-verifies it, reboots, and the About card shows the new version (the card
-renders the compiled `FIRMWARE_VERSION`, so a release binary is stamped
-with `./scripts/build.sh --version X.Y.Z` before compiling — flashing a
-`.bin` still stamped with the old number shows the old number forever).
-
-Or over serial: `ota <url>` / `ota status`. A tag page or any non-release
-link is refused before anything is armed. A failed or oversize download
-keeps the old firmware running; counters and settings survive the reboot.
+No cloud update. Flash over USB, or over your home network via ArduinoOTA
+(network port `esp32-elec-counter`). The Firmware panel shows the running
+version (the compiled `FIRMWARE_VERSION`, stamped with
+`./scripts/build.sh --version X.Y.Z` before compiling — flashing a `.bin`
+still stamped with the old number shows the old number forever). Counters
+and settings survive a reflash.
 
 ### Status LED
 
