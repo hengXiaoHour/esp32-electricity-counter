@@ -557,37 +557,6 @@ void ConsoleHandler::cmdLed(const String &args, String &out) {
                  wantRgb ? "rgb" : "normal");
 }
 
-void ConsoleHandler::cmdOta(const String &args, String &out) {
-  // Cloud firmware update, STA-only. 3.2.9 reboot-to-updater: the URL is
-  // validated, PERSISTED to NVS and the board reboots; the first network
-  // tick with STA + clock downloads it BEFORE the cloud SDK sessions exist,
-  // against a clean heap (3.2.7: 34 KB largest block cannot handshake at
-  // runtime). The deferred reboot flushes the counters first. Safe to call
-  // from any console: serial, dashboard, or the cloud downlink (which skips
-  // the PIN, trusting the admin-only /cmd rules instead).
-  if (!otaHandler) {
-    consoleAppendf(out, "%s", "  OTA not available");
-    return;
-  }
-  String url = args;
-  url.trim();
-  String reply;
-  if (!otaHandler->startCloudUpdate(url.c_str(),
-                                   wifiMgr ? wifiMgr->stationUp() : false, reply)) {
-    consoleAppendf(out, "%s", reply.c_str());
-    return;
-  }
-  // dataMutex: commit() is prefs.end()+prefs.begin() and is not thread-safe
-  // against sensorTask's 5 s energy save on the same handle.
-  bool locked = (xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE);
-  nvs->saveOtaPending(url.c_str());
-  nvs->clearOtaErr();
-  nvs->commit();
-  if (locked) xSemaphoreGive(*dataMutex);
-  consoleAppendf(out, "%s", reply.c_str());
-  requestReboot("  (OTA staged - rebooting into the updater)");
-}
-
 void ConsoleHandler::cmdClearWifi(String &out) {
   // Nothing reads WiFi credentials any more, so this only scrubs leftovers
   // from an older firmware in NVS. It is kept deliberately: it is the one way
