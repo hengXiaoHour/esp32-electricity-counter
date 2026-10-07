@@ -933,8 +933,11 @@ def main():
     # --- the gates the docs point at must exist ------------------------
     for s in ["scripts/verify_all.sh", "scripts/embed_web.py",
               "scripts/test_auth_gate.c", "scripts/mock_device.py",
-              "scripts/e2e_aponly.js"]:
+              "scripts/e2e_aponly.js", "scripts/setup.py"]:
         c.add("referenced tooling exists: %s" % s, (ROOT / s).exists())
+    c.add("the README documents the setup wizard",
+          "python3 scripts/setup.py" in rdme,
+          "Option 1 lost its setup.py pointer")
 
     c.add("the console offers set_ap / reset_ap (serial is the recovery path when the network is lost)",
           "set_ap" in ch and "reset_ap" in ch and
