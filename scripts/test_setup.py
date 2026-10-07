@@ -99,7 +99,7 @@ def run_wizard(argv, fake_kwargs=None):
     fake = FakeBoard(master, **(fake_kwargs or {}))
     fake.start()
     # Fast waits: the fake answers instantly, nothing real needs settling.
-    setup.SETTLE_S, setup.CMD_WAIT_S = 0.05, 0.3
+    setup.SETTLE_S, setup.CMD_WAIT_S, setup.WIFI_WAIT_S = 0.05, 0.3, 0.3
     old, buf = sys.stdout, io.StringIO()
     sys.stdout = buf
     try:
@@ -108,7 +108,7 @@ def run_wizard(argv, fake_kwargs=None):
         code = e.code
     finally:
         sys.stdout = old
-        setup.SETTLE_S, setup.CMD_WAIT_S = 2.0, 6.0
+        setup.SETTLE_S, setup.CMD_WAIT_S, setup.WIFI_WAIT_S = 2.0, 6.0, 4.0
     out = buf.getvalue()
     # Let the fake thread die with the fds.
     try:

@@ -252,7 +252,7 @@ def main(argv=None):
         sys.exit("Cannot open %s: %s" % (port, e))
 
     if args.check:
-        reply = board.run("wifi", wait=4.0)
+        reply = board.run("wifi", wait=WIFI_WAIT_S)
         print(reply)
         ip = parse_dashboard_ip(banner + reply)
         print("Dashboard: http://%s/" % ip if ip else "Board has no IP yet.")
@@ -274,7 +274,7 @@ def main(argv=None):
         sys.exit("Not sent: %s." % err)
 
     try:
-        reply = board.run(build_setwifi(ssid, wifi_pass))
+        reply = board.run(build_setwifi(ssid, wifi_pass), wait=CMD_WAIT_S)
     except ValueError as e:
         sys.exit("Not sent: %s." % e)
     if not reply_ok(reply, 'will join "'):
@@ -311,7 +311,7 @@ def main(argv=None):
             err = validate_cloud(host, email, cpass)
             if err:
                 sys.exit("Not sent: %s." % err)
-            reply = board.run(build_setcloud(host, email, cpass))
+            reply = board.run(build_setcloud(host, email, cpass), wait=CMD_WAIT_S)
             if not reply_ok(reply, "Signing in as"):
                 print(reply)
                 sys.exit("The board refused setcloud (see above).")
@@ -324,7 +324,7 @@ def main(argv=None):
                          "replug, then re-run with --port %s." % port)
             board.open()
 
-    reply = board.run("wifi", wait=4.0)
+    reply = board.run("wifi", wait=WIFI_WAIT_S)
     ip = parse_dashboard_ip(reply)
     print("")
     print("Done. Home WiFi: %s%s" % (ssid, " + cloud (%s)" % cloud if cloud
