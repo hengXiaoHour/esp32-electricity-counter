@@ -26,6 +26,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import socket
 import struct
 import threading
