@@ -146,38 +146,6 @@ void NVSManager::saveCloudCmdId(const String &id) {
   // commits under dataMutex.
 }
 
-// --- Staged cloud-OTA download (reboot-to-updater, 3.2.9) ---
-
-bool NVSManager::loadOtaPending(char *urlOut, size_t urlLen) {
-  if (!urlOut || urlLen == 0) return false;
-  String u = prefs.getString("ota_url", "");
-  if (u.length() == 0) return false;
-  strncpy(urlOut, u.c_str(), urlLen - 1);
-  urlOut[urlLen - 1] = '\0';
-  return true;
-}
-void NVSManager::saveOtaPending(const char *url) {
-  prefs.putString("ota_url", url ? url : "");
-  // No commit() here: staged-write rule, the caller commits under dataMutex.
-}
-void NVSManager::clearOtaPending() {
-  prefs.remove("ota_url");
-}
-bool NVSManager::loadOtaErr(char *errOut, size_t errLen) {
-  if (!errOut || errLen == 0) return false;
-  String e = prefs.getString("ota_err", "");
-  if (e.length() == 0) return false;
-  strncpy(errOut, e.c_str(), errLen - 1);
-  errOut[errLen - 1] = '\0';
-  return true;
-}
-void NVSManager::saveOtaErr(const char *err) {
-  prefs.putString("ota_err", err ? err : "");
-}
-void NVSManager::clearOtaErr() {
-  prefs.remove("ota_err");
-}
-
 // --- Channel Config ---
 
 String NVSManager::channelKey(uint8_t channel, const char *suffix) {
