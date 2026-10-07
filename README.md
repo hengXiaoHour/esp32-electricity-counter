@@ -13,14 +13,20 @@ fallback AP stays off; an opt-in Firebase mirror pushes readings to
 
 ## Hardware
 
-| Part | Pins |
-|---|---|
-| 5× CT sensors (SCT-013-100) | GPIO 7, 5, 6, 8, 4 |
-| Voltage sensor (ZMPT101B) | GPIO 1 |
-| Active buzzer | GPIO 13 |
-| Status LED (plain / WS2812 RGB) | GPIO 48 |
+| Part | Pins | Looks like |
+|---|---|---|
+| ESP32-S3 DevKit | USB + GPIO below | ![ESP32-S3 DevKit](doc/img/esp32-s3-devkit.jpg) |
+| 5× CT sensors (SCT-013-100) | GPIO 7, 5, 6, 8, 4 | ![SCT-013 clamp](doc/img/sct013-clamp.jpg) |
+| Voltage sensor (ZMPT101B) | GPIO 1 | ![ZMPT101B module](doc/img/zmpt101b-module.jpg) |
+| Active buzzer (5 V) | GPIO 13 | ![active buzzer](doc/img/active-buzzer.jpg) |
+| Status LED (plain / WS2812 RGB) | GPIO 48 | built into most DevKits |
 
 Classic ESP32 uses an ADC1-only pin map; defaults live in `src/config.h`.
+
+Photos: DevKit — Espressif docs; CT clamp — OpenEnergyMonitor docs;
+ZMPT101B — electroniclinic.com; buzzer —
+[Jdx / Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Electromagnetic_buzzer_01.jpg)
+(CC BY-SA 3.0).
 
 ## Build & flash
 
