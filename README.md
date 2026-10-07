@@ -117,4 +117,8 @@ only, never on the fallback AP. To aim it at your own Firebase project:
 - Cloud firmware updates live on the `cloud-ota` branch: `main`
   updates over USB or LAN ArduinoOTA only.
 
+## License
+
+MIT — see [LICENSE](LICENSE).
+
 Full version history: `gh release list`.
