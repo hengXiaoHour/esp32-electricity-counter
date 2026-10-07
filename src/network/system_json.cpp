@@ -115,9 +115,8 @@ void buildSystemJson(const SystemData &data, PowerCalculator *powerCalc,
   // panel edits this instead of showing a dead value.
   json += ",\"resetDay\":";
   json += nvs->loadResetDay();
-  // Cloud-OTA state: drives the dashboard's progress banner (which was dead
-  // until this key existed - the renderer checks data.ota and nothing ever
-  // sent it). Chip tells the viewer which release asset fits this board.
+  // Local-OTA progress: drives the dashboard's banner while a LAN flash
+  // runs. Chip identifies the board variant for the About panel.
   json += ",\"ota\":";
   json += data.otaInProgress ? "true" : "false";
   json += ",\"otaProgress\":";

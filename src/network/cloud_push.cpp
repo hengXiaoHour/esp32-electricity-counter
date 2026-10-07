@@ -330,7 +330,7 @@ bool CloudPush::snapshot(SystemData *sysData, SemaphoreHandle_t *mutex, String &
 #else
   body += "esp32";
 #endif
-  // Cloud-OTA state for the remote progress banner (same keys as the local
+  // Local-OTA progress for the remote banner (same keys as the local
   // snapshot's ota/otaProgress, renamed: the cloud payload favours explicit
   // names because cl_adapt maps them onto the shared renderer).
   body += "\",\"otaRun\":";
