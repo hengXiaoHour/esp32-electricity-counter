@@ -117,6 +117,21 @@ only, never on the fallback AP. To aim it at your own Firebase project:
    `CL_ADMIN_EMAIL`) and deploy hosting. Sign in with the admin Gmail
    for full control; everyone else is read-only.
 
+### Dashboard tour
+
+Four pages (sidebar on desktop, bottom nav on phones):
+
+- **Dashboard** — one card per channel: live current, power, power
+  factor, monthly kWh with its limit bar. A tripped channel flags red
+  and the buzzer rings.
+- **Analytics** — Live Totals and Per-Channel Power charts.
+- **History** — the Event Log: trips, recoveries, reboots.
+- **Settings** — Admin PIN, Connection, Access Point, Home Network,
+  Remote Monitoring, Calibration, Device Console, About, Firmware.
+
+The top bar always shows connection state, WiFi signal, live
+volts / watts / amps, and the board clock.
+
 - Rename the network with `set_ap` / `reset_ap` (serial or Settings,
   form is `set_ap <name> <pass>`). Changing the fallback AP name and password
   reboots the board; the AP only appears when home WiFi fails. Defaults `ESP32-Elec-Counter` /
