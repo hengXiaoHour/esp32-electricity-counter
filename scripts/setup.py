@@ -31,6 +31,7 @@ except ImportError:  # exercised on POSIX hosts; guarded for import-time safety
 BAUD = 115200
 SETTLE_S = 2.0
 CMD_WAIT_S = 6.0
+WIFI_WAIT_S = 4.0
 REBOOT_WAIT_S = 20.0
 
 # Buffer sizes mirror the firmware, so the wizard refuses exactly what the
