@@ -868,7 +868,7 @@ certificate, which is a separate piece of work.
 `wifiMgr.isReady()`. Over the board's own AP the IDE may not discover it
 automatically; entering `192.168.4.1` as the network port works.
 
-The LED goes solid blue while `isInProgress()` and the dashboard shows
+The LED blinks yellow while `isInProgress()` and the dashboard shows
 `otaProgress`/`otaPercent`/`otaVersion`. Partition scheme must remain
 `No FS 4MB (2MB APP with OTA)`.
 
