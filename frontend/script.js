@@ -769,7 +769,6 @@ function updateDashboard(data) {
     const frEl = document.getElementById('fwRunning');
     if (frEl) frEl.textContent = fw;
   }
-  if (typeof data.chip === 'string' && data.chip) fwChip = data.chip;
 
   const lmEl = document.getElementById('lastMonth');
   if (lmEl && typeof data.lastMonth === 'number') {
