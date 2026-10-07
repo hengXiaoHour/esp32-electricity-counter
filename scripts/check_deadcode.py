@@ -258,6 +258,14 @@ def main():
     # to be kept deleted would just make the gate noisy. Pass --output-dir.
     back = [g for g in gone if (ROOT / g).exists()]
     r.add("the cleanup deletions stay deleted", not back, "reappeared: " + ", ".join(back))
+    # The setup.py PATH is legitimate again (see NOTE above), so the old
+    # env-wizard is pinned by its markers instead: none of its config-file
+    # plumbing may come back under the same name.
+    _setup = read("scripts/setup.py") if (ROOT / "scripts/setup.py").exists() else ""
+    r.add("setup.py is the serial provisioner, not the old env wizard",
+          all(k not in _setup for k in ["firebase_config", "FRONTEND_TARGET",
+                                        "ARDUINO_LIBS", "service-account"]),
+          "old env-wizard markers are back in scripts/setup.py")
 
     # --- 6b. the AP identity the radio broadcasts is the one loaded from NVS
     # `set_ap` saved the new name, the board rebooted, and it came back up
