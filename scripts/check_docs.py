@@ -865,6 +865,10 @@ def main():
     c.add("README documents the OTA limitation honestly",
           "`cloud-ota` branch" in rdme and "USB or LAN ArduinoOTA only" in rdme,
           "the Limits section no longer says where cloud updates live")
+    c.add("the project is labelled open source (LICENSE + README)",
+          (ROOT / "LICENSE").exists() and "MIT" in read("LICENSE") and
+          "MIT" in rdme and "LICENSE" in rdme,
+          "LICENSE missing or README does not name it")
     c.add("ARCHITECTURE records the mixed-content reason for hosting the UI itself",
           "mixed content" in arch)
 
