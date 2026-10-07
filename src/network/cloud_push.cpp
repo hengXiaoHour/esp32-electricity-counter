@@ -573,12 +573,6 @@ void CloudPush::loop(SystemData *sysData, SemaphoreHandle_t *mutex,
   }
 }
 
-void CloudPush::releaseSessions() {
-  if (!s_sdkStarted) return;
-  s_pushFbdo.stopWiFiClient();
-  s_pollFbdo.stopWiFiClient();
-}
-
 void CloudPush::diag(String &out, SemaphoreHandle_t *mutex) {
   // Snapshot the command id under the mutex: the WS console runs on a
   // different task than loop(), and a torn read here would report a
