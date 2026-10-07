@@ -938,6 +938,10 @@ def main():
     c.add("the README documents the setup wizard",
           "python3 scripts/setup.py" in rdme,
           "Option 1 lost its setup.py pointer")
+    c.add("the README tours the four UI pages",
+          all(k in rdme for k in ["**Dashboard**", "**Analytics**",
+                                  "**History**", "**Settings**"]),
+          "dashboard tour lost a page")
 
     c.add("the console offers set_ap / reset_ap (serial is the recovery path when the network is lost)",
           "set_ap" in ch and "reset_ap" in ch and
