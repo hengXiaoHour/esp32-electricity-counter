@@ -51,8 +51,8 @@ Local only: USB as above, or ArduinoOTA on the LAN (network port
 
 ## Use
 
-- Rename the network: `set_ap <name> <pass>` / `reset_ap` (serial or
-  Settings). Changing the fallback AP name and password reboots the board;
+- Rename the network with `set_ap` / `reset_ap` (serial or Settings,
+  form is `set_ap <name> <pass>`). Changing the fallback AP name and
   the AP only appears when home WiFi fails. Defaults `ESP32-Elec-Counter` /
   `configure123`.
 - Home WiFi: `setwifi <ssid> <pass>` / `clearwifi`. Cloud mirror: `setcloud
