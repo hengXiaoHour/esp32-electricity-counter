@@ -71,20 +71,6 @@ public:
   bool loadCloudCmdId(String &idOut);
   void saveCloudCmdId(const String &id);
 
-  // Staged cloud-OTA download (3.2.9: reboot-to-updater). `ota <url>` only
-  // PERSISTS the link here and reboots; the first network tick with STA +
-  // clock picks it up and downloads before the SDK sessions exist, against a
-  // clean heap (3.2.7 proved 34 KB largest block cannot handshake at
-  // runtime). Same staged-write rule: the caller commits under dataMutex.
-  // ota_err keeps the LAST failure across the reboot so `ota status` can
-  // still name it; a new stage or a verified image clears it.
-  bool loadOtaPending(char *urlOut, size_t urlLen);
-  void saveOtaPending(const char *url);
-  void clearOtaPending();
-  bool loadOtaErr(char *errOut, size_t errLen);
-  void saveOtaErr(const char *err);
-  void clearOtaErr();
-
   // Per-channel name
   bool loadChannelName(uint8_t channel, char *name, size_t nameLen);
   void saveChannelName(uint8_t channel, const char *name);
