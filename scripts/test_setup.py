@@ -97,6 +97,13 @@ def run_wizard(argv, fake_kwargs=None):
     """Run main() with a fake board; return (exit, stdout, fake)."""
     master, slave = pty.openpty()
     slave_path = os.ttyname(slave)
+    # Kill echo+canonical mode BEFORE the fake speaks: otherwise the slave
+    # echoes the banner back to the master and the fake answers its own
+    # echo with "Unknown command" (the exact cascade a noisy line gives).
+    mode = termios.tcgetattr(slave)
+    mode[3] = mode[3] & ~(termios.ECHO | termios.ECHONL | termios.ICANON |
+                           termios.ISIG)
+    termios.tcsetattr(slave, termios.TCSANOW, mode)
     fake = FakeBoard(master, **(fake_kwargs or {}))
     fake.start()
     # Fast waits: the fake answers instantly, nothing real needs settling.
