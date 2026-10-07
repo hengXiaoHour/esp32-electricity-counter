@@ -871,7 +871,8 @@ def main():
           "LICENSE missing or README does not name it")
     # Every local image the README embeds must exist, or the reader gets the
     # broken-image icon (this exact bug shipped with the network-port shot).
-    for _img in re.findall(r"\]\((doc/[^)]+)\)", rdme):
+    # Matches both markdown `![](doc/...)` and HTML `<img src="doc/...">`.
+    for _img in re.findall(r"(?:\]\(|src=\")(doc/[^)\"]+)", rdme):
         c.add("README image exists: %s" % _img, (ROOT / _img).exists())
     c.add("ARCHITECTURE records the mixed-content reason for hosting the UI itself",
           "mixed content" in arch)
