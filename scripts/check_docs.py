@@ -592,54 +592,46 @@ def main():
 
     # --- firmware version / size ---------------------------------------
     m = re.search(r'#define FIRMWARE_VERSION "([^"]+)"', cfg)
-    c.add("FIRMWARE_VERSION is the 3.2.12 cloud-OTA release",
-          m and m.group(1) == "3.2.12", "found %s" % (m.group(1) if m else "none"))
+    c.add("FIRMWARE_VERSION is stamped X.Y.Z",
+          m and re.match(r"^\d+\.\d+\.\d+$", m.group(1)) is not None,
+          "found %s" % (m.group(1) if m else "none"))
 
-    # --- cloud OTA: github release .bin -> inactive slot -> reboot --------
-    # One code path for serial / dashboard / cloud: the click becomes a
-    # console line (`ota <url>`), the download runs on the network task, and
-    # the reboot goes through the deferred path so the counters flush first.
-    _ota_verb = re.search(r"void ConsoleHandler::cmdOta\([^)]*\) \{([\s\S]*?)\n\}\n", ch)
-    _ota_verb_b = _ota_verb.group(1) if _ota_verb else ""
-    c.add("the console offers ota <url> and ota status, documented in help",
-          _ota_verb is not None and 'startsWith("ota ")' in ch and
-          '"ota status"' in ch and "ota <url>" in ch,
-          "the click would have no verb to land on")
-    c.add("the OTA verb validates the link shape through the host-tested helper",
-          _ota_verb is not None and "startCloudUpdate" in _ota_verb_b,
-          "a tag page (HTML) would be flashed as firmware")
-    c.add("the OTA shape helper is unit-tested and the suite runs in verify_all",
-          "test_ota_url" in verify_sh and "OTA_URL_MAX_LEN" in read("scripts/test_ota_url.c"),
-          "validation without a runner")
-    c.add("cloud OTA refuses without a home link (fallback AP has no internet)",
-          _ota_verb is not None and "stationUp()" in _ota_verb_b,
-          "a download would be armed with nowhere to go")
-    c.add("the download validates the TLS chain (setInsecure lives only on the fenced probe)",
-          "useBuiltinCACertBundle()" in ota_cpp and
-          ota_cpp.count("setInsecure") == 1 and "probe.setInsecure()" in ota_cpp,
-          "a radio-link attacker could serve any image")
-    c.add("the download follows the release redirect to the CDN",
-          "setFollowRedirects(" in ota_cpp,
-          "github.com answers 302 and the fetch would die there")
-    c.add("the image must fit the inactive slot before flashing",
-          "getFreeSketchSpace()" in ota_cpp and "Update.begin(" in ota_cpp,
-          "an oversize write bricks the slot")
-    c.add("the image is verified before boot, aborted otherwise",
-          "Update.end(" in ota_cpp and "Update.abort()" in ota_cpp,
-          "a corrupt download would boot")
-    c.add("the download yields so the watchdog survives a minute-long fetch",
-          "vTaskDelay(" in ota_cpp,
-          "the task watchdog would reboot mid-flash")
-    c.add("a verified image reboots through the deferred path (counters flush)",
-          "cloudRebootDue()" in ino and "consumeCloudReboot()" in ino and
-          "requestReboot" in ino,
-          "the reboot would lose unflushed counters")
-    c.add("both snapshots publish the OTA state and the chip for asset picking",
+    # --- local OTA only: no cloud updater --------------------------------
+    # Updates happen over USB or ArduinoOTA on the LAN. There is no github
+    # download, no staged link, no `ota` console verb and no Check/Update
+    # buttons - each absence is asserted so a re-added cloud layer fails.
+    import os as _os
+    from pathlib import Path as _Path
+    _root = _Path(__file__).resolve().parent.parent
+    c.add("the console offers no ota verb",
+          'startsWith("ota ")' not in ch and '"ota status"' not in ch and
+          "cmdOta" not in ch,
+          "a cloud download path would have a verb to land on")
+    c.add("the staged-link NVS keys are gone",
+          "ota_url" not in nvs and "ota_err" not in nvs,
+          "a staged link would survive in flash")
+    c.add("the URL validator files are gone",
+          not (_root / "src/network/ota_url.cpp").exists() and
+          not (_root / "src/network/ota_url.h").exists() and
+          not (_root / "scripts/test_ota_url.c").exists(),
+          "the validator invites a cloud download back")
+    c.add("the handler is LAN-only (ArduinoOTA, no download)",
+          "ArduinoOTA.handle()" in ota_cpp and
+          "loopCloud" not in ota_cpp and
+          "github.com" not in ota_cpp and "Update.begin(" not in ota_cpp,
+          "a download path lives in the handler")
+    c.add("the handler raises no reboot flag",
+          "cloudRebootDue" not in ota_h,
+          "the sketch would reboot into an updater")
+    c.add("the sketch has no updater reboot",
+          "cloudRebootDue()" not in ino and "consumeCloudReboot()" not in ino,
+          "a verified image would reboot outside the deferred path")
+    c.add("both snapshots still publish the OTA progress and the chip",
           re.search(r'\\?"ota\\?"', sysjson) is not None and
           re.search(r'\\?"chip\\?"', sysjson) is not None and
           "otaRun" in cl_cpp and "otaPct" in cl_cpp and
           re.search(r'\\?"chip\\?"', cl_cpp) is not None,
-          "the banner and the asset picker read dead keys")
+          "the LAN banner and the About panel read dead keys")
     c.add("the cloud adapter maps the OTA state onto the shared banner",
           "otaRun" in cloudjs and "otaProgress" in cloudjs,
           "remote progress would never render")
@@ -647,34 +639,22 @@ def main():
           'body += ",\\"time\\":{\\"ok\\":"' in cl_cpp and
           'body += "\\",\\"time\\"' not in cl_cpp,
           "a stray quote makes otaPct invalid JSON and all pushes fail while polls pass")
-    c.add("the OTA banner spans the whole download, not the arm tick",
-          "cloudActive = true" in ota_cpp and "cloudActive = false" in ota_cpp and
-          "return inProgress || cloudBusy || cloudActive;" in ota_h,
-          "the flag clears on entry and the banner can never show")
-    c.add("a failed download names the stage (TCP probe vs TLS)",
-          "no route to github.com:443" in ota_cpp and
-          "raw-TLS %s" in ota_cpp and "getMaxAllocHeap" in ota_cpp,
-          "HTTP -1 alone cannot tell DNS from TLS")
-    c.add("the raw-TLS probe is fenced: handshake only, never the download",
-          ota_cpp.count("setInsecure") == 1 and "probe.stop()" in ota_cpp and
-          "http.begin(client, cloudUrl)" in ota_cpp,
-          "an insecure client must never carry firmware bytes")
-    c.add("the arm reply promises the banner, not live progress",
-          "banner above while it downloads" in ota_cpp and
-          "progress above" not in ota_cpp,
-          "snapshots stall during the blocking fetch, so percent cannot stream")
-    c.add("the viewer checks releases and sends the console line, keyed by chip",
-          "api.github.com" in js and "checkFirmware" in js and
-          "startFirmwareUpdate" in js and "esp32-classic-" in js and
-          "esp32-s3-" in js and "'ota ' +" in js,
-          "the Update button has no release to offer")
+    c.add("the viewer has no release checker or update sender",
+          "api.github.com" not in js and "checkFirmware" not in js and
+          "startFirmwareUpdate" not in js,
+          "the Check button would have no backend")
+    c.add("the Firmware panel shows the running version, no Check/Update",
+          'id="fwRunning"' in html and 'id="fwCheckBtn"' not in html and
+          'id="fwUpdateBtn"' not in html,
+          "the Check button is still in the panel")
     c.add("build.sh builds the classic target on min_spiffs with a version stamp",
           "--classic" in build_sh and "PartitionScheme=min_spiffs" in build_sh and
           "--version" in build_sh and "FIRMWARE_VERSION" in build_sh,
           "no reproducible path to a stamped classic binary")
-    c.add("the README documents the over-the-air update flow",
-          "`ota <url>`" in rdme and "releases/download" in rdme,
-          "the feature exists only in code")
+    c.add("the README documents the local-only update flow",
+          "ArduinoOTA" in rdme and "ota <url>" not in rdme and
+          "releases/download" not in rdme,
+          "the README still promises a cloud update")
 
     # --- frontend ------------------------------------------------------
     c.add("index.html loads NO external scripts",
