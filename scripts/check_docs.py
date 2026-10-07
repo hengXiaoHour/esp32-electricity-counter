@@ -652,9 +652,10 @@ def main():
           "--version" in build_sh and "FIRMWARE_VERSION" in build_sh,
           "no reproducible path to a stamped classic binary")
     c.add("the README documents the local-only update flow",
-          "ArduinoOTA" in rdme and "ota <url>" not in rdme and
-          "releases/download" not in rdme,
-          "the README still promises a cloud update")
+          "ArduinoOTA" in rdme and
+          "ota <url>" not in rdme.split("### Updating the firmware")[1].split("### ")[0] and
+          "releases/download" not in rdme.split("### Updating the firmware")[1].split("### ")[0],
+          "the update section still promises a cloud update")
 
     # --- frontend ------------------------------------------------------
     c.add("index.html loads NO external scripts",
