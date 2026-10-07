@@ -14,7 +14,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="style.css?v=6f442542">
+<link rel="stylesheet" href="style.css?v=1fcd0007">
 <script>
 // The board is always on location.host, so there is no session to restore and
 // nothing to decide before the first paint. This only hides the connect panel
@@ -373,21 +373,7 @@
             <label>Running:</label>
             <span id="fwRunning" class="mono conn-ip">--</span>
           </div>
-          <div class="cal-row-single">
-            <label>Latest:</label>
-            <div class="cal-field">
-              <span id="fwLatest" class="mono conn-ip">not checked</span>
-            </div>
-            <button class="btn-sm" id="fwCheckBtn" onclick="checkFirmware()">Check</button>
-          </div>
-          <div class="cal-row-single hidden" id="fwUpdateRow">
-            <label>Update:</label>
-            <div class="cal-field">
-              <span id="fwUpdateName" class="mono conn-ip"></span>
-            </div>
-            <button class="btn-sm" id="fwUpdateBtn" onclick="startFirmwareUpdate()">Update</button>
-          </div>
-          <div class="hint">Update stages the matching release file, reboots into the updater and flashes it over your network. Counters and settings survive. Takes about a minute — the board goes quiet, then returns on the new version.</div>
+          <div class="hint">Local update only: flash over USB, or over your home network via ArduinoOTA (network port <span class="mono">esp32-elec-counter</span>). No cloud update.</div>
         </div>
 </section>
 
@@ -446,8 +432,8 @@
   </div>
 </div>
 
-<script src="script.js?v=6f442542"></script>
-<script src="cloud.js?v=6f442542"></script>
+<script src="script.js?v=1fcd0007"></script>
+<script src="cloud.js?v=1fcd0007"></script>
 <script>
 if ('serviceWorker' in navigator && window.isSecureContext) {
   window.addEventListener('load', function () {
