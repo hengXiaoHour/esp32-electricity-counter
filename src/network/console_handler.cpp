@@ -244,17 +244,6 @@ void ConsoleHandler::exec(const String &line, String &out) {
   } else if (cmd == "cloud diag") {
     cmdCloudDiag(out);
 
-  } else if (cmd == "ota status" || cmd.equalsIgnoreCase("ota status")) {
-    if (otaHandler) otaHandler->cloudStatus(out);
-    else consoleAppendf(out, "%s", "  OTA not available");
-
-  } else if (cmd.startsWith("ota ")) {
-    cmdOta(cmd.substring(4), out);
-
-  } else if (cmd == "ota") {
-    consoleAppendf(out, "%s", "  Usage: ota <https://github.com/.../releases/download/.../*.bin>");
-    consoleAppendf(out, "%s", "         ota status   (updater state, survives reboot)");
-
   } else if (cmd == "led" || cmd.startsWith("led ")) {
     cmdLed(cmd.length() > 3 ? cmd.substring(4) : "", out);
 
