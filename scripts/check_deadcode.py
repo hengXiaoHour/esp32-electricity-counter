@@ -235,7 +235,11 @@ def main():
     # NOTE: firebase.json / database.rules.json / .firebaserc used to be here
     # (old cloud era). They are back by design - see check_docs.py. Only the
     # alias (.firebaserc) stays local via .gitignore.
-    gone = ["scripts/setup.py", "scripts/deploy.py", "frontend/config.js",
+    # NOTE: scripts/setup.py is back too, as a DIFFERENT tool: the old one was
+    # the service-account-era env wizard (firebase_config.h, frontend/config.js,
+    # Arduino lib Dadoinstaller); the new one provisions a board over serial
+    # (setwifi/setcloud). The path is pinned by content below, not by name.
+    gone = ["scripts/deploy.py", "frontend/config.js",
             "frontend/config.example.js", "doc/opencode_agent/memories.json",
             ".workflow/active.json", ".workflow/PLAN.md", ".workflow/RESEARCH.md",
             "tools",
