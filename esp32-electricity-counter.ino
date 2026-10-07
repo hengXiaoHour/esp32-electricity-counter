@@ -232,12 +232,6 @@ void networkTask(void *pvParameters) {
     wifiMgr.loop();
     wsServer.loop();
     otaHandler.loop();
-    // A verified cloud image waits here: reboot through the deferred path so
-    // flushEnergy() gets the counters into NVS first (same as `reboot`).
-    if (otaHandler.cloudRebootDue()) {
-      otaHandler.consumeCloudReboot();
-      consoleHandler.requestReboot("  (cloud OTA complete - restarting)");
-    }
     updateEcoMode();
     // Second pump for the buzzer state machine (sensorTask pumps it too): the
     // 20ms network tick is what makes the 40ms beep timings land exactly.
