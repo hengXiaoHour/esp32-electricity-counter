@@ -39,6 +39,22 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # has only ever printed PASS has proved nothing.
 FRONTEND = os.environ.get("MOCK_FRONTEND", os.path.join(ROOT, "frontend"))
 
+
+def _firmware_version():
+    """Read the stamped version so the mock can never show a stale one in
+    screenshots or E2E (it once said 3.1.0 for months after the tree moved)."""
+    try:
+        with open(os.path.join(ROOT, "src", "config.h")) as f:
+            m = re.search(r'#define FIRMWARE_VERSION "([^"]+)"', f.read())
+        if m:
+            return m.group(1)
+    except OSError:
+        pass
+    return "3.1.0"
+
+
+FW_VERSION = _firmware_version()
+
 # Same table as scripts/embed_web.py. config.js is gone: it held the Firebase
 # web config and the board no longer talks to Firebase.
 ASSETS = {
