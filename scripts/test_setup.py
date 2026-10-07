@@ -9,6 +9,7 @@ import io
 import os
 import pty
 import sys
+import termios
 import threading
 import time
 
