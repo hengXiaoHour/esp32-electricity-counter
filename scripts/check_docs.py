@@ -862,9 +862,9 @@ def main():
     # --- README claims about the tree ----------------------------------
     c.add("README documents the AsyncTCP patch step that patch_async_tcp.py exists for",
           "patch_async_tcp.py" in rdme and (ROOT / "scripts/patch_async_tcp.py").exists())
-    c.add("README documents the AP-only limitations honestly",
-          all(k in rdme for k in ["No access from outside your own WiFi",
-                                  "No true PWA install", "never sleeps"]))
+    c.add("README documents the OTA limitation honestly",
+          "`cloud-ota` branch" in rdme and "USB or LAN ArduinoOTA only" in rdme,
+          "the Limits section no longer says where cloud updates live")
     c.add("ARCHITECTURE records the mixed-content reason for hosting the UI itself",
           "mixed content" in arch)
 

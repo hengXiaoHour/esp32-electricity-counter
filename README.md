@@ -48,23 +48,73 @@ Prebuilt `.bin` files ride each GitHub release.
 
 Local only: USB as above, or ArduinoOTA on the LAN (network port
 `esp32-elec-counter`). The Firmware panel shows the running version.
+For updates from the cloud, see Limits (the `cloud-ota` branch).
 
 ## Use
+
+Two ways to get the board onto your WiFi — USB serial (fastest) or
+phone + browser (no tools needed).
+
+### Option 1 — USB serial CLI
+
+1. Plug the board into USB and open a serial monitor at **115200 baud**.
+2. Join your home WiFi (quotes when the name has spaces — the board
+   reboots onto it):
+   ```
+   setwifi "Home Router" mypass123
+   ```
+   No PIN is needed on serial — physical access *is* the key.
+   (`clearwifi` forgets the network again.)
+3. The boot banner prints the dashboard address:
+   ```
+   Dashboard: http://192.168.100.177/
+   ```
+   Open it in a browser on the same WiFi. Anything you change there
+   needs the admin PIN (default `1234`).
+
+### Option 2 — phone + browser, no tools
+
+1. On your phone or PC, join the board's own network
+   **`ESP32-Elec-Counter`**, password **`configure123`**.
+2. Open `http://192.168.4.1/`.
+3. Settings → **Home Network (default)** → fill Network + Password →
+   Save (admin PIN `1234`). The board reboots onto your home WiFi and
+   its own network disappears.
+4. Back on home WiFi, find the board's address. Easiest: the Arduino
+   IDE port menu lists it as a network port:
+
+   ![Arduino IDE lists the board as a network port](doc/img/arduino-network-port.png)
+
+   Open `http://<that-ip>/` in the browser. The serial banner shows the
+   same address.
+
+### Cloud web UI (the same dashboard, from anywhere)
+
+The board pushes to `/devices/<MAC>/latest` every second — home WiFi
+only, never on the fallback AP. To aim it at your own Firebase project:
+
+1. Create a Firebase project with a Realtime Database.
+2. Authentication → enable the **Email/Password** provider and create
+   the board user.
+3. Put your Gmail in `database.rules.json` (the `cmd` rule) and deploy
+   it: `firebase deploy --only database`.
+4. On the board: `setcloud <db-host> <email> <pass>` — over serial, or
+   Settings → **Remote Monitoring (cloud)**. Host only, no `https://`,
+   no path. (`clearcloud` stops the mirror.)
+5. Point `cloud-viewer/cloud.js` at your project (`CL_FIREBASE_CONFIG`,
+   `CL_ADMIN_EMAIL`) and deploy hosting. Sign in with the admin Gmail
+   for full control; everyone else is read-only.
 
 - Rename the network with `set_ap` / `reset_ap` (serial or Settings,
   form is `set_ap <name> <pass>`). Changing the fallback AP name and password
   reboots the board; the AP only appears when home WiFi fails. Defaults `ESP32-Elec-Counter` /
   `configure123`.
-- Home WiFi: `setwifi <ssid> <pass>` / `clearwifi`. Cloud mirror: `setcloud
-  <host> <email> <pass>` / `clearcloud` (rules in `database.rules.json`).
-- Anything that changes the board needs the admin PIN (default `1234`).
 - Serial console (`help` for the list): `status`, `wifi`, `cal`, `inject`,
   `reboot`, …
 
 ## Limits
 
-- No access from outside your own WiFi
-- No true PWA install on desktop browsers
-- The board never sleeps
+- Cloud firmware updates live on the `cloud-ota` branch: `main`
+  updates over USB or LAN ArduinoOTA only.
 
 Full version history: `gh release list`.
