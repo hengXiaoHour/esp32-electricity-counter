@@ -318,7 +318,7 @@ class State:
                 "azProgress": 0,
                 "azQueue": [],
                 "lpfAlpha": list(DEFAULTS["lpf_alpha"]),
-                "firmwareVersion": "3.1.0",
+                "firmwareVersion": FW_VERSION,
                 "epoch": self.epoch,
                 "lastMonth": 202610,
                 "resetDay": self.reset_day,
