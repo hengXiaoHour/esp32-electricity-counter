@@ -145,9 +145,10 @@ class Board(object):
     reboot, because native USB re-enumerates). Split out so tests can hand a
     pty instead of real hardware."""
 
-    def __init__(self, opener, settle=SETTLE_S):
+    def __init__(self, opener, settle=None):
         self._opener = opener
-        self._settle = settle
+        # Default binds nothing at def time so tests can shrink the waits.
+        self._settle = SETTLE_S if settle is None else settle
         self.fd = None
 
     def open(self):
