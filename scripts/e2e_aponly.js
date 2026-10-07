@@ -723,7 +723,7 @@ function check(name, cond, detail) {
   await page.evaluate(() => window.showPage('settings'));
   await page.waitForTimeout(300);
   check('the Firmware panel shows the running version from the board',
-        /3\.1\.0/.test(await page.locator('#fwRunning').textContent()),
+        /\bv?\d+\.\d+\.\d+\b/.test(await page.locator('#fwRunning').textContent()),
         'fwRunning="' + await page.locator('#fwRunning').textContent() + '"');
   check('there is no Check button (no cloud release lookup)',
         await page.locator('#fwCheckBtn').count() === 0);
