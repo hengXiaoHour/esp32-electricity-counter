@@ -121,13 +121,18 @@ only, never on the fallback AP. To aim it at your own Firebase project:
 
 Four pages (sidebar on desktop, bottom nav on phones):
 
-- **Dashboard** — one card per channel: live current, power, power
-  factor, monthly kWh with its limit bar. A tripped channel flags red
-  and the buzzer rings.
+<img src="doc/img/ui-dashboard.png" width="760">
+<br>**Dashboard** — one card per channel: live current, power, power
+factor, monthly kWh with its limit bar. A tripped channel flags red
+and the buzzer rings.
+
 - **Analytics** — Live Totals and Per-Channel Power charts.
 - **History** — the Event Log: trips, recoveries, reboots.
-- **Settings** — Admin PIN, Connection, Access Point, Home Network,
-  Remote Monitoring, Calibration, Device Console, About, Firmware.
+
+<img src="doc/img/ui-settings.png" width="760">
+<br>**Settings** — Admin PIN, Connection, Access Point, Home Network,
+Remote Monitoring, Calibration, Device Console, About, Firmware
+(shown unlocked; guest visitors see the same pages read-only).
 
 The top bar always shows connection state, WiFi signal, live
 volts / watts / amps, and the board clock.
