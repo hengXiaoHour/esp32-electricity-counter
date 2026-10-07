@@ -110,6 +110,15 @@ else
   record $? "$(tail -1 /tmp/opencode/verify_jsonesc.log)"
 fi
 
+# --- 2e. Setup wizard (host test, no hardware) ---------------------------
+# scripts/setup.py provisions a board over USB serial (setwifi, setcloud,
+# dashboard IP). The suite drives it against a fake board on a pty that
+# speaks the firmware's exact reply lines, and is mutation-checked (dropped
+# quoting, wrong Saved marker, https regex - all caught).
+stage "Setup wizard (pty)"
+python3 scripts/test_setup.py >/tmp/opencode/verify_setup.log 2>&1
+record $? "$(tail -1 /tmp/opencode/verify_setup.log)"
+
 # --- 3. Frontend syntax + no LEGACY cloud code ---------------------------
 # The pattern below names the REMOVED era only (Firebase SDK tags, the old
 # cloudDb/device-picker plumbing, ntfy). The current push-only remote-
