@@ -713,20 +713,22 @@ function check(name, cond, detail) {
         badDayFrames.length === 0, JSON.stringify(badDayFrames).slice(0, 120));
 
   // ---------------------------------------------------------------------
-  // Firmware (cloud OTA).
+  // Firmware (local OTA only).
   //
-  // The Update button sends a console line (`ota <url>`), not a JSON verb,
-  // so serial / dashboard / cloud share exactly one code path. The mock
-  // validates the release-link shape the way ota_url does and records the
-  // arm without downloading anything.
-  console.log('\n== Firmware (cloud OTA) ==');
+  // No cloud updater: no Check/Update buttons, no release lookup, no `ota`
+  // console verb. The panel shows the running version from the board, and a
+  // LAN flash (USB / ArduinoOTA) is outside this harness. Assert the panel
+  // state AND that an `ota` console line is now rejected as unknown.
+  console.log('\n== Firmware (local OTA only) ==');
   await page.evaluate(() => window.showPage('settings'));
   await page.waitForTimeout(300);
   check('the Firmware panel shows the running version from the board',
         /3\.1\.0/.test(await page.locator('#fwRunning').textContent()),
         'fwRunning="' + await page.locator('#fwRunning').textContent() + '"');
-  check('no update is offered before checking',
-        await page.locator('#fwUpdateRow.hidden').count() === 1);
+  check('there is no Check button (no cloud release lookup)',
+        await page.locator('#fwCheckBtn').count() === 0);
+  check('there is no Update row (no cloud download)',
+        await page.locator('#fwUpdateRow').count() === 0);
 
   const boardOta = await page.evaluate((pin) => new Promise((resolve) => {
     const s = new WebSocket('ws://' + location.host + '/ws');
@@ -734,53 +736,17 @@ function check(name, cond, detail) {
     s.onopen = () => {
       try {
         s.send(JSON.stringify({ cmd: 'console', line: 'ota status', pin: pin }));
-        setTimeout(() => s.send(JSON.stringify({ cmd: 'console', line: 'ota http://evil.example/x.bin', pin: pin })), 350);
-        setTimeout(() => s.send(JSON.stringify({ cmd: 'console', line: 'ota https://github.com/hengXiaoHour/esp32-electricity-counter/releases/download/9.9.9/esp32-classic-9.9.9.bin', pin: pin })), 700);
       } catch (e) { /* recorded below */ }
     };
     s.onmessage = (e) => {
       try { log.push(JSON.parse(e.data)); }
       catch (x) { log.push({ type: 'CORRUPT', out: String(e.data).slice(0, 80) }); }
     };
-    setTimeout(() => { try { s.close(); } catch (x) {} resolve(log); }, 1400);
+    setTimeout(() => { try { s.close(); } catch (x) {} resolve(log); }, 800);
   }), PIN);
   const otaTexts = boardOta.filter(m => m.type === 'console').map(m => m.out || '');
-  check('BOARD reports idle with no download armed',
-        otaTexts.some(t => /OTA: idle/.test(t)), JSON.stringify(otaTexts));
-  check('BOARD refuses a non-release link',
-        otaTexts.some(t => /Not started/.test(t)), JSON.stringify(otaTexts));
-  check('BOARD stages a release-shaped link',
-        otaTexts.some(t => /Staged "esp32-classic-9\.9\.9\.bin"/.test(t)),
-        JSON.stringify(otaTexts));
-
-  // Full click path with the release API stubbed: no live-GitHub dependency,
-  // and the mock (chip esp32) must pick the classic asset, not the S3 one.
-  await page.route('https://api.github.com/**', route => route.fulfill({
-    status: 200, contentType: 'application/json',
-    body: JSON.stringify({ tag_name: '9.9.9', assets: [
-      { name: 'esp32-s3-9.9.9.bin',
-        browser_download_url: 'https://github.com/hengXiaoHour/esp32-electricity-counter/releases/download/9.9.9/esp32-s3-9.9.9.bin' },
-      { name: 'esp32-classic-9.9.9.bin',
-        browser_download_url: 'https://github.com/hengXiaoHour/esp32-electricity-counter/releases/download/9.9.9/esp32-classic-9.9.9.bin' },
-    ] }),
-  }));
-  await page.locator('#fwCheckBtn').scrollIntoViewIfNeeded();
-  await page.click('#fwCheckBtn');
-  await page.waitForTimeout(600);
-  check('a newer release offers the update',
-        await page.locator('#fwUpdateRow:not(.hidden)').count() === 1,
-        'latest="' + await page.locator('#fwLatest').textContent() + '"');
-  check('...naming the classic file for this board',
-        /esp32-classic-9\.9\.9\.bin/.test(await page.locator('#fwUpdateName').textContent()),
-        'name="' + await page.locator('#fwUpdateName').textContent() + '"');
-  const beforeOta = await page.evaluate(() => window.__wsSent.length);
-  await page.click('#fwUpdateBtn');
-  await page.waitForTimeout(400);
-  const otaFrames = (await page.evaluate((n) => window.__wsSent.slice(n), beforeOta))
-    .filter(f => f.indexOf('"console"') >= 0 && f.indexOf('ota https') >= 0);
-  check('Update sends the console line with the asset URL',
-        otaFrames.length >= 1 && otaFrames[0].indexOf('esp32-classic-9.9.9.bin') >= 0,
-        JSON.stringify(otaFrames).slice(0, 160));
+  check('BOARD rejects the removed ota verb as unknown',
+        otaTexts.some(t => /Unknown command/.test(t)), JSON.stringify(otaTexts));
 
   // ---------------------------------------------------------------------
   // Header icon + Connection-panel rows follow the snapshot.
