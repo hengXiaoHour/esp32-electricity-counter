@@ -501,57 +501,63 @@ def main():
     r.add("the cloud monitoring feature is still wired end to end", not cloud_missing,
           "disconnected at: " + ", ".join(cloud_missing))
 
-    # --- 8c. the cloud-OTA path must stay wired end to end ----------------
-    # Same disease as rules 8/8b: the console verb, the validator, the
-    # download, the reboot hook, the snapshot keys and the viewer panel can
-    # each be deleted while everything left looks tidy. Dispatch-shaped where
-    # a bare word would also match help text or comments.
+    # --- 8c. local OTA stays LAN-only (no cloud updater) -----------------
+    # The cloud updater is gone on purpose: no github download, no staged
+    # link, no `ota` console verb, no Check/Update buttons. What must stay
+    # is the LAN path (ArduinoOTA begin/handle) plus the progress signal
+    # the LED, eco and the banner read. Each absence below is asserted as
+    # well as each presence: a re-added cloud layer must fail loudly.
     ota_cpp_s = strip_cpp(read("src/network/ota_handler.cpp"))
     ota_h_s = strip_cpp(read("src/network/ota_handler.h"))
-    ota_url_s = strip_cpp(read("src/network/ota_url.cpp"))
     sysjson_s = strip_cpp(read("src/network/system_json.cpp"))
     clcpp_s = strip_cpp(read("src/network/cloud_push.cpp"))
     cloudjs_s = strip_js(read("cloud-viewer/cloud.js"))
     front_html = read("frontend/index.html")
     build_sh = read("scripts/build.sh")
+    import os as _os
     ota_missing = []
     for what, present in [
-            ("console dispatch (ota <url>)", 'startsWith("ota ")' in ch),
-            ("console dispatch (ota status)", '== "ota status"' in ch),
-            ("console help lists ota", "ota <url>" in ch),
-            ("console calls the handler", has("startCloudUpdate", ch)),
-            ("URL validator validates", has("ota_url_validate", ota_url_s)),
-            ("handler arms from the validator",
-             "ota_url_validate" in ota_cpp_s),
-            ("download runs from loop", "loopCloud()" in ota_cpp_s),
-            ("verified image raises the reboot flag",
-             has("cloudRebootDue", ota_h_s)),
-            ("sketch consumes the flag into a deferred reboot",
-             "cloudRebootDue()" in ino_txt and "consumeCloudReboot()" in ino_txt),
-            ("local snapshot publishes ota + chip",
-             has("otaInProgress", sysjson_s) and
-             re.search(r'\\?"chip\\?"', sysjson_s) is not None),
-            ("cloud snapshot publishes otaRun + chip",
-             "otaRun" in clcpp_s and
-             re.search(r'\\?"chip\\?"', clcpp_s) is not None),
-            ("cloud adapter maps ota onto the banner",
+            ("LAN handler begins ArduinoOTA",
+             "ArduinoOTA.begin()" in ota_cpp_s),
+            ("LAN handler pumps ArduinoOTA",
+             "ArduinoOTA.handle()" in ota_cpp_s),
+            ("progress signal kept for LED/eco/banner",
+             has("isInProgress", ota_h_s)),
+            ("no cloud download loop", "loopCloud" not in ota_cpp_s),
+            ("no staged-link validator call",
+             "ota_url_validate" not in ota_cpp_s),
+            ("no reboot-to-updater flag", "cloudRebootDue" not in ota_h_s),
+            ("sketch has no updater reboot",
+             "cloudRebootDue()" not in ino_txt and
+             "consumeCloudReboot()" not in ino_txt),
+            ("validator files gone",
+             not _os.path.exists(ROOT / "src/network/ota_url.cpp") and
+             not _os.path.exists(ROOT / "src/network/ota_url.h")),
+            ("no staged NVS keys", "ota_url" not in nm and "ota_err" not in nm),
+            ("no console ota verbs",
+             'startsWith("ota ")' not in ch and '"ota status"' not in ch and
+             "cmdOta" not in ch),
+            ("local snapshot still publishes ota",
+             has("otaInProgress", sysjson_s)),
+            ("cloud snapshot still mirrors otaRun",
+             "otaRun" in clcpp_s),
+            ("cloud adapter still maps ota onto the banner",
              "otaRun" in cloudjs_s and "otaProgress" in cloudjs_s),
-            ("viewer checks releases", has("checkFirmware", js)),
-            ("viewer starts the update", has("startFirmwareUpdate", js)),
-            ("Check button wired", 'onclick="checkFirmware()"' in front_html),
-            ("Update button wired", 'onclick="startFirmwareUpdate()"' in front_html),
-            ("firmware panel exists", 'id="fwRunning"' in front_html),
+            ("no release checker in the viewer", "checkFirmware" not in js),
+            ("no update sender in the viewer",
+             "startFirmwareUpdate" not in js),
+            ("no Check button", 'onclick="checkFirmware()"' not in front_html),
+            ("no Update button",
+             'onclick="startFirmwareUpdate()"' not in front_html),
+            ("firmware panel still shows the running version",
+             'id="fwRunning"' in front_html),
+            ("no release API call", "api.github.com" not in js),
             ("classic build path kept", "--classic" in build_sh),
-            ("version stamp kept", "--version" in build_sh),
-            ("banner flag spans the download", "cloudActive" in ota_h_s),
-            ("status reports mid-download", "cloudBusy || cloudActive" in ota_cpp_s),
-            ("TCP probe stages the failure", "no route to github.com:443" in ota_cpp_s),
-            ("raw-TLS probe fenced off the download",
-             ota_cpp_s.count("setInsecure") == 1 and "probe.stop()" in ota_cpp_s)]:
+            ("version stamp kept", "--version" in build_sh)]:
         if not present:
             ota_missing.append(what)
-    r.add("the cloud-OTA feature is still wired end to end", not ota_missing,
-          "disconnected at: " + ", ".join(ota_missing))
+    r.add("OTA is local-only and still wired end to end", not ota_missing,
+          "broken at: " + ", ".join(ota_missing))
 
     # --- 9. the defaults the docs quote must be the ones the code uses ------
     # Two copies of "ESP32-Elec-Counter" exist on purpose (config.h for the
