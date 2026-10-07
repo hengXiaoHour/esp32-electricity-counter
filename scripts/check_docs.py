@@ -102,7 +102,6 @@ def main():
     cl_cpp = read("src/network/cloud_push.cpp")
     cl_test = read("scripts/test_cloud_cfg.c")
     verify_sh = read("scripts/verify_all.sh")
-    ota_url_cpp = read("src/network/ota_url.cpp")
     ota_h = read("src/network/ota_handler.h")
     ota_cpp = read("src/network/ota_handler.cpp")
     cloudjs = read("cloud-viewer/cloud.js")
