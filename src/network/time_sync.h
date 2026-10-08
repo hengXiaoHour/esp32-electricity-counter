@@ -56,6 +56,12 @@ public:
   // Seconds since the last accepted sync, for the dashboard's staleness hint.
   uint32_t secondsSinceSync() const;
 
+  // Drift of the running clock from the last accepted time track, in seconds
+  // (live - tracked). ~0 on a disciplined clock. A value sustained beyond
+  // the rollover guard window means something moved time while we were not
+  // looking - callers that make month/billing decisions should wait for 0.
+  int64_t liveTrackDriftSeconds() const;
+
 private:
   // Shared validation + recording for both sources. Returns true if the epoch
   // was accepted (range check, then the jump check against the live clock).
