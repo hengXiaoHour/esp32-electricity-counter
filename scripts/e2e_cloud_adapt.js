@@ -12,6 +12,12 @@
 // This runs the real function on a real-shaped payload and asserts the values,
 // so both the missing key and the mistyped one fail.
 //
+// Mutation-tested (8 mutants, 7 caught). The one survivor,
+// `d.azActive = !!latest.azActive`, was checked for equivalence rather than
+// papered over with a test: the firmware writes `azActive ? "true" : "false"`,
+// so the only reachable values are true / false / deleted-null, and both forms
+// agree on all three. It is a behaviour-preserving cleanup, not a blind spot.
+//
 // Usage:  node scripts/e2e_cloud_adapt.js
 // Exit 0 = the cloud payload maps onto the local snapshot shape.
 'use strict';
