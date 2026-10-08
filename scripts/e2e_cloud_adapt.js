@@ -50,8 +50,11 @@ function loadAdapter() {
   if (cut < 0) throw new Error('cl_boot IIFE not found - the file layout changed');
   const head = src.slice(0, cut);
   if (!/function cl_adapt\s*\(/.test(head)) throw new Error('cl_adapt not found before cl_boot');
+  // The head still installs the page-error hook on `window`; give it a stub so
+  // the pure functions can be evaluated outside a browser.
+  const win = { __cl_errs: [], addEventListener() {} };
   // eslint-disable-next-line no-new-func
-  return new Function(`${head}\nreturn { cl_adapt: cl_adapt, cl_toArray: cl_toArray };`)();
+  return new Function('window', `${head}\nreturn { cl_adapt: cl_adapt, cl_toArray: cl_toArray };`)(win);
 }
 
 // --- fixtures -------------------------------------------------------------
