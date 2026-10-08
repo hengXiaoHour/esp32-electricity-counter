@@ -500,7 +500,14 @@ function saveCloudSettings() {
   document.getElementById('devicePicker').addEventListener('change', function (e) {
     cl_selectDevice(e.target.value);
   });
-  document.getElementById('cloudReloadBtn').addEventListener('click', cl_loadDevices);
+  // No manual Reload button: opening Settings re-fetches the device list, so
+  // the MAC picker stays fresh without extra chrome.
+  var _clShowPage = window.showPage;
+  window.showPage = function (page) {
+    var r = _clShowPage.apply(this, arguments);
+    if (page === 'settings') cl_loadDevices();
+    return r;
+  };
 
   cl_auth.onAuthStateChanged(function (user) {
     var email = user && user.email ? user.email : null;
