@@ -110,6 +110,13 @@ let failures = 0;
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   const pageErrors = [];
   page.on('pageerror', (e) => pageErrors.push(String(e && e.message)));
+  // The real SDK must NOT load. It warns "Firebase is already defined" and then
+  // silently REPLACES window.firebase, so firebase.database() became a live
+  // client that never delivers a value in this sandbox: every field stayed at
+  // its HTML default and the admin check never fired. The first run of this
+  // test "passed" nothing for exactly that reason - it was measuring a page
+  // with no transport at all, not a working cloud viewer.
+  await page.route('**/firebasejs/**', (route) => route.abort());
   await page.addInitScript(FIREBASE_STUB);
   await page.goto(base + '/', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1500);
