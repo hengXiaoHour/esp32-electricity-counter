@@ -398,10 +398,10 @@ void sensorTask(void *pvParameters) {
       updateSharedData();
 
       // Persist energy to NVS every ~15s (187 cycles × 80ms). 15 s, not 5 s:
-      // NVS flash is rated ~100k erase cycles and every commit stages writes,
-      // so a tighter loop buys little and wears pages. Worst-case bound at
-      // 15 s is still ~5.8M commits / ~336 days continuous worst case; with
-      // NVS page rotation it is years. RTC shadow would cut it further.
+      // NVS flash is rated ~100k erase cycles; 15 s = 5,760 commits/day, so
+      // the absolute worst case (same page erased every commit) is ~17 days;
+      // with NVS page rotation (~128 commits per page-erase) it is years.
+      // A tighter 5 s loop buys nothing but wear.
       static uint32_t lastEnergySave = 0;
       if (millis() - lastEnergySave > 15000) {
         lastEnergySave = millis();
