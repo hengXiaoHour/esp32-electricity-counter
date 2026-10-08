@@ -96,6 +96,11 @@ public:
   bool loadLedType();
   void saveLedType(bool rgb);
 
+  // OTA verification flag (see nvs_manager.cpp): set just before the
+  // post-OTA restart, verified-and-cleared once the network is up.
+  bool loadOtaPending();
+  void saveOtaPending(bool pending);
+
   // LPF alpha per channel — 1.0 = no filtering
   float loadLpfAlpha(uint8_t channel);
   void saveLpfAlpha(uint8_t channel, float value);
