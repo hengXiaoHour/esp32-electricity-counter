@@ -230,6 +230,20 @@ void NVSManager::saveNoiseFloor(uint8_t channel, float value) {
   DEBUG_LOG("  [NVS] ch%d noise floor: %.3f A\n", channel + 1, value);
 }
 
+// --- OTA verification flag ---
+// Set by the OTA success handler just before ESP.restart(), cleared once the
+// new firmware proves itself by bringing the network up. If it is still set
+// at the next boot's first isReady() (and stays set because WiFi never came
+// up), the event log says the last update did not verify.
+
+bool NVSManager::loadOtaPending() {
+  return prefs.getBool("ota_pend", false);
+}
+
+void NVSManager::saveOtaPending(bool pending) {
+  prefs.putBool("ota_pend", pending);
+}
+
 // --- LED type ---
 
 bool NVSManager::loadLedType() {
