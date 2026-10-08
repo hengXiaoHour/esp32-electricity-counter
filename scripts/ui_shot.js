@@ -219,7 +219,7 @@ const height = parseInt(process.argv[5] || '900', 10);
       for (let j = i + 1; j < buttons.length; j++) {
         const a = buttons[i], b = buttons[j];
         const xOverlap = a.left < b.right - 0.5 && b.left < a.right - 0.5;
-        const yOverlap = a.top < b.top + 38 && b.top < a.top + 38;
+        const yOverlap = a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
         if (xOverlap && yOverlap) out.overlapping.push(`${a.text} / ${b.text}`);
       }
     }
