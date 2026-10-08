@@ -31,6 +31,20 @@ SystemData systemData;
 SemaphoreHandle_t dataMutex;
 
 static uint32_t lastSensorCycle = 0;
+TaskHandle_t networkTaskHandle = NULL;
+TaskHandle_t sensorTaskHandle = NULL;
+
+// Chunked delay that keeps the task-watchdog entry fed. Used for the one
+// intentionally blocking path on networkTask (the serial LED test, ~8.7 s) -
+// anything shorter just uses esp_task_wdt_reset() per loop turn.
+static void wdtSleep(uint32_t ms) {
+  while (ms > 0) {
+    uint32_t chunk = ms > 200 ? 200 : ms;
+    delay(chunk);
+    esp_task_wdt_reset();
+    ms -= chunk;
+  }
+}
 
 // Auto-zero is processed in small chunks per sensor cycle so the sensing loop
 // (update + broadcast) never stalls while a channel is being captured. More
