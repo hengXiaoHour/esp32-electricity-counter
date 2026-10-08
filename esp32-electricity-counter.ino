@@ -523,7 +523,8 @@ void setup() {
   // Shared text-command engine: drives both the serial console and the web
   // UI console (via processCommand -> WebSocket).
   // Blocking commands (test led, nvs_debug, reboot) are deferred and run from
-  // loop() on Core 1 where blocking is safe (no WDT, no network stall).
+  // loop() on Core 1; loop() is watchdog-subscribed too (10 s), so keep the
+  // blocking ones short.
   consoleHandler.begin(&nvs, &powerCalc, &systemData, &dataMutex, &buzzer,
                        &limitMgr, &wifiMgr, &otaHandler, &statusLED, &cloudPush);
 
