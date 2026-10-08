@@ -1,12 +1,12 @@
 // ESP32 Counter — Service Worker
 // Network-first with cache fallback. Registers only under a secure context,
 // so this file is inert when the dashboard is served over plain http:// on a LAN.
-const CACHE_NAME = 'esp32-counter-cloud-001b9eec';
+const CACHE_NAME = 'esp32-counter-cloud-03ca01f3';
 const SHELL = [
   './index.html',
-  './style.css?v=001b9eec',
-  './script.js?v=001b9eec',
-  './cloud.js?v=001b9eec',
+  './style.css?v=03ca01f3',
+  './script.js?v=03ca01f3',
+  './cloud.js?v=03ca01f3',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png'

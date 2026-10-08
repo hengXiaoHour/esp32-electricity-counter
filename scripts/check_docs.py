@@ -635,6 +635,32 @@ def main():
     c.add("the cloud adapter maps the OTA state onto the shared banner",
           "otaRun" in cloudjs and "otaProgress" in cloudjs,
           "remote progress would never render")
+    # --- calibration key parity (the 2026-10-08 blank-panel bug) --------
+    # One renderer, two serializers. buildSystemJson() (LAN) and
+    # CloudPush::snapshot() (cloud) publish the SAME dashboard fields under the
+    # SAME names, and cl_adapt maps the cloud one back onto the local shape.
+    # They drifted once: the cloud payload carried no calibration at all, so
+    # Settings > Calibration rendered blank in the cloud viewer while the board
+    # held every value. Assert the three sets are equal instead of trusting
+    # that a future edit remembers to update all three.
+    cal_keys = ("voltageCalibration", "currentCalibration", "rmsSamples",
+                "azBatches", "noiseFloor", "azActive", "azChannel",
+                "azProgress", "azQueue", "lpfAlpha")
+    sysjson_s, clcpp_s = strip_comments(sysjson), strip_comments(cl_cpp)
+    cloudjs_s = re.sub(r"/\*.*?\*/", " ", cloudjs, flags=re.S)
+    cloudjs_s = re.sub(r"^\s*//.*$", "", cloudjs_s, flags=re.M)
+    missing_lan = [k for k in cal_keys if ('\\"%s\\"' % k) not in sysjson_s]
+    missing_cloud = [k for k in cal_keys if ('\\"%s\\"' % k) not in clcpp_s]
+    missing_map = [k for k in cal_keys if ("latest.%s" % k) not in cloudjs_s]
+    c.add("both snapshots publish the same calibration keys (LAN)",
+          not missing_lan, "missing: %s" % ",".join(missing_lan))
+    c.add("both snapshots publish the same calibration keys (cloud push)",
+          not missing_cloud, "missing: %s" % ",".join(missing_cloud))
+    c.add("cl_adapt maps every calibration key the cloud push sends",
+          not missing_map, "unmapped: %s" % ",".join(missing_map))
+    c.add("the cloud snapshot copies the calibration under dataMutex too",
+          _cal_under_lock(cl_cpp),
+          "a torn float read would publish a half-updated panel")
     c.add("the cloud payload has no stray quote before \"time\" (3.2.0 broke every push)",
           'body += ",\\"time\\":{\\"ok\\":"' in cl_cpp and
           'body += "\\",\\"time\\"' not in cl_cpp,
