@@ -982,7 +982,8 @@ def main():
     # --- the gates the docs point at must exist ------------------------
     for s in ["scripts/verify_all.sh", "scripts/embed_web.py",
               "scripts/test_auth_gate.c", "scripts/mock_device.py",
-              "scripts/e2e_aponly.js", "scripts/setup.py"]:
+              "scripts/e2e_aponly.js", "scripts/setup.py",
+              "scripts/e2e_cloud_adapt.js"]:
         c.add("referenced tooling exists: %s" % s, (ROOT / s).exists())
     c.add("the README documents the setup wizard",
           "python3 scripts/setup.py" in rdme,
