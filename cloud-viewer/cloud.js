@@ -152,7 +152,7 @@ function cl_adapt(latest, mac) {
   d.ota = (latest.otaRun === true);
   d.otaProgress = (typeof latest.otaPct === 'number') ? latest.otaPct : 0;
   d.time = latest.time;
-  d.ch = latest.ch;
+  d.ch = cl_toArray(latest.ch);
   d.events = cl_toArray(latest.events);
   d.cloud = {
     en: !!(latest.cloud && latest.cloud.en),

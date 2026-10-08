@@ -145,13 +145,19 @@ function main() {
   ok('events is an array', Array.isArray(d.events), typeof d.events);
 
   // An older board (payload without the block) must not invent values: the
-  // renderer's typeof guards have to see "absent", not NaN/zero.
+  // renderer's typeof guards have to see "absent", not NaN/zero, and the
+  // auto-zero fields must map to the board's own IDLE values (getAutoZeroChannel
+  // returns -1 while nothing is calibrating) rather than to a plausible-looking
+  // channel 1 that would render a wrong "calibrating Ch1" if azActive ever
+  // arrived true on a later push.
   const old = cl_adapt({ v: 231.4, ch: [], events: [] }, 'EC64C998B0EC');
   ok('a payload without calibration maps to undefined, not 0',
     old.voltageCalibration === undefined && old.currentCalibration === undefined &&
     old.rmsSamples === undefined && old.noiseFloor === undefined &&
     old.lpfAlpha === undefined && old.azActive === false,
     JSON.stringify({ v: old.voltageCalibration, r: old.rmsSamples, nf: old.noiseFloor }));
+  eq('an absent auto-zero block maps to the board idle values',
+    [old.azChannel, old.azProgress, old.azQueue], [-1, 0, []]);
 
   console.log(`\n${checks - failures}/${checks} cloud adapter checks passed`);
   process.exit(failures ? 1 : 0);
