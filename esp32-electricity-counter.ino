@@ -369,8 +369,10 @@ void networkTask(void *pvParameters) {
 
 void sensorTask(void *pvParameters) {
   TickType_t lastWake = xTaskGetTickCount();
+  esp_task_wdt_add(NULL);  // subscribe this task to the TWDT
 
   while (true) {
+    esp_task_wdt_reset();
     float deltaSeconds = (millis() - lastSensorCycle) / 1000.0f;
     if (deltaSeconds < 0.001f) deltaSeconds = 0.1f;
     lastSensorCycle = millis();
