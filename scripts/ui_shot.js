@@ -210,11 +210,16 @@ const height = parseInt(process.argv[5] || '900', 10);
     // the CSS says: that is exactly how Cancel was cut in half.
     out.clipped = buttons.filter((b) => b.left < out.cardLeft - 0.5 || b.right > out.cardRight + 0.5)
       .map((b) => b.text);
+    // Overlap needs BOTH axes to intersect. A stacked column (the <=480px
+    // layout) shares every x, so an x-only test reports three phantom
+    // collisions - the first version of this check did exactly that.
     out.overlapping = [];
-    const sorted = [...buttons].sort((a, b) => a.left - b.left);
-    for (let i = 1; i < sorted.length; i++) {
-      if (sorted[i].left < sorted[i - 1].right - 0.5) {
-        out.overlapping.push(`${sorted[i - 1].text} / ${sorted[i].text}`);
+    for (let i = 0; i < buttons.length; i++) {
+      for (let j = i + 1; j < buttons.length; j++) {
+        const a = buttons[i], b = buttons[j];
+        const xOverlap = a.left < b.right - 0.5 && b.left < a.right - 0.5;
+        const yOverlap = a.top < b.top + 38 && b.top < a.top + 38;
+        if (xOverlap && yOverlap) out.overlapping.push(`${a.text} / ${b.text}`);
       }
     }
     overlay.classList.add('hidden');
