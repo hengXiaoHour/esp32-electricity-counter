@@ -499,6 +499,9 @@ void setup() {
       STATUS_LOG("  [NVS] restored %d forensic event(s) from flash\n", n);
     }
   }
+  if (nvs.loadOtaPending()) {
+    STATUS_LOG("  [BOOT] OTA pending verification - will clear once the network is up\n");
+  }
 
   // === Phase 2: Init hardware with defaults first ===
   DEBUG_LOG("  %-19s%s (%s)\n", "Status LED", "OK",
