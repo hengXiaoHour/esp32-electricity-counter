@@ -212,7 +212,8 @@ bool CloudPush::ensureLogin() {
 // log: per channel n/a/w/pf/kwh/s/mkwh, plus firmware version and the last
 // 10 events. The RTDB .validate only requires dev/epoch/uptime/rssi/v/ch,
 // so older rules still accept this - the extra keys are allowed.
-bool CloudPush::snapshot(SystemData *sysData, SemaphoreHandle_t *mutex, String &body) {
+bool CloudPush::snapshot(SystemData *sysData, SemaphoreHandle_t *mutex,
+                         PowerCalculator *powerCalc, String &body) {
   if (!sysData || !mutex) return false;
   bool locked = (xSemaphoreTake(*mutex, pdMS_TO_TICKS(50)) == pdTRUE);
 
