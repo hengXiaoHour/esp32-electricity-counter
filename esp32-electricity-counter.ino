@@ -555,7 +555,6 @@ void setup() {
   xTaskCreatePinnedToCore(networkTask, "network", 8192, NULL, 2, &networkTaskHandle, 0);
   xTaskCreatePinnedToCore(sensorTask, "sensor", 8192, NULL, 2, &sensorTaskHandle, 1);
 
-  // Challenge: sized specifically to not reset continuity & geometry...
   // Task watchdog: panic-reboot if a subscribed task stalls > 10 s, so a hung
   // loop self-heals instead of freezing the dashboard silently. Covers
   // networkTask, sensorTask and the Arduino loop(). The idle task on CPU0
