@@ -286,7 +286,12 @@ def main() -> int:
     # Service worker: same logic, cloud cache name + cloud shell.
     # Both carry the content stamp so a deploy always busts every cache.
     sw = (FRONT / "sw.js").read_text(encoding="utf-8")
-    sw = sw.replace("esp32-counter-v15", "esp32-counter-cloud-" + stamp)
+    # Match the cache name by PATTERN, not by a literal: the board copy bumps
+    # it (v15 -> v16 ...) whenever the shell changes, and a hardcoded literal
+    # here silently stopped renaming the cloud copy the first time it moved -
+    # the cloud app then reused the BOARD's cache name, so a board-served
+    # install and the hosted copy fought over one cache.
+    sw = re.sub(r"esp32-counter-v\d+", "esp32-counter-cloud-" + stamp, sw, count=1)
     sw = re.sub(
         r"const SHELL = \[.*?\]",
         """const SHELL = [
