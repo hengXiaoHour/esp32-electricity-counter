@@ -265,6 +265,40 @@ bool CloudPush::snapshot(SystemData *sysData, SemaphoreHandle_t *mutex,
     strncpy(evM[i], ev.message, EVENT_MSG_LEN - 1);
     evM[i][EVENT_MSG_LEN - 1] = '\0';
   }
+  // Calibration + auto-zero state, copied under the same lock and named
+  // EXACTLY as buildSystemJson() names it (src/network/system_json.cpp).
+  //
+  // These were missing once: the cloud viewer renders the very same
+  // Calibration panel as the LAN dashboard (script.js is one file for both),
+  // so without them every field stayed blank/100/- and the admin could only
+  // read the real numbers over USB. Two serializers, one shared renderer -
+  // the names must not drift, and check_docs.py enforces the parity.
+  float voltCal = sysData->voltageCalibration;
+  float currCal[NUM_CHANNELS];
+  for (int i = 0; i < NUM_CHANNELS; i++) currCal[i] = sysData->currentCalibration[i];
+  uint16_t rmsSamples = sysData->rmsSamples;
+  uint16_t azBatches = 0;
+  float noiseFloor[NUM_CHANNELS], lpfAlpha[NUM_CHANNELS];
+  bool azActive = false;
+  int azChannel = -1, azProgress = 0;
+  int azQueue[NUM_CHANNELS];
+  int azQueueLen = 0;
+  for (int i = 0; i < NUM_CHANNELS; i++) {
+    noiseFloor[i] = 0.0f;
+    lpfAlpha[i] = 1.0f;
+    azQueue[i] = -1;
+  }
+  if (powerCalc) {
+    azBatches = powerCalc->azBatches;
+    for (int i = 0; i < NUM_CHANNELS; i++) {
+      noiseFloor[i] = powerCalc->noiseFloor[i];
+      lpfAlpha[i] = powerCalc->lpfAlpha[i];
+    }
+    azActive = powerCalc->isAutoZeroActive();
+    azChannel = powerCalc->getAutoZeroChannel();
+    azProgress = powerCalc->getAutoZeroProgress();
+    azQueueLen = powerCalc->getAutoZeroQueue(azQueue, NUM_CHANNELS);
+  }
 
   if (locked) xSemaphoreGive(*mutex);
 
