@@ -275,6 +275,13 @@ void LimitManager::logEnergyWrite(uint8_t ch, float v, const char *src) {
   xSemaphoreGive(*dataMutex);
 }
 
+void LimitManager::logOTAVerified() {
+  if (!sysData || !dataMutex) return;
+  if (xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) != pdTRUE) return;
+  logForensicEvent(0, STATUS_OK, "OTA verified — network up", 0.0f);
+  xSemaphoreGive(*dataMutex);
+}
+
 void LimitManager::auditForceRollover() {
   if (!sysData || !dataMutex) return;
 

@@ -39,6 +39,11 @@ public:
   // Takes dataMutex internally; never call while holding it.
   void auditForceRollover();
 
+  // Forensic marker written once the firmware that a post-OTA reboot booted
+  // into proves itself by bringing the network up. Takes dataMutex internally;
+  // never call while holding it.
+  void logOTAVerified();
+
 private:
   NVSManager *nvs;
   PowerCalculator *powerCalc;

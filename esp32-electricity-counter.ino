@@ -371,10 +371,7 @@ void networkTask(void *pvParameters) {
           nvs.saveOtaPending(false);
           nvs.commit();
           STATUS_LOG("  [OTA] update verified - network up, marker cleared\n");
-          if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-            limitMgr.logForensicEvent(0, STATUS_OK, "OTA verified — network up", 0.0f);
-            xSemaphoreGive(dataMutex);
-          }
+          limitMgr.logOTAVerified();
         }
       } else if (!otaFlagChecked) {
         otaFlagChecked = true;  // no pending OTA: nothing to verify
