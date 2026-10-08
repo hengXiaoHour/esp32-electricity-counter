@@ -14,6 +14,7 @@
 #include "src/utils/log_gate.h"
 
 #include <esp_bt.h>
+#include <esp_task_wdt.h>
 
 NVSManager      nvs;
 PowerCalculator powerCalc;
