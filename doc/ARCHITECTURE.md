@@ -244,7 +244,7 @@ Rules the code actually follows:
   `broadcastData()` (which is the only caller of `buildSystemJson()` now).
   `ConsoleHandler::flushEnergy()` also takes it: `commit()` is
   `prefs.end(); prefs.begin()`, which is *not* thread-safe against
-  `sensorTask`'s 5 s save. With STA gone, `reboot` is the only restart path, so
+  `sensorTask`'s 15 s save. With STA gone, `reboot` is the only restart path, so
   that flush is the last chance to get counters into flash.
 - Timeouts are bounded (20–100 ms) and the result is **checked**; on timeout the
   cycle is skipped rather than blocking.
@@ -510,12 +510,12 @@ ignored.
 **Energy durability** is a two-tier scheme, because losing months of kWh to a
 power cut is unacceptable:
 
-1. `sensorTask` writes all six counters **and commits** every ~5 s. The commit is
+1. `sensorTask` writes all six counters **and commits** every ~15 s. The commit is
    essential — `saveEnergyKWh` only stages a `putFloat` in the `Preferences`
    handle, so without it the values never reach flash and any restart silently
    reverts the counters to whatever the last command happened to commit.
 2. `flushEnergyToNvs()` is registered as `WiFiManager`'s pre-restart hook, so the
-   STA connect-timeout reboot path also flushes — the 5 s save alone can lag a
+   STA connect-timeout reboot path also flushes — the 15 s save alone can lag a
    reboot by a full interval. It takes `dataMutex` even though it runs from
    Core 0 with no lock held, because `commit()` is `prefs.end(); prefs.begin()`
    and is not thread-safe against the Core 1 save.
@@ -881,7 +881,7 @@ The LED blinks yellow while `isInProgress()` and the dashboard shows
 | Network task tick | 20 ms | `vTaskDelayUntil` in `networkTask` |
 | Clock re-lend | 10 min | `timeSyncTimer` in the dashboard |
 | ntfy retry | — | gone with ntfy |
-| NVS energy save | ~5 s | `sensorTask` |
+| NVS energy save | ~15 s | `sensorTask` |
 | Eco decision | — | gone with eco mode |
 | Auto-zero | 2 batches per 80 ms cycle, 1 batch total | `AZ_BATCHES_PER_CYCLE` / `AZ_BATCHES` |
 | WiFi connect timeout / retry | — | gone with STA |

@@ -419,7 +419,7 @@ void ConsoleHandler::flushEnergy() {
 
   // commit() is prefs.end() + prefs.begin(), which is NOT thread-safe, and
   // sensorTask does the same putFloat+commit on this same Preferences handle
-  // every ~5 s under dataMutex. With STA gone, `reboot` is now the ONLY
+  // every ~15 s under dataMutex. With STA gone, `reboot` is now the ONLY
   // restart path in the firmware, so this flush is the last chance to get the
   // counters into flash - it must not race the periodic save.
   //
@@ -682,7 +682,7 @@ void ConsoleHandler::cmdSetAp(const String &args, String &out) {
   }
 
   // dataMutex: commit() is prefs.end()+prefs.begin() and is not thread-safe
-  // against sensorTask's 5 s energy save, which takes the same handle under
+  // against sensorTask's 15 s energy save, which takes the same handle under
   // this same mutex.
   bool locked = (xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) == pdTRUE);
   nvs->saveApCredentials(ssidBuf, passBuf);
