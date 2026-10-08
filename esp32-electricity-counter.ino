@@ -547,7 +547,7 @@ void setup() {
   // Shared text-command engine: drives both the serial console and the web
   // UI console (via processCommand -> WebSocket).
   // Blocking commands (test led, nvs_debug, reboot) are deferred and run from
-  // loop() on Core 1; loop() is watchdog-subscribed too (10 s), so keep the
+  // loop() on Core 1; loop() is watchdog-subscribed too (30 s), so keep the
   // blocking ones short.
   consoleHandler.begin(&nvs, &powerCalc, &systemData, &dataMutex, &buzzer,
                        &limitMgr, &wifiMgr, &otaHandler, &statusLED, &cloudPush);
@@ -580,13 +580,13 @@ void setup() {
   xTaskCreatePinnedToCore(networkTask, "network", 8192, NULL, 2, &networkTaskHandle, 0);
   xTaskCreatePinnedToCore(sensorTask, "sensor", 8192, NULL, 2, &sensorTaskHandle, 1);
 
-  // Task watchdog: panic-reboot if a subscribed task stalls > 10 s, so a hung
+  // Task watchdog: panic-reboot if a subscribed task stalls > 30 s, so a hung
   // loop self-heals instead of freezing the dashboard silently. Covers
   // networkTask, sensorTask and the Arduino loop(). The idle task on CPU0
   // stays watched from sdkconfig, INT WDT (300 ms) stays on.
   {
     esp_task_wdt_config_t cfg = {
-      .timeout_ms = 10000,
+      .timeout_ms = 30000,
       .idle_core_mask = (1 << 0),
       .trigger_panic = true,
     };
