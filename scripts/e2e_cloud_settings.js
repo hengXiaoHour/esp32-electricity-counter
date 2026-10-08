@@ -142,7 +142,10 @@ let failures = 0;
       azBatches: val('azBatches'),
       resetDay: val('resetDay'),
       currCal: all('currCal_'),
-      noiseFloor: all('noiseFloor_'),
+      // The id is nf_<i> (noise floor), not noiseFloor_<i>: asserting against
+      // the wrong prefix returns an empty array, which reads as "the panel
+      // rendered no rows" rather than "you spelled it wrong".
+      noiseFloor: all('nf_'),
       lpf: all('lpf_'),
       cards: document.querySelectorAll('.channel-card').length,
       // The panel must actually be on screen, not just present in the DOM:
