@@ -129,6 +129,7 @@ def main():
     ota_cpp = read("src/network/ota_handler.cpp")
     cloudjs = read("cloud-viewer/cloud.js")
     build_sh = read("scripts/build.sh")
+    build_py = read("scripts/build_cloud_viewer.py")
 
     # --- task layout ---------------------------------------------------
     task_calls = ino.count("xTaskCreatePinnedToCore")
