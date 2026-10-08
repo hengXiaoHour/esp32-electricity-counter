@@ -2,6 +2,7 @@
 
 #include <time.h>
 #include "../utils/log_gate.h"
+#include "../network/time_sync.h"
 
 void LimitManager::begin(NVSManager &nvsRef,
                          PowerCalculator &powerCalcRef, SystemData *sysDataRef,
