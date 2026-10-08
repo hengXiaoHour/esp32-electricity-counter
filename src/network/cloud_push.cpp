@@ -276,8 +276,7 @@ bool CloudPush::snapshot(SystemData *sysData, SemaphoreHandle_t *mutex,
   float voltCal = sysData->voltageCalibration;
   float currCal[NUM_CHANNELS];
   for (int i = 0; i < NUM_CHANNELS; i++) currCal[i] = sysData->currentCalibration[i];
-  uint16_t rmsSamples = sysData->rmsSamples;
-  uint8_t azBatches = 0;
+  uint16_t rmsSamples = sysData->rmsSamples;  uint8_t azBatches = 0;
   float noiseFloor[NUM_CHANNELS], lpfAlpha[NUM_CHANNELS];
   bool azActive = false;
   int azChannel = -1, azProgress = 0;
