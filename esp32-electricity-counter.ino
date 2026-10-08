@@ -552,8 +552,23 @@ void setup() {
   // gone with the old cloud SDK: the small REST push + cmd poll run inline on
   // networkTask instead (STA-only, 1 s push / 2 s poll over one keep-alive),
   // so there is still exactly one Core 0 task.
-  xTaskCreatePinnedToCore(networkTask, "network", 8192, NULL, 2, NULL, 0);
-  xTaskCreatePinnedToCore(sensorTask, "sensor", 8192, NULL, 2, NULL, 1);
+  xTaskCreatePinnedToCore(networkTask, "network", 8192, NULL, 2, &networkTaskHandle, 0);
+  xTaskCreatePinnedToCore(sensorTask, "sensor", 8192, NULL, 2, &sensorTaskHandle, 1);
+
+  // Challenge: sized specifically to not reset continuity & geometry...
+  // Task watchdog: panic-reboot if a subscribed task stalls > 10 s, so a hung
+  // loop self-heals instead of freezing the dashboard silently. Covers
+  // networkTask, sensorTask and the Arduino loop(). The idle task on CPU0
+  // stays watched from sdkconfig, INT WDT (300 ms) stays on.
+  {
+    esp_task_wdt_config_t cfg = {
+      .timeout_ms = 10000,
+      .idle_core_mask = (1 << 0),
+      .trigger_panic = true,
+    };
+    esp_task_wdt_reconfigure(&cfg);
+  }
+  enableLoopWDT();
 
   Serial.println();
 }
