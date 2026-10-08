@@ -103,7 +103,13 @@ dashboard address. Or do it by hand:
 ### Cloud web UI (the same dashboard, from anywhere)
 
 The board pushes to `/devices/<MAC>/latest` every second — home WiFi
-only, never on the fallback AP. To aim it at your own Firebase project:
+only, never on the fallback AP. The payload carries the same fields as the
+LAN broadcast (`buildSystemJson`), including the calibration block — voltage
+and per-channel current calibration, noise floor, LPF alpha, RMS samples and
+the auto-zero state — so Settings reads identically on both UIs. Passwords
+never leave the board.
+
+To aim it at your own Firebase project:
 
 1. Create a Firebase project with a Realtime Database.
 2. Authentication → enable the **Email/Password** provider and create
