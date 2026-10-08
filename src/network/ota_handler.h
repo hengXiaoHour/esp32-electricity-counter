@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include "../config.h"
+#include "../utils/nvs_manager.h"
 
 // Local (LAN) ArduinoOTA only, under hostname `esp32-elec-counter`, begun
 // from networkTask once the radio has an IP. There is no cloud updater: no
@@ -11,7 +12,7 @@
 // hold and the dashboard's OTA banner while a LAN flash is running.
 class OTAHandler {
 public:
-  void begin(const char *hostname = "esp32-elec-counter");
+  void begin(const char *hostname = "esp32-elec-counter", NVSManager *nvsRef = nullptr);
   void loop();
 
   bool isInProgress() const { return inProgress; }
@@ -20,4 +21,5 @@ public:
 private:
   bool inProgress = false;
   uint8_t progress = 0;
+  NVSManager *nvs = nullptr;
 };
