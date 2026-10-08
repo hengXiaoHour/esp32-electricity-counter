@@ -130,6 +130,21 @@ function cl_adapt(latest, mac) {
   d.lastMonth = (typeof latest.lastMonth === 'number') ? latest.lastMonth
     : (latest.cloud && typeof latest.cloud.lastMonth === 'number') ? latest.cloud.lastMonth : undefined;
   d.resetDay = (typeof latest.resetDay === 'number') ? latest.resetDay : undefined;
+  // Calibration + auto-zero. Same key names as the LAN snapshot
+  // (src/network/system_json.cpp) so the ONE shared renderer in script.js
+  // fills the same inputs. This block was absent from the cloud payload and
+  // from this adapter: the Settings > Calibration panel rendered empty while
+  // the board held every value, until the push carried it.
+  d.voltageCalibration = (typeof latest.voltageCalibration === 'number') ? latest.voltageCalibration : undefined;
+  d.currentCalibration = cl_toArray(latest.currentCalibration);
+  d.rmsSamples = (typeof latest.rmsSamples === 'number') ? latest.rmsSamples : undefined;
+  d.azBatches = (typeof latest.azBatches === 'number') ? latest.azBatches : undefined;
+  d.noiseFloor = cl_toArray(latest.noiseFloor);
+  d.lpfAlpha = cl_toArray(latest.lpfAlpha);
+  d.azActive = (latest.azActive === true);
+  d.azChannel = (typeof latest.azChannel === 'number') ? latest.azChannel : -1;
+  d.azProgress = (typeof latest.azProgress === 'number') ? latest.azProgress : 0;
+  d.azQueue = cl_toArray(latest.azQueue) || [];
   d.mcuTemp = (latest.mcu === undefined || latest.mcu === null) ? null : latest.mcu;
   d.eco = !!latest.eco;
   d.firmwareVersion = latest.fw;
