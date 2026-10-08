@@ -118,7 +118,8 @@ public:
   // session - a reboot starts it at zero, which is correct.
   uint32_t consecFails_ = 0;
 
-  bool snapshot(SystemData *sysData, SemaphoreHandle_t *mutex, String &body);
+  bool snapshot(SystemData *sysData, SemaphoreHandle_t *mutex,
+                PowerCalculator *powerCalc, String &body);
   // Merge-writes the snapshot via the SDK; returns HTTP-like status
   // (200 = written, 0 = transport/auth failure). Push-only: the reply is
   // never parsed beyond success.
