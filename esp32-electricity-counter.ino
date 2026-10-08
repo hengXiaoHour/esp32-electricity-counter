@@ -358,6 +358,29 @@ void networkTask(void *pvParameters) {
       }
     }
 
+    // The firmware that flashed via OTA gets one chance to prove itself: as
+    // soon as the network actually comes up, the ota_pend marker set in
+    // onEnd() is cleared and a forensic event records the verification. If
+    // the flag survives a whole boot with no isReady(), the board log shows
+    // the last update never got its network up.
+    {
+      static bool otaFlagChecked = false;
+      if (!otaFlagChecked && nvs.loadOtaPending()) {
+        if (wifiMgr.isReady()) {
+          otaFlagChecked = true;
+          nvs.saveOtaPending(false);
+          nvs.commit();
+          STATUS_LOG("  [OTA] update verified - network up, marker cleared\n");
+          if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+            limitMgr.logForensicEvent(0, STATUS_OK, "OTA verified — network up", 0.0f);
+            xSemaphoreGive(dataMutex);
+          }
+        }
+      } else if (!otaFlagChecked) {
+        otaFlagChecked = true;  // no pending OTA: nothing to verify
+      }
+    }
+
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
       wsServer.broadcastData(systemData);
       xSemaphoreGive(dataMutex);
