@@ -383,6 +383,46 @@ bool CloudPush::snapshot(SystemData *sysData, SemaphoreHandle_t *mutex,
   // Billing reset day the rollover enforces (same key as system_json.cpp).
   body += ",\"resetDay\":";
   body += nvs ? (int)nvs->loadResetDay() : MONTHLY_RESET_DAY;
+  // Calibration + auto-zero, byte-for-byte the same keys and order as
+  // buildSystemJson() (system_json.cpp). The cloud viewer renders the same
+  // Calibration panel from the same script.js, so these are what fill its
+  // inputs; renaming one side without the other is a silent blank panel.
+  body += ",\"voltageCalibration\":";
+  body += String(voltCal, 1);
+  body += ",\"currentCalibration\":[";
+  for (int i = 0; i < NUM_CHANNELS; i++) {
+    body += String(currCal[i], 1);
+    if (i < NUM_CHANNELS - 1) body += ",";
+  }
+  body += "]";
+  body += ",\"rmsSamples\":";
+  body += rmsSamples;
+  body += ",\"azBatches\":";
+  body += azBatches;
+  body += ",\"noiseFloor\":[";
+  for (int i = 0; i < NUM_CHANNELS; i++) {
+    body += String(noiseFloor[i], 3);
+    if (i < NUM_CHANNELS - 1) body += ",";
+  }
+  body += "]";
+  body += ",\"azActive\":";
+  body += azActive ? "true" : "false";
+  body += ",\"azChannel\":";
+  body += azChannel;
+  body += ",\"azProgress\":";
+  body += azProgress;
+  body += ",\"azQueue\":[";
+  for (int i = 0; i < azQueueLen; i++) {
+    body += azQueue[i];
+    if (i < azQueueLen - 1) body += ",";
+  }
+  body += "]";
+  body += ",\"lpfAlpha\":[";
+  for (int i = 0; i < NUM_CHANNELS; i++) {
+    body += String(lpfAlpha[i], 2);
+    if (i < NUM_CHANNELS - 1) body += ",";
+  }
+  body += "]";
   body += ",\"cloud\":{\"en\":";
   body += cloudEn ? "true" : "false";
   body += ",\"ok\":";
@@ -578,7 +618,7 @@ void CloudPush::loop(SystemData *sysData, SemaphoreHandle_t *mutex,
       if (!ensureLogin()) { lastOk_ = false; consecFails_++; }
       else {
         String body;
-        if (snapshot(sysData, mutex, body)) {
+        if (snapshot(sysData, mutex, powerCalc, body)) {
           if (post(body)) {
             lastOk_ = true;
             lastOkMs_ = now;
