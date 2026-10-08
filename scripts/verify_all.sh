@@ -185,6 +185,30 @@ record $? "cloud-viewer rebuilds from frontend/"
 # cannot catch a mistyped mapping, so run the function on a real-shaped payload.
 node scripts/e2e_cloud_adapt.js >/tmp/opencode/verify_cloudadapt.log 2>&1
 record $? "$(tail -1 /tmp/opencode/verify_cloudadapt.log)"
+# Same bug, whole chain in a real browser: cloud.js adapter -> script.js
+# renderer -> the actual <input> elements, with a stubbed Firebase. The unit
+# test above can prove a field is MAPPED; only this proves the panel shows it.
+# Both are mutation-tested against the shipped bug (see the file header).
+if node -e "require(require('child_process').execSync('npm root -g',{encoding:'utf8'}).trim()+'/playwright')" 2>/dev/null; then
+  CLOUD_PORT=${CLOUD_PORT:-8098}
+  (cd cloud-viewer && python3 -m http.server "$CLOUD_PORT" >/tmp/opencode/verify_cloudhttp.log 2>&1) &
+  CLOUD_HTTP_PID=$!
+  for _ in $(seq 1 25); do
+    curl -sf -o /dev/null "http://127.0.0.1:$CLOUD_PORT/" && break
+    sleep 0.2
+  done
+  if curl -sf -o /dev/null "http://127.0.0.1:$CLOUD_PORT/"; then
+    node scripts/e2e_cloud_settings.js "http://127.0.0.1:$CLOUD_PORT" \
+      >/tmp/opencode/verify_cloudsettings.log 2>&1
+    record $? "$(tail -1 /tmp/opencode/verify_cloudsettings.log)"
+  else
+    record 1 "cloud-viewer served locally for the settings browser test"
+  fi
+  kill "$CLOUD_HTTP_PID" 2>/dev/null
+  wait "$CLOUD_HTTP_PID" 2>/dev/null
+else
+  printf '  \033[33mSKIP\033[0m cloud settings browser check (playwright not installed globally)\n'
+fi
 git diff --quiet -- cloud-viewer/ 2>/dev/null
 if [ $? -eq 0 ]; then
   record 0 "cloud-viewer/ is up to date (builder is a no-op)"
