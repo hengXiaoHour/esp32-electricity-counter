@@ -179,6 +179,12 @@ cmp -s frontend/script.js cloud-viewer/script.js
 record $? "cloud-viewer/script.js is an exact copy of frontend/script.js"
 python3 scripts/build_cloud_viewer.py >/tmp/opencode/verify_cloudview.log 2>&1
 record $? "cloud-viewer rebuilds from frontend/"
+# cl_adapt is the only translation between the cloud payload and the shared
+# renderer. It once omitted the whole calibration block, so the cloud Settings
+# panel came up blank while the board held every value - a name-level grep
+# cannot catch a mistyped mapping, so run the function on a real-shaped payload.
+node scripts/e2e_cloud_adapt.js >/tmp/opencode/verify_cloudadapt.log 2>&1
+record $? "$(tail -1 /tmp/opencode/verify_cloudadapt.log)"
 git diff --quiet -- cloud-viewer/ 2>/dev/null
 if [ $? -eq 0 ]; then
   record 0 "cloud-viewer/ is up to date (builder is a no-op)"
