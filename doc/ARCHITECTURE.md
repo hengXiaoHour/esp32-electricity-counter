@@ -640,9 +640,23 @@ the board's own writes. Push and poll ride separate SDK sessions (1 s / 2 s
 timers); a 30 KB heap floor and a 60-straight-fail counter reboot instead of
 going silent.
 
+The payload is a mirror of the LAN broadcast, field for field: the same keys
+`buildSystemJson()` emits, including the whole calibration block (voltage and
+per-channel current calibration, noise floor, LPF alpha, RMS samples,
+auto-zero channel/progress/queue). That parity is not a nicety - one renderer
+(`script.js`) serves both UIs, so a field the cloud payload omits is a field
+the cloud dashboard cannot display, and it once did: Settings > Calibration
+came up blank in the viewer while the board held every value. The calibration
+values are copied out under `dataMutex` (like every other reading) and
+serialised after the release; `scripts/check_docs.py` asserts the LAN and
+cloud key sets are identical, and `scripts/e2e_cloud_adapt.js` +
+`scripts/e2e_cloud_settings.js` assert the adapter maps them and the browser
+actually shows them.
+
 | Decision | Why |
 |---|---|
 | Device path is the radio MAC (`A1:B2:...` → `AABB...`) | No settable board id. The old hand-typed id orphaned nodes on every typo or re-type; the silicon already has a unique id. |
+| Calibration rides the push like any other reading | One renderer, two serializers. Anything the cloud omits is invisible in the cloud UI - and passwords are still the one thing that never leaves the board. |
 | PIN-gated board-side | Same gate as every mutating verb (`setcloud`/`clearcloud` serial + WS) - the Firebase account is a setting, and changing settings needs the PIN. |
 | Password never leaves the board except inside the TLS tunnel | Not in the snapshot, not in logs, not on the dashboard. The panel shows host + account + MAC + push health only. |
 | Cloud on = eco off | Stated in the UI next to the toggle. A radio that naps cannot push; pretending otherwise would show stale "last push" ages with no explanation. |
