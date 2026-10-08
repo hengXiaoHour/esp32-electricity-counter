@@ -176,3 +176,9 @@ uint32_t TimeSync::secondsSinceSync() const {
   if (!synced) return 0xFFFFFFFF;  // never synced
   return (millis() - lastSyncMillis) / 1000;
 }
+
+int64_t TimeSync::liveTrackDriftSeconds() const {
+  if (!synced) return 0;  // no track yet; the epoch guard decides
+  int64_t tracked = lastSyncEpoch + (int64_t)((millis() - lastSyncMillis) / 1000);
+  return (int64_t)time(nullptr) - tracked;
+}
