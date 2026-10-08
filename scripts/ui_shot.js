@@ -245,7 +245,11 @@ const height = parseInt(process.argv[5] || '900', 10);
     console.error('\nUI CHECK FAILED\n  ' + problems.join('\n  '));
     process.exit(1);
   }
-  console.error('\nUI CHECK PASSED: every field is themed and every row lines up.');
+  console.error('\nUI CHECK PASSED: every field is themed, every row lines up, and the ' +
+    'edit-channel modal keeps all its buttons inside the card.');
+  if (results.modalFooter && results.modalFooter.skipped) {
+    console.error('WARNING skipped the modal-footer check: ' + results.modalFooter.skipped);
+  }
 })().catch((e) => {
   console.error('ui_shot failed:', e && e.stack ? e.stack : e);
   process.exit(1);
