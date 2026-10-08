@@ -225,10 +225,16 @@ bool LimitManager::setResetDay(uint8_t day) {
   // zero), which is the pre-existing behaviour, not a new edge.
   time_t now = time(nullptr);
   if (now > 1600000000) {
-    struct tm t;
-    localtime_r(&now, &t);
-    nvs->saveLastMonth(billingMonthFor(t.tm_year + 1900, t.tm_mon + 1,
-                                       t.tm_mday, day));
+    // Same guard as rolloverIfNeeded: never re-anchor the cycle onto a
+    // clock we do not trust. The new day still saves; the next reliable
+    // month boundary re-anchors from it.
+    int64_t drift = timeSync.liveTrackDriftSeconds();
+    if (drift <= 300 && drift >= -300) {
+      struct tm t;
+      localtime_r(&now, &t);
+      nvs->saveLastMonth(billingMonthFor(t.tm_year + 1900, t.tm_mon + 1,
+                                         t.tm_mday, day));
+    }
   }
   nvs->commit();
   char msg[EVENT_MSG_LEN];
