@@ -227,7 +227,7 @@ def patch_index(src: str) -> str:
     # Scripts: frontend script.js (rendering) + cloud.js (transport).
     # Drop the cache-busting query (hosting serves exact files).
     html = html.replace(
-        '<script src="script.js?v=20261003b"></script>',
+        '<script src="script.js?v=20261008a"></script>',
         '<script src="script.js"></script>\n<script src="cloud.js"></script>',
     )
     if '<script src="cloud.js"></script>' not in html:
