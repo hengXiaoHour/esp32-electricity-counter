@@ -47,7 +47,6 @@ CLOUD_BAR = """    <!-- Cloud device panel: lives in Settings so the header stat
         <div class="cal-field">
           <select id="devicePicker" class="cloud-select" aria-label="device"></select>
         </div>
-        <button class="btn-sm" id="cloudReloadBtn" title="reload device list">Reload</button>
       </div>
       <div class="cal-row-single">
         <label>Freshness:</label>
