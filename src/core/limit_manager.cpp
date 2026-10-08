@@ -127,6 +127,25 @@ void LimitManager::rolloverIfNeeded() {
   time_t now = time(nullptr);
   if (now <= 1600000000) return;  // NTP not synced yet
 
+  // Live-clock sanity: refuse to make a month decision while the running
+  // clock disagrees with the last accepted track by more than 5 minutes.
+  // pollNTP() re-adopts a sustained correction (so this clears on its own),
+  // but while the clock is suspect we pause instead of zeroing real
+  // accumulation on a bogus boundary.
+  {
+    int64_t drift = timeSync.liveTrackDriftSeconds();
+    if (drift > 300 || drift < -300) {
+      static int64_t lastGuardLogAt = 0;
+      int64_t nowSec = (int64_t)time(nullptr);
+      if (nowSec - lastGuardLogAt > 3600) {
+        lastGuardLogAt = nowSec;
+        STATUS_LOG("  [TIME] clock/track drift %+llds — rollover paused\n",
+                   (long long)drift);
+      }
+      return;
+    }
+  }
+
   struct tm t;
   localtime_r(&now, &t);
   int32_t billingMonth = billingMonthFor(t.tm_year + 1900, t.tm_mon + 1,
