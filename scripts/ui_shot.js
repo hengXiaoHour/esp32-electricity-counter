@@ -173,6 +173,54 @@ const height = parseInt(process.argv[5] || '900', 10);
     return bad;
   });
 
+  // The edit-channel modal's footer is a nowrap flex row of three buttons
+  // ("Cancel / Reset to Default / Save Settings"). It shipped without
+  // flex-wrap, so on a 360px phone the row was wider than the card and
+  // overflow:hidden clipped Cancel off the LEFT edge, leaving "ANCEL" in a box
+  // whose left border was outside the modal. No DOM or CSS-rule check can see
+  // that - it only exists once the footer is laid out - so measure the real box.
+  results.modalFooter = await page.evaluate(async () => {
+    const openBtn = document.querySelector('[onclick*="openEditModal"]');
+    if (!openBtn) return { skipped: 'no button opens the edit-channel modal' };
+    openBtn.click();
+    await new Promise((r) => setTimeout(r, 250));
+    const footer = document.querySelector('#editModal .modal-footer');
+    const card = document.querySelector('#editModal .modal-card');
+    const overlay = document.querySelector('#editModal');
+    if (!footer || !card) { if (overlay) overlay.classList.add('hidden'); return { skipped: 'modal not present' }; }
+    const fb = footer.getBoundingClientRect();
+    const cb = card.getBoundingClientRect();
+    const buttons = [...footer.querySelectorAll('button')]
+      .filter((b) => b.getClientRects().length > 0)
+      .map((b) => {
+        const r = b.getBoundingClientRect();
+        return {
+          text: b.textContent.trim().slice(0, 22),
+          left: +r.left.toFixed(1), right: +r.right.toFixed(1),
+          top: +r.top.toFixed(1), width: +r.width.toFixed(1),
+        };
+      });
+    const out = {
+      cardLeft: +cb.left.toFixed(1), cardRight: +cb.right.toFixed(1),
+      footerLeft: +fb.left.toFixed(1), footerRight: +fb.right.toFixed(1),
+      scrollW: footer.scrollWidth, clientW: footer.clientWidth,
+      buttons,
+    };
+    // Any button whose painted box leaves the card is unreachable, whatever
+    // the CSS says: that is exactly how Cancel was cut in half.
+    out.clipped = buttons.filter((b) => b.left < out.cardLeft - 0.5 || b.right > out.cardRight + 0.5)
+      .map((b) => b.text);
+    out.overlapping = [];
+    const sorted = [...buttons].sort((a, b) => a.left - b.left);
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i].left < sorted[i - 1].right - 0.5) {
+        out.overlapping.push(`${sorted[i - 1].text} / ${sorted[i].text}`);
+      }
+    }
+    overlay.classList.add('hidden');
+    return out;
+  });
+
   console.log(JSON.stringify(results, null, 2));
   await browser.close();
 
@@ -184,6 +232,15 @@ const height = parseInt(process.argv[5] || '900', 10);
     problems.push('browser-default inputs while admin: ' + JSON.stringify(results.badInputsAdmin));
   }
   if (results.alignment.length) problems.push('misaligned rows: ' + JSON.stringify(results.alignment));
+  if (results.modalFooter && results.modalFooter.clipped && results.modalFooter.clipped.length) {
+    problems.push('modal footer buttons clipped by the card: ' +
+      JSON.stringify(results.modalFooter.clipped) +
+      ' (footer ' + results.modalFooter.footerLeft + '-' + results.modalFooter.footerRight +
+      ' vs card ' + results.modalFooter.cardLeft + '-' + results.modalFooter.cardRight + ')');
+  }
+  if (results.modalFooter && results.modalFooter.overlapping && results.modalFooter.overlapping.length) {
+    problems.push('modal footer buttons overlap: ' + JSON.stringify(results.modalFooter.overlapping));
+  }
   if (problems.length) {
     console.error('\nUI CHECK FAILED\n  ' + problems.join('\n  '));
     process.exit(1);
