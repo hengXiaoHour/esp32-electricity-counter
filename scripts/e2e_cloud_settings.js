@@ -64,7 +64,11 @@ const FIREBASE_STUB = `
       path,
       on(evt, cb) {
         (listeners[path] = listeners[path] || []).push(cb);
-        setTimeout(() => cb({ val: () => ${JSON.stringify(PAYLOAD)} }), 60);
+        // The payload needs its OWN parentheses: () => {...} is parsed as an
+        // arrow with a BLOCK body, so a bare object literal is a syntax error
+        // ("Unexpected token ':'"). That error killed cloud.js's boot, which is
+        // why the first run showed every field at its HTML default.
+        setTimeout(() => cb({ val: () => (${JSON.stringify(PAYLOAD)}) }), 60);
         return this;
       },
       off() { return this; },
