@@ -73,6 +73,10 @@ private:
   int64_t lastSyncEpoch = 0;      // epoch at the moment of the last sync
   uint32_t lastSyncMillis = 0;    // millis() at that same moment
 
+  // Big-drift bookkeeping for pollNTP's sustained-correction adoption.
+  int64_t lastDriftBucket = INT64_MAX;  // drift/60 of the previous oversized reading
+  int staleDriftCount = 0;              // how many polls in a row that bucket persisted
+
   // Kept in RTC memory: survives ESP.restart(), wiped by a power cut.
   // (If a power cut happens, the next browser connection re-syncs anyway.)
   static int64_t rtcLastEpoch;
