@@ -58,6 +58,29 @@ class Checker:
         return bad
 
 
+def _cal_under_lock(cl_cpp):
+    """True when CloudPush::snapshot copies the calibration fields BEFORE it
+    releases dataMutex.
+
+    The readings are copied into locals under the lock and serialised after the
+    release (a multi-second TLS must never hold the sensor task). The
+    calibration block has to obey the same rule: reading powerCalc->noiseFloor[]
+    from the network task without the lock is a torn float read, and a torn
+    read is indistinguishable from a real calibration value.
+    """
+    body = re.search(
+        r"bool CloudPush::snapshot\([\s\S]*?\n(.*?)\n\}\n", cl_cpp, flags=re.S)
+    if not body:
+        return False
+    src = body.group(1)
+    give = src.find("xSemaphoreGive(*mutex)")
+    if give < 0:
+        return False
+    anchors = ("voltageCalibration", "currentCalibration[i]", "rmsSamples",
+               "noiseFloor[i]", "lpfAlpha[i]", "getAutoZeroQueue")
+    return all(src.find(a) >= 0 and src.find(a) < give for a in anchors)
+
+
 def main():
     c = Checker()
 
