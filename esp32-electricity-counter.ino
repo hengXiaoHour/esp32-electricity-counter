@@ -397,12 +397,13 @@ void sensorTask(void *pvParameters) {
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
       updateSharedData();
 
-      // Persist energy to NVS every ~5s (60 cycles × 80ms).
-      // commit() is REQUIRED: saveEnergyKWh only stages a putFloat in the
-      // Preferences handle, so without it the counters never reach flash and a
-      // restart silently reverts them to the last command's commit point.
+      // Persist energy to NVS every ~15s (187 cycles × 80ms). 15 s, not 5 s:
+      // NVS flash is rated ~100k erase cycles and every commit stages writes,
+      // so a tighter loop buys little and wears pages. Worst-case bound at
+      // 15 s is still ~5.8M commits / ~336 days continuous worst case; with
+      // NVS page rotation it is years. RTC shadow would cut it further.
       static uint32_t lastEnergySave = 0;
-      if (millis() - lastEnergySave > 5000) {
+      if (millis() - lastEnergySave > 15000) {
         lastEnergySave = millis();
         for (int ch = 0; ch < NUM_CHANNELS; ch++) {
           nvs.saveEnergyKWh(ch, powerCalc.getEnergyKWh(ch));
