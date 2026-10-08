@@ -684,6 +684,26 @@ def main():
     c.add("the cloud snapshot copies the calibration under dataMutex too",
           _cal_under_lock(cl_cpp),
           "a torn float read would publish a half-updated panel")
+    # The builder renamed the service-worker cache with a LITERAL ("-v15"). The
+    # board copy bumps that version whenever its shell changes, so the rename
+    # silently stopped working: the cloud app then used the BOARD's cache name
+    # and the two apps evicted each other's shell. Assert the outcome, not the
+    # intent, so the next literal-vs-pattern mistake cannot hide either.
+    cl_sw, fr_sw = read("cloud-viewer/sw.js"), read("frontend/sw.js")
+    _fr_cache = re.search(r"const CACHE_NAME = '([^']+)'", fr_sw)
+    _cl_cache = re.search(r"const CACHE_NAME = '([^']+)'", cl_sw)
+    c.add("the cloud service worker uses its OWN cache name, not the board's",
+          bool(_fr_cache) and bool(_cl_cache) and
+          _cl_cache.group(1) != _fr_cache.group(1) and
+          _cl_cache.group(1).startswith("esp32-counter-cloud-"),
+          "board=%s cloud=%s" % (_fr_cache.group(1) if _fr_cache else "?",
+                                 _cl_cache.group(1) if _cl_cache else "?"))
+    c.add("the builder renames that cache by pattern, not a pinned version",
+          re.search(r'esp32-counter-v\\d\+"', build_py) is not None,
+          "a literal version in build_cloud_viewer.py stops matching on the next bump")
+    c.add("the cloud shell precaches cloud.js (its transport override)",
+          "./cloud.js" in cl_sw and "./cloud.js" not in fr_sw,
+          "an installed cloud PWA boots without its transport")
     c.add("the cloud payload has no stray quote before \"time\" (3.2.0 broke every push)",
           'body += ",\\"time\\":{\\"ok\\":"' in cl_cpp and
           'body += "\\",\\"time\\"' not in cl_cpp,
