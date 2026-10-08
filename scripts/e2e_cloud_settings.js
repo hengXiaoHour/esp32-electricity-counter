@@ -89,6 +89,16 @@ const FIREBASE_STUB = `
   window.firebase.auth.GoogleAuthProvider = function () {};
   // The REST "render in ~1s" shortcut must not hit the network in a test.
   window.fetch = () => Promise.reject(new Error('offline in the test'));
+  // /devices.json?shallow=true must return the MAC list, or cl_loadDevices
+  // falls back to Object.keys(payload) and picks a FIELD name as a device id.
+  window.__deviceList = ${JSON.stringify(PAYLOAD.dev)};
+  const realFetch = window.fetch;
+  window.fetch = function (url) {
+    if (typeof url === 'string' && url.indexOf('devices.json') >= 0) {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ [${JSON.stringify(PAYLOAD.dev)}]: true }) });
+    }
+    return realFetch.apply(this, arguments);
+  };
 })();
 `;
 
