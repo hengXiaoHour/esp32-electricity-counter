@@ -667,6 +667,13 @@ def main():
     # Settings > Calibration rendered blank in the cloud viewer while the board
     # held every value. Assert the three sets are equal instead of trusting
     # that a future edit remembers to update all three.
+    #
+    # These three checks are NAME-level on purpose and are mutation-tested: a
+    # missing key is caught here. A key that is present but WRONG (e.g.
+    # `typeof latest.azBatches === 'string'`) is deliberately out of scope -
+    # no grep can see that - and is covered by scripts/e2e_cloud_adapt.js,
+    # which RUNS cl_adapt on a real-shaped payload. Verified: that one mutant
+    # survives here and is caught there.
     cal_keys = ("voltageCalibration", "currentCalibration", "rmsSamples",
                 "azBatches", "noiseFloor", "azActive", "azChannel",
                 "azProgress", "azQueue", "lpfAlpha")
