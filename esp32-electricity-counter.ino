@@ -315,7 +315,7 @@ void networkTask(void *pvParameters) {
       Serial.printf("  %-19s%s\n", "WebSocket", "STARTED");
       // ArduinoOTA must start AFTER the interface has an IP — begin() before
       // that leaves it deaf.
-      otaHandler.begin("esp32-elec-counter");
+      otaHandler.begin("esp32-elec-counter", &nvs);
       Serial.printf("  %-19s%s\n", "OTA", "STARTED");
       Serial.println();
       if (wifiMgr.apActive()) {
