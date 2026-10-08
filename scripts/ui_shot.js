@@ -239,10 +239,15 @@ const height = parseInt(process.argv[5] || '900', 10);
   }
   if (results.alignment.length) problems.push('misaligned rows: ' + JSON.stringify(results.alignment));
   if (results.modalFooter && results.modalFooter.clipped && results.modalFooter.clipped.length) {
+    // Print the OFFENDING BUTTON's own box, not the footer's: the footer can
+    // sit inside the card while its first child still overflows, which is
+    // exactly the Cancel-cut-in-half case. A message quoting the footer's
+    // bounds would have read as "inside the card, so why is it failing?".
+    const clipped = results.modalFooter.buttons
+      .filter((b) => results.modalFooter.clipped.includes(b.text));
     problems.push('modal footer buttons clipped by the card: ' +
-      JSON.stringify(results.modalFooter.clipped) +
-      ' (footer ' + results.modalFooter.footerLeft + '-' + results.modalFooter.footerRight +
-      ' vs card ' + results.modalFooter.cardLeft + '-' + results.modalFooter.cardRight + ')');
+      JSON.stringify(clipped.map((b) => `${b.text} ${b.left}-${b.right}`)) +
+      ' vs card ' + results.modalFooter.cardLeft + '-' + results.modalFooter.cardRight);
   }
   if (results.modalFooter && results.modalFooter.overlapping && results.modalFooter.overlapping.length) {
     problems.push('modal footer buttons overlap: ' + JSON.stringify(results.modalFooter.overlapping));
