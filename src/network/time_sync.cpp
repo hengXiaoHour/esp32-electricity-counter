@@ -84,10 +84,29 @@ void TimeSync::pollNTP() {
   int64_t drift = (int64_t)now - expected;
   if (drift > 90 || drift < -90) {
     // The live clock disagrees with our track by more than SNTP would ever
-    // allow: something else moved it (or it moved). Do NOT silently adopt it -
-    // leave the tracker alone so the age indicator goes stale honestly.
+    // allow: something else moved it (or it moved). Do NOT silently adopt it
+    // on the first sighting...
+    int64_t bucket = drift / 60;  // minute-quantized for stability
+    if (bucket == lastDriftBucket) {
+      if (++staleDriftCount >= 3) {
+        // ...but a drift that has been STABLE for three minute-polls IS a
+        // real correction (not a glitch), so adopt it instead of pinning the
+        // tracker - and every downstream rollover guard - stale forever.
+        DEBUG_LOG("  [TIME] sustained clock correction adopted: %+llds\n",
+                  (long long)drift);
+        if (acceptEpoch((int64_t)now, "NTP")) {
+          staleDriftCount = 0;
+          lastDriftBucket = INT64_MAX;
+        }
+      }
+    } else {
+      lastDriftBucket = bucket;
+      staleDriftCount = 1;
+    }
     return;
   }
+  staleDriftCount = 0;
+  lastDriftBucket = INT64_MAX;
   if ((int64_t)now - lastSyncEpoch >= 60) {
     lastSyncEpoch = (int64_t)now;
     lastSyncMillis = millis();
