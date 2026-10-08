@@ -197,7 +197,8 @@ const height = parseInt(process.argv[5] || '900', 10);
         return {
           text: b.textContent.trim().slice(0, 22),
           left: +r.left.toFixed(1), right: +r.right.toFixed(1),
-          top: +r.top.toFixed(1), width: +r.width.toFixed(1),
+          top: +r.top.toFixed(1), bottom: +r.bottom.toFixed(1),
+          width: +r.width.toFixed(1), height: +r.height.toFixed(1),
         };
       });
     const out = {
