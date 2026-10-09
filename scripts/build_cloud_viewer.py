@@ -323,9 +323,11 @@ def main() -> int:
     # Cache-busting stamp, derived from CONTENT (not time) so the builder
     # stays a no-op when sources are unchanged: a returning browser must
     # never keep running a stale script.js after a deploy, and the service
-    # worker only updates when sw.js bytes change.
+    # worker only updates when sw.js bytes change. install.js is in the hash
+    # because it is a served asset like any other: changing it and not
+    # re-stamping would leave the hosted app on the previous install UI.
     h = hashlib.sha1()
-    for name in ("script.js", "cloud.js", "style.css"):
+    for name in ("script.js", "cloud.js", "install.js", "style.css"):
         h.update((CLOUD / name).read_bytes())
     stamp = h.hexdigest()[:8]
 
