@@ -410,6 +410,27 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
 .az-chip:empty { display: none; }
 .az-chip.active { color: var(--trip); animation: pulse-border 1.2s ease-in-out infinite; }
 .az-chip.queued { color: var(--warn); }
+/* The noise-floor status chip lives UNDER its row, not inside the field cell.
+   Inside the cell, "Calibrating…" is wider than the space left after the
+   label, the input and the 104px Auto-Zero button on a 360px phone, so the
+   text spilled straight over that button — the status was painted on top of
+   the control it describes. Indented to the field column (85px label + 8px
+   gap) so it still reads as belonging to the input. */
+.cal-nf .az-chip { display: none; margin: 3px 0 2px 93px; }
+.cal-nf .az-chip:not(:empty) { display: block; }
+/* Auto-Zero is orange rather than the neutral button colour, so it reads as a
+   measurement action. As a CLASS, not an inline style: an inline colour beats
+   any :disabled rule, and a disabled button that still looks orange is the
+   bug this button was disabled to remove. */
+.btn-sm.btn-az { color: #e67e22; }
+/* Any button the app knows cannot currently succeed right now: dimmed, with a
+   cursor that says so. Hover is neutralised too, or it brightens on the way
+   past and looks live again. */
+.btn-sm:disabled,
+.btn-sm:disabled:hover {
+  opacity: 0.4; cursor: not-allowed; color: var(--text-3);
+  background: transparent; border-color: var(--border-2);
+}
 .cal-reset-row { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
 .conn-ip { color: var(--text); font-size: 0.8rem; }
 /* Cloud status line: same size as every other settings status span, and it

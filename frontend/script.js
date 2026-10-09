@@ -256,8 +256,8 @@ function saveApSettings() {
   // "Meter AP" when the box said "Meter AP " is exactly the confusion the rule
   // exists to prevent.
   const problem = apValidationMessage(ssidRaw, pass);
-  if (problem) return showToast(problem);
-  if (isDemo) return showToast('Not available in demo mode');
+  if (problem) return showError(problem);
+  if (isDemo) return showError('Not available in demo mode');
 
   // Say the reboot is coming BEFORE the frame goes out. sendCommand resolves
   // as soon as the frame is written, not when the board acknowledges it, and
@@ -279,7 +279,7 @@ function saveApSettings() {
 }
 
 function resetApSettings() {
-  if (isDemo) return showToast('Not available in demo mode');
+  if (isDemo) return showError('Not available in demo mode');
   return sendCommand({ cmd: 'reset_ap' }).then(() => {
     showToast('Resetting to the default network name — the board is restarting', 6000);
     setTimeout(() => handleDisconnect(), 1500);
@@ -296,8 +296,8 @@ function saveStaSettings() {
   const ssid = (ssidInput.value || '').trim();
   const pass = passInput.value || '';
 
-  if (!ssid) return showToast('Enter your home WiFi name');
-  if (isDemo) return showToast('Not available in demo mode');
+  if (!ssid) return showError('Enter your home WiFi name');
+  if (isDemo) return showError('Not available in demo mode');
 
   return sendCommand({ cmd: 'setwifi', ssid: ssid, pass: pass }).then(() => {
     passInput.value = '';
@@ -314,7 +314,7 @@ function saveStaSettings() {
 }
 
 function clearStaSettings() {
-  if (isDemo) return showToast('Not available in demo mode');
+  if (isDemo) return showError('Not available in demo mode');
   return sendCommand({ cmd: 'clearwifi' }).then(() => {
     showToast('Home network forgotten — fallback AP will come up', 6000);
     const ssidInput = document.getElementById('staSsid');
@@ -336,10 +336,10 @@ function saveCloudSettings() {
   const email = (emailInput.value || '').trim();
   const auth = authInput.value || '';
 
-  if (!host || host.indexOf('.') < 0) return showToast('Enter the database host (no https://, no path)');
-  if (!email || email.indexOf('@') < 0) return showToast('Enter the board account email');
-  if (!auth) return showToast('Enter the account password');
-  if (isDemo) return showToast('Not available in demo mode');
+  if (!host || host.indexOf('.') < 0) return showError('Enter the database host (no https://, no path)');
+  if (!email || email.indexOf('@') < 0) return showError('Enter the board account email');
+  if (!auth) return showError('Enter the account password');
+  if (isDemo) return showError('Not available in demo mode');
 
   return sendCommand({ cmd: 'setcloud', host: host, email: email, pass: auth }).then(() => {
     authInput.value = '';
@@ -355,7 +355,7 @@ function saveCloudSettings() {
 }
 
 function clearCloudSettings() {
-  if (isDemo) return showToast('Not available in demo mode');
+  if (isDemo) return showError('Not available in demo mode');
   return sendCommand({ cmd: 'clearcloud' }).then(() => {
     showToast('Remote monitoring stopped', 6000);
     const hostInput = document.getElementById('cloudHost');
@@ -384,7 +384,7 @@ function clearPinCache() {
 
 function requirePin() {
   if (pinOk) return true;
-  showToast('Enter the admin PIN in Settings first');
+  showError('Enter the admin PIN in Settings first');
   showPage('settings');
   const row = document.getElementById('pinRow');
   if (row) row.classList.remove('hidden');
@@ -450,11 +450,11 @@ function changePin() {
   const val = (input.value || '').trim();
   const again = (confirm ? confirm.value : '').trim();
   if (val.length < 4 || val.length > 16) {
-    showToast('PIN must be 4-16 characters');
+    showError('PIN must be 4-16 characters');
     return Promise.resolve(false);
   }
   if (val !== again) {
-    showToast('New PIN entries do not match');
+    showError('New PIN entries do not match');
     return Promise.resolve(false);
   }
   return sendCommand({ cmd: 'set_pin', pin_new: val }).then(() => {
@@ -512,7 +512,7 @@ function sendCommand(obj) {
     ws.send(JSON.stringify(frame));
     return Promise.resolve();
   }
-  showToast('Not connected');
+  showError('Not connected');
   return Promise.reject(new Error('Not connected'));
 }
 
@@ -590,7 +590,7 @@ function connectWS() {
         adminPin = '';
         clearPinCache();
         applyPinState();
-        showToast('Admin PIN rejected — commands are now read-only');
+        showError('Admin PIN rejected — commands are now read-only');
         return;
       }
       updateDashboard(data);
@@ -1448,7 +1448,7 @@ function renderEvents(events) {
 // ============ Calibration + Settings Commands ============
 function sendVoltageCal() {
   const val = parseFloat(document.getElementById('voltCal').value);
-  if (isNaN(val)) return showToast('Invalid voltage calibration');
+  if (isNaN(val)) return showError('Invalid voltage calibration');
   delete document.getElementById('voltCal').dataset.userSet;
   sendCommand({ cmd: 'set_voltage_cal', val }).then(() => {
     showToast(`Voltage cal set to ${val.toFixed(1)}`);
@@ -1457,7 +1457,7 @@ function sendVoltageCal() {
 
 function sendCurrentCal(idx) {
   const val = parseFloat(document.getElementById(`currCal_${idx}`).value);
-  if (isNaN(val)) return showToast('Invalid current calibration');
+  if (isNaN(val)) return showError('Invalid current calibration');
   delete document.getElementById(`currCal_${idx}`).dataset.userSet;
   sendCommand({ cmd: 'set_current_cal', ch: idx, val }).then(() => {
     showToast(`Ch${idx + 1} current cal set to ${val.toFixed(1)}`);
@@ -1489,7 +1489,7 @@ function autoZeroChannel(idx) {
 function sendLpfAlpha(idx) {
   const inp = document.getElementById(`lpf_${idx}`);
   const val = parseFloat(inp.value);
-  if (isNaN(val) || val < 0.01 || val > 1) return showToast('LPF Alpha must be 0.01-1 (1 = no filtering)');
+  if (isNaN(val) || val < 0.01 || val > 1) return showError('LPF Alpha must be 0.01-1 (1 = no filtering)');
   delete inp.dataset.userSet;
   sendCommand({ cmd: 'set_lpf', ch: idx, val }).then(() => {
     showToast(`Ch${idx + 1} LPF alpha set to ${val.toFixed(2)}`);
@@ -1509,7 +1509,7 @@ function sendResetChannelCal(idx) {
 function setRmsSamples() {
   const inp = document.getElementById('rmsSamples');
   const val = parseInt(inp.value);
-  if (isNaN(val) || val < 100 || val > 2000) return showToast('RMS Samples must be 100-2000');
+  if (isNaN(val) || val < 100 || val > 2000) return showError('RMS Samples must be 100-2000');
   delete inp.dataset.userSet;
   sendCommand({ cmd: 'set_rms_samples', val }).then(() => {
     showToast(`RMS Samples set to ${val}`);
@@ -1519,7 +1519,7 @@ function setRmsSamples() {
 function setAzBatches() {
   const inp = document.getElementById('azBatches');
   const val = parseInt(inp.value);
-  if (isNaN(val) || val < 1 || val > 64) return showToast('Auto-Zero Batches must be 1-64');
+  if (isNaN(val) || val < 1 || val > 64) return showError('Auto-Zero Batches must be 1-64');
   delete inp.dataset.userSet;
   sendCommand({ cmd: 'set_az_batches', val }).then(() => {
     showToast(`Auto-Zero Batches set to ${val}`);
@@ -1534,7 +1534,7 @@ function setAzBatches() {
 function setResetDay() {
   const inp = document.getElementById('resetDay');
   const val = parseInt(inp.value);
-  if (isNaN(val) || val < 1 || val > 28) return showToast('Reset Day must be 1-28');
+  if (isNaN(val) || val < 1 || val > 28) return showError('Reset Day must be 1-28');
   delete inp.dataset.userSet;
   sendCommand({ cmd: 'console', line: 'reset_day ' + val }).then(() => {
     showToast(`Billing reset day set to ${val}`);
