@@ -106,6 +106,9 @@ static void updateEcoMode() {
       // the next cycle and the modem is already awake.
       WiFi.setSleep(false);
       STATUS_LOG("  [ECO] viewer back - full power\n");
+      // History trail (local + cloud event log): the live `eco` bit alone
+      // leaves no proof afterwards that the board ever slept.
+      limitMgr.logEcoWake();
     }
     return;
   }
@@ -116,6 +119,7 @@ static void updateEcoMode() {
     }
     STATUS_LOG("  [ECO] no viewers for %lus - radio idling (sensing unaffected)\n",
                (unsigned long)(ECO_IDLE_MS / 1000));
+    limitMgr.logEcoSleep();
   }
 }
 

@@ -318,6 +318,20 @@ void LimitManager::logOTAVerified() {
   xSemaphoreGive(*dataMutex);
 }
 
+void LimitManager::logEcoSleep() {
+  if (!sysData || !dataMutex) return;
+  if (xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) != pdTRUE) return;
+  logForensicEvent(0, STATUS_OK, "Eco on — radio idling (no viewers)", 0.0f);
+  xSemaphoreGive(*dataMutex);
+}
+
+void LimitManager::logEcoWake() {
+  if (!sysData || !dataMutex) return;
+  if (xSemaphoreTake(*dataMutex, pdMS_TO_TICKS(100)) != pdTRUE) return;
+  logForensicEvent(0, STATUS_OK, "Eco off — viewer back, full power", 0.0f);
+  xSemaphoreGive(*dataMutex);
+}
+
 void LimitManager::auditForceRollover() {
   if (!sysData || !dataMutex) return;
 
