@@ -364,16 +364,39 @@ silenced and "Auto-recovered — load removed", permanently, because the latch
 only re-arms once energy falls back under the limit. Removing the term fixes it;
 `scripts/test_power_math.c` pins the case.
 
-### 5. Apparent power, PF, energy
+### 5. Apparent power, PF, energy — with a no-load deadband
 
 ```
-apparentPower = vActual * filteredCurrentRMS
-powerFactor   = (apparentPower > 0.001) ? clamp(activePower / apparentPower, 0, 1) : 0
-energyKWh    += activePower * (deltaSeconds / 3600) / 1000
+// EITHER condition blanks the channel: an empty socket reads exactly zero.
+if (filteredCurrentRMS[ch] < NO_LOAD_CURRENT_A (0.05) || |pWatts| < NO_LOAD_POWER_W (2.0)):
+    activePower = apparentPower = powerFactor = 0      // and no kWh integrates
+else:
+    apparentPower = vActual * filteredCurrentRMS
+    powerFactor   = (apparentPower > PF_MIN_VA (5.0)) ? clamp(activePower / apparentPower, 0, 1) : 0
+    energyKWh    += activePower * (deltaSeconds / 3600) / 1000
 ```
+
+Why the deadband exists: `|pWatts|` rectifies noise, so an empty socket
+otherwise reads a flickering 1–2 W that creeps ~1.4 kWh/month into the counter
+*and* gives noise a "valid" PF — a ratio of two noise numbers, random 0..1 —
+that flickers across the auto-recover line and re-rings a latched trip one
+80 ms cycle at a time. Either gate alone is insufficient: idle ripple can push
+`I` over 0.05 A while its covariance stays under 2 W, and a trickle load can
+push `P` over 2 W while its current stays under 0.05 A — measured on the host
+(`scripts/test_power_math.c` §6–7). The displayed current keeps its measured
+floor-trimmed value; only power, PF and energy blank.
+
+The 5 VA PF floor is the second lock on the same door (the old 0.001 VA gate
+was ≈4 µA at 230 V — pure noise passed as "valid"). It is unreachable under
+the deadband anyway (0.05 A × 230 V ≈ 11.5 VA); it guards the transition band.
+
+Known cost: real loads under ~0.05 A / 2 W (a phone on trickle standby) do not
+register — same class of sharp edge as the noise floor in §3, documented in
+the test, not hidden.
 
 Energy integrates **every** sensor cycle using the real elapsed time measured
-with `millis()`, so it is independent of the nominal 80 ms period.
+with `millis()`, so it is independent of the nominal 80 ms period — and under
+the deadband it integrates exactly zero.
 
 ### 6. Auto-zero (noise-floor capture)
 
