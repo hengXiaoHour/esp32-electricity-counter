@@ -80,11 +80,12 @@ html.has-session #app { display: grid !important; }
 .connect-status { font-size: 0.78rem; padding: 8px 12px; border-radius: 5px; margin-bottom: 12px; font-family: var(--font-mono); background: rgba(255, 255, 255, 0.03); }
 .connect-status.connected { color: var(--ok); }
 .connect-status.disconnected { color: var(--trip); }
-.install-row { margin-top: 14px; display: flex; justify-content: center; }
-.install-row.hidden { display: none; }
-.install-row .btn-outline { width: 100%; }
-.install-hint { margin-top: 10px; font-size: 0.72rem; color: var(--text-2); line-height: 1.5; padding: 8px 10px; background: rgba(255,255,255,0.03); border-radius: 5px; }
-.install-hint.hidden { display: none; }
+/* NO install UI here. The board serves this page over plain http on a LAN IP,
+   which is not a secure context, so Chrome/Edge/Safari never fire
+   beforeinstallprompt and never offer "Install" here at all - the button was a
+   dead control that could only fail. Installing the dashboard is a HOSTED-site
+   feature: cloud-viewer/ ships its own install.js + markup + CSS, injected by
+   scripts/build_cloud_viewer.py. Nothing about it belongs in the board's copy. */
 
 /* ============ App Shell ============ */
 #app { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; transition: grid-template-columns 0.25s ease; }
