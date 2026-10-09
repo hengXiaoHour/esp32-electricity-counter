@@ -985,6 +985,19 @@ function updateDashboard(data) {
           inp.title = '';
         }
       }
+      // Auto-Zero for a channel that is already running (or already queued) is
+      // refused by the firmware, so the button that asks for it is disabled
+      // while it cannot succeed. Left live it accepted the tap, answered
+      // nothing, and looked like a second calibration had started. The other
+      // channels stay enabled on purpose - the board runs them one after
+      // another from a queue.
+      const azBtn = document.getElementById(`azBtn_${i}`);
+      if (azBtn) {
+        azBtn.disabled = active || queued;
+        azBtn.title = active
+          ? 'Auto-zero is running on this channel - please wait'
+          : (queued ? 'Already queued - please wait' : '');
+      }
       setAzChip(`azChip_${i}`, active, queued);
       setAzChip(`azHeadChip_${i}`, active, queued);
       if (!active) syncField(`nf_${i}`, v, 3);
