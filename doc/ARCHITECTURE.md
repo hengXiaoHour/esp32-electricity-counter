@@ -696,7 +696,12 @@ NVS, buzzer and LED logic are untouched, only the radio quiets down, which
 is where the heat comes from. A returning viewer restores full power before
 needing the link. In fallback-AP mode eco only means "no viewers" (the AP
 keeps beaconing regardless). The `eco` snapshot bit drives the Connection
-panel's Power row, so the mode is visible, not mysterious.
+panel's Power row, so the mode is visible, not mysterious. Both transitions
+are also forensic events (`Eco on — radio idling (no viewers)` /
+`Eco off — viewer back, full power`, channel 0, `STATUS_OK`), so History
+shows the trail on the local dashboard AND the cloud viewer (the cloud
+payload already mirrors the last 10 events) and it survives a reboot like
+every other event.
 
 ### Remote monitoring (cloud), minus the old mistakes
 
