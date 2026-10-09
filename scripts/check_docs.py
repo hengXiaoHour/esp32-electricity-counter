@@ -117,6 +117,7 @@ def main():
     ts_cpp = read("src/network/time_sync.cpp")
     lm = read("src/core/limit_manager.cpp")
     lm_h = read("src/core/limit_manager.h")
+    pc = read("src/core/power_calculator.cpp")
     buzz_h = read("src/ui/buzzer.h")
     buzz_cpp = read("src/ui/buzzer.cpp")
     cl_cfg_h = read("src/network/cloud_cfg.h")
