@@ -190,10 +190,12 @@ let failures = 0;
     return {
       loaded: ['promptInstall', 'showInstallRow', 'hideInstallRow'].every(
         (fn) => typeof window[fn] === 'function'),
-      // Offered straight away on the hosted page: the click either triggers the
-      // browser prompt or reveals the manual steps, so there is nothing to wait
-      // for. (The BOARD page has no such controls - see e2e_aponly.js.)
-      visible: ['installRow', 'installBtnTop'].map((id) => vis(q(id))),
+      // Both controls ship, but only the header one can be seen once the page
+      // is connected: the connect panel hides the moment the socket (here: the
+      // cloud transport) comes up. That is the whole reason the button lives in
+      // two places, so assert both halves separately.
+      present: ['installRow', 'installBtnTop'].map((id) => !!q(id)),
+      headerVisible: vis(q('installBtnTop')),
       hint: q('installHint') ? q('installHint').classList.contains('hidden') : null,
     };
   });
