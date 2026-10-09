@@ -158,20 +158,15 @@ constexpr const char *AP_PASS_DEFAULT = "configure123";
 // load is mistaken for "nobody there".
 #define AUTO_RECOVER_PF 0.2f
 
-// Hysteresis partner of AUTO_RECOVER_PF. Once a tripped channel has
-// auto-recovered, its PF must rise ABOVE this (not just back above 0.2) before
-// the alarm re-arms. A single threshold chatters by construction: no-load PF is
-// a ratio of two noise numbers and flickers across any one line, ringing the
-// latched trip for one 80 ms cycle at a time. The 0.2/0.4 band holds state.
-#define AUTO_RETRIP_PF 0.4f
-
-// Persistence for both hysteresis transitions, in sensor cycles (~80 ms each,
-// so 25 ≈ 2 s). A transition counts only after this many CONSECUTIVE
-// confirming cycles; any contradicting cycle resets the count. A noise spike
-// that crosses a PF line for a cycle or two can therefore never flip the
-// alarm — a real load change persists. Costs at most ~2 s of delay on a
-// monthly-budget alarm, which is nothing against an 80 ms sensor period.
-#define PF_DEBOUNCE_CYCLES 25
+// Ring persistence for a silenced (auto-recovered) trip, in sensor cycles
+// (~80 ms each, so 19 ~= 1.5 s). After a recovery the buzzer re-rings ONLY
+// after PF reads ABOVE AUTO_RECOVER_PF for this many CONSECUTIVE cycles; any
+// single cycle at or below 0.2 resets the count. A noise spike that flickers
+// across the line for a cycle or two can therefore never ring the latched
+// trip, while a real load (stable PF every cycle) re-arms after ~1.5 s. The
+// silence side stays instant: a removed load pins PF at 0 via the deadband,
+// so there is nothing to confirm before going quiet.
+#define PF_RING_STABLE_CYCLES 19
 
 // No-load deadband ("zero blanking", what real energy-meter chips call the
 // creep threshold). Below EITHER of these the channel reports P=0, S=0, PF=0
