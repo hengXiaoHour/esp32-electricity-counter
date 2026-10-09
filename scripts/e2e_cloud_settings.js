@@ -200,7 +200,8 @@ let failures = 0;
     };
   });
   eq('the install module loaded on the hosted page', inst.loaded, true);
-  eq('the install controls are on screen', inst.visible, [true, true]);
+  eq('both install controls shipped (connect panel + header)', inst.present, [true, true]);
+  eq('the header install button is visible once connected', inst.headerVisible, true);
   eq('the manual-steps hint starts hidden', inst.hint, true);
   // Drive the handler the way a click would, on a page where no prompt exists.
   const afterClick = await page.evaluate(() => {
