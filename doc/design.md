@@ -129,3 +129,28 @@ pair is ~5:1 — "fully white text" has to stay readable, not just literal.
 `showToast(msg, ms, kind)` gives it three fills (`ok` green, `warn` amber,
 `err` red) and `showError()` routes every rejected value through the red one, so
 "LPF Alpha must be 0.01-1" can never be painted in the colour of a success.
+
+### Install is a hosted-site feature, not a board feature (2026-10-09)
+The Install button used to ship in the board's own page. It could never work
+there: the board serves its dashboard over plain http on a LAN IP, which is not
+a secure context, so no browser registers the service worker and none fires
+`beforeinstallprompt`. The button was a dead control on the one origin where
+"Install" is never offered — clicking it could only produce the manual-steps
+shrug.
+
+So the install UI moved entirely into the cloud build, where the origin is
+https and the prompt genuinely fires:
+
+- `frontend/` (the board's copy) has **no** install markup, CSS or JS. Not a
+  hidden button — nothing, which also keeps ~1 KB out of a firmware image that
+  runs at 75% flash.
+- `cloud-viewer/install.js` is hand-written next to `cloud.js`, and
+  `build_cloud_viewer.py` injects its markup (connect-panel row + header button
+  + manual-steps hint), its `<script>` tag and its CSS into the hosted page.
+- `install.js` is in the cloud service worker's precache shell and in the
+  content-hash stamp, so a change to it actually reaches a returning browser.
+
+The board copy keeps its `<link rel="manifest">`: with no service worker Chrome
+simply never offers "Install", which is exactly the wanted behaviour. Five
+`check_docs.py` claims, one `e2e_aponly.js` assertion and five
+`e2e_cloud_settings.js` assertions pin the split, all mutation-tested.
