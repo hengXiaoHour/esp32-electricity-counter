@@ -286,19 +286,48 @@ voltageRMS = vPinV * voltageCal
 
 ### 3. Current RMS, noise floor, LPF — per channel
 
-Variance is computed as `E[x²] − mean²` (equivalent to mean-removed, one pass):
+The variance is **two-pass**. `computeAll()` first computes each channel's mean
+over the sample window, then sums `(x − mean)²` in a second pass:
 
 ```
-iAdcRMS  = sqrt( E[i²] - mean(i)² )
-rawRMS   = iAdcRMS / 4095 * 3.3 * currentCal[ch]
+iMean     = mean(currentSamples[ch])
+iAdcRMS   = sqrt( mean( (i - iMean)^2 ) )
+rawRMS    = iAdcRMS / 4095 * 3.3 * currentCal[ch]
 ```
 
-Then the **noise floor is subtracted in the power domain**, which is the right
+This two-pass form **is** the entire DC-offset trim, and it is exact: a constant
+sensor offset contributes zero to a variance, so a CT reading 4.0 A high still
+reports only the load. No separate bias constant is subtracted
+(`AC_BIAS_VOLTAGE` was removed — see C.4).
+
+The one-pass form `E[x²] − mean²` is algebraically identical and was used until
+2026-10-09, but it is unusable in float32. At the ~2048-count mid-supply bias
+`E[x²]` is ~4.19e6, where one float32 ULP is 0.5 counts², while a 0.05 A load has
+a variance of ~0.15 counts² — the subtraction returns rounding noise. Measured
+on the host with float32 accumulators (`scripts/test_power_math.c`):
+
+| true | one-pass | two-pass |
+|---|---|---|
+| 0.05 A | 0.1974 A | 0.0500 A |
+| 0.10 A | 0.1508 A | 0.1000 A |
+| 0.30 A | 0.3649 A | 0.3000 A |
+| 0.50 A | 0.5160 A | 0.5000 A |
+
+This only bites on small signals. At the 100 A range one ADC count is 0.081 A,
+so resolution — not arithmetic — is the binding limit.
+
+The **noise floor is then subtracted in the power domain**, which is the right
 place for it (RMS is a magnitude, so you cannot subtract linearly):
 
 ```
 signalRMS = sqrt( rawRMS² - floor² )      // 0 if rawRMS <= floor
 ```
+
+That `0 if rawRMS <= floor` is a sharp edge: a load whose current sits below the
+floor reads as exactly zero, indistinguishable from an idle channel. A floor set
+above the sensor's true quiescent ripple (during warm-up, or with a sensor whose
+offset drifts) silently erases small loads. Keep the floor at or below the
+measured quiescent noise.
 
 `signalRMS` is then smoothed by a per-channel EMA:
 
@@ -312,20 +341,28 @@ directly (via the `rmsInit` flag) instead of ramping up from zero.
 ### 4. Real power — the cross-product
 
 ```
-pMean = mean( (v - vMean) * i_raw )          // per sample, per channel
+pMean = mean( (v - vMean) * (i - iMean) )
 pWatts = pMean * (3.3/4095)^2 * voltageCal * currentCal[ch]
-activePower = |pWatts| - voltageRMS * floor   // noise power removed
-activePower = max(activePower, 0)
+activePower = max(|pWatts|, 0)
 ```
 
-Note `i_raw` is the *un*-mean-removed current sample. That is correct rather than
-sloppy: `(v − vMean)` is zero-mean by construction, so the current's DC bias
-contributes `iMean × mean(v − vMean) = 0` and cancels out of the mean. Taking
-`|pWatts|` handles the case where the CT is oriented backwards.
+Taking `|pWatts|` handles the case where the CT is oriented backwards.
 
-The `voltageRMS * floor` subtraction removes the power attributable to the
-measured noise floor, then clamps at zero so a noisy channel cannot report
-negative watts.
+There is **no noise-power subtraction** here, and there never should be.
+`pWatts` is a covariance of two mean-removed signals, so the current's DC bias
+contributes `iMean × mean(v − vMean) = 0`, and AC ripple uncorrelated with the
+mains waveform contributes zero in expectation too. The old
+`|pWatts| − voltageRMS * floor` subtracted a bias that was never present in the
+quantity it was correcting.
+
+Because the two trims used different thresholds, the board could show a real
+current next to zero power. With a 0.30 A floor and a 0.50 A load at PF 0.5 on
+230 V, current read 0.40 A while active power clamped to 0.00 W — power factor
+0.000, which trips the `AUTO_RECOVER_PF` branch in `LimitManager::checkLimits()`.
+A channel over budget with its load still on would show `STATUS_OK`, buzzer
+silenced and "Auto-recovered — load removed", permanently, because the latch
+only re-arms once energy falls back under the limit. Removing the term fixes it;
+`scripts/test_power_math.c` pins the case.
 
 ### 5. Apparent power, PF, energy
 
