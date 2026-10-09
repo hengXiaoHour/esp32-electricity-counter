@@ -193,6 +193,15 @@ CLOUD_CSS = """
 #userEmail { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #cloudDot.led-ok { background: var(--ok); box-shadow: 0 0 10px var(--ok); }
 #cloudDot.led-stale { background: var(--warn); box-shadow: 0 0 10px var(--warn); }
+
+/* ---- Install UI: cloud-only. The board serves the same page over plain http
+   on a LAN IP, which is not a secure context, so these rules and their markup
+   exist only in this copy. See cloud-viewer/install.js for the why. ---- */
+.install-row { margin-top: 14px; display: flex; justify-content: center; }
+.install-row.hidden { display: none; }
+.install-row .btn-outline { width: 100%; }
+.install-hint { margin-top: 10px; font-size: 0.72rem; color: var(--text-2); line-height: 1.5; padding: 8px 10px; background: rgba(255,255,255,0.03); border-radius: 5px; }
+.install-hint.hidden { display: none; }
 """
 
 
