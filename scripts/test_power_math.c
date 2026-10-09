@@ -187,21 +187,33 @@ static double gateLoad(double filtI, double rawP, double vRms,
  * Latch/notify/event-log omitted: only the OK-vs-TRIPPED decision is modelled,
  * which is what drives the buzzer. Silence is instant below the line; ringing
  * from a recovery needs RING_STABLE_N consecutive cycles above it. */
-static int hTripped, hRecovered, hStatus;   /* 0 = OK, 1 = TRIPPED */
+static int hTripped, hRecovered, hStatus, hStable;   /* 0 = OK, 1 = TRIPPED */
 
-static void hystReset(void) { hTripped = hRecovered = hStatus = 0; }
+static void hystReset(void) { hTripped = hRecovered = hStatus = hStable = 0; }
 
 static void hystStep(double energy, double limit, double pf) {
   if (limit > 0.0 && energy >= limit) {
     hTripped = 1;
     if (!hRecovered) {
-      if (pf < RECOVER_PF) { hRecovered = 1; hStatus = 0; }
+      if (pf < RECOVER_PF) { hRecovered = 1; hStable = 0; hStatus = 0; }
       else hStatus = 1;
     } else {
-      if (pf > RETRIP_PF) { hRecovered = 0; hStatus = 1; }
+      if (pf > RECOVER_PF) { if (hStable < 255) hStable++; }
+      else hStable = 0;
+      if (hStable >= RING_STABLE_N) { hRecovered = 0; hStable = 0; hStatus = 1; }
       else hStatus = 0;
     }
-  } else { hTripped = 0; hRecovered = 0; hStatus = 0; }
+  } else { hTripped = 0; hRecovered = 0; hStatus = 0; hStable = 0; }
+}
+
+/* Hold one PF for n consecutive cycles; return 1 if the alarm rang at any point. */
+static int hystHold(double energy, double limit, double pf, int n) {
+  int rang = 0;
+  for (int k = 0; k < n; k++) {
+    hystStep(energy, limit, pf);
+    if (hStatus == 1) rang = 1;
+  }
+  return rang;
 }
 
 int main(void) {
