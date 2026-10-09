@@ -12,6 +12,12 @@
 # not evidence.
 set -u
 
+# Every python3 call in this script must not write .pyc files. The setup-wizard
+# test does `import setup`, which created scripts/__pycache__/setup.*.pyc, and
+# the dead-code stage - which runs AFTER that stage - pins scripts/__pycache__
+# as a deletion that must stay deleted. So the gate used to fail its own run.
+export PYTHONDONTWRITEBYTECODE=1
+
 cd "$(dirname "$0")/.." || exit 2
 FAILED=0
 DO_BUILD=0
