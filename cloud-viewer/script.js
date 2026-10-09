@@ -35,63 +35,6 @@ const CHART_DEFS = {
 
 const NUM_CHANNELS = 5;
 
-
-// ============ PWA install prompt ============
-let deferredInstallPrompt = null;
-
-function isStandalone() {
-  return window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
-}
-
-function showInstallRow() {
-  // Two places offer install: the connect panel (pre-connect) and the top
-  // bar (always visible, mobile + desktop). Both go when installed.
-  const row = document.getElementById('installRow');
-  if (row) row.classList.remove('hidden');
-  const top = document.getElementById('installBtnTop');
-  if (top) top.classList.remove('hidden');
-}
-
-function hideInstallRow() {
-  for (const id of ['installRow', 'installBtnTop']) {
-    const row = document.getElementById(id);
-    if (row) row.classList.add('hidden');
-  }
-  for (const id of ['installHint']) {
-    const h = document.getElementById(id);
-    if (h) h.classList.add('hidden');
-  }
-}
-
-window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
-  deferredInstallPrompt = e;
-  showInstallRow();
-});
-
-window.addEventListener('appinstalled', () => {
-  deferredInstallPrompt = null;
-  hideInstallRow();
-  showToast('App installed — launch it from your home screen');
-});
-
-function promptInstall() {
-  // Android / installable: use the browser's install prompt.
-  if (deferredInstallPrompt) {
-    deferredInstallPrompt.prompt();
-    deferredInstallPrompt.userChoice.then((choice) => {
-      if (choice.outcome === 'accepted') hideInstallRow();
-      deferredInstallPrompt = null;
-    });
-    return;
-  }
-  // No prompt available - normal on a plain unencrypted (http) board address,
-  // browsers never fire beforeinstallprompt. Toggle the manual-steps hint
-  // in the connect panel (the only one left).
-  const h1 = document.getElementById('installHint');
-  if (h1) h1.classList.toggle('hidden');
-}
-
 // Initial Setup
 (function init() {
   // ?demo=1 renders the UI with mocked data and opens no socket. The only
@@ -110,9 +53,6 @@ function promptInstall() {
   } else {
     handleConnect();
   }
-
-  if (isStandalone()) hideInstallRow();
-  else showInstallRow();
 
   // Close modal on Escape key
   window.addEventListener('keydown', (e) => {

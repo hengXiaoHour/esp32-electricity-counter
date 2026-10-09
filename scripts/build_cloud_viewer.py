@@ -254,10 +254,11 @@ def patch_index(src: str) -> str:
         "served by the board itself, over its own WiFi",
         "cloud mirror &middot; pushed by the board every ~10&nbsp;s",
     )
-    # Scripts: frontend script.js (rendering) + cloud.js (transport).
+    # Scripts: frontend script.js (rendering) + cloud.js (transport)
+    # + install.js (cloud-only install UI).
     # Drop the cache-busting query (hosting serves exact files).
     html = html.replace(
-        '<script src="script.js?v=20261008a"></script>',
+        '<script src="script.js?v=20261009a"></script>',
         '<script src="script.js"></script>\n<script src="cloud.js"></script>',
     )
     if '<script src="cloud.js"></script>' not in html:
@@ -267,6 +268,25 @@ def patch_index(src: str) -> str:
             '<script src="script.js"></script>\n<script src="cloud.js"></script>',
             html,
             count=1,
+        )
+
+    # --- install UI: cloud-only, so it is added here ----------------------
+    # The board's copy has none of this. Both hooks are injected at most once so
+    # a rebuild over an already-patched file cannot double them.
+    if 'id="installRow"' not in html:
+        html = html.replace(
+            '<div id="connectStatus" class="connect-status disconnected">',
+            INSTALL_ROW.strip('\n') + '\n\n    '
+            '<div id="connectStatus" class="connect-status disconnected">',
+            1,
+        )
+    if 'id="installBtnTop"' not in html:
+        html = html.replace('      </div>\n    </header>', INSTALL_BTN_TOP + '      </div>\n    </header>', 1)
+    if 'src="install.js' not in html:
+        html = html.replace(
+            '<script src="cloud.js"></script>',
+            '<script src="cloud.js"></script>\n<script src="install.js"></script>',
+            1,
         )
     return html
 
