@@ -139,7 +139,10 @@ void PowerCalculator::computeAll() {
     float iActual = filteredCurrentRMS[ch];
     apparentPower[ch] = vActual * iActual;
 
-    if (apparentPower[ch] > 0.001f) {
+    // PF is undefined without a real load: a ratio of two noise numbers is
+    // random 0..1 and flickers across any single threshold. The deadband above
+    // already blanks empty sockets; this floor guards the transition band.
+    if (apparentPower[ch] > PF_MIN_VA) {
       powerFactor[ch] = activePower[ch] / apparentPower[ch];
       if (powerFactor[ch] > 1.0f) powerFactor[ch] = 1.0f;
     } else {
