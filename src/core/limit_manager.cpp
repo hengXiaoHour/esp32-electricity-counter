@@ -64,15 +64,17 @@ void LimitManager::checkLimits() {
         // channel status field in the WebSocket snapshot, and this event -
         // which is what makes the dashboard raise a browser Notification.
       }
-      // Hysteresis band, not a line: recover below AUTO_RECOVER_PF (0.3),
-      // re-alarm only above AUTO_RETRIP_PF (0.4). Between the two the state
-      // holds. The deadband in computeAll() pins no-load PF at exactly 0, so
-      // an empty socket can never climb into the band on noise alone; this
-      // hysteresis covers real marginal loads hovering at the edge.
+      // Silence is instant, ringing needs proof. A removed load pins PF at 0
+      // via the deadband, so dropping below AUTO_RECOVER_PF (0.2) recovers
+      // immediately. Re-ringing from a recovery needs PF above the line for
+      // PF_RING_STABLE_CYCLES consecutive cycles (~1.5 s) — a flickering
+      // noise spike resets the count every time it dips, so it can never
+      // accumulate the 19 confirmations a real steady load delivers.
       float pf = powerCalc->getPowerFactor(ch);
       if (!autoRecovered[ch]) {
         if (pf < AUTO_RECOVER_PF) {
           autoRecovered[ch] = true;
+          ringStable[ch] = 0;
           sysData->channels[ch].status = STATUS_OK;
           // Latch stays SET here: energy is still over budget, so clearing
           // it would re-arm the trip and re-log + re-notify + re-beep on the
@@ -86,9 +88,15 @@ void LimitManager::checkLimits() {
           sysData->channels[ch].status = STATUS_TRIPPED;
         }
       } else {
-        if (pf > AUTO_RETRIP_PF) {
+        if (pf > AUTO_RECOVER_PF) {
+          if (ringStable[ch] < 255) ringStable[ch]++;
+        } else {
+          ringStable[ch] = 0;
+        }
+        if (ringStable[ch] >= PF_RING_STABLE_CYCLES) {
           autoRecovered[ch] = false;
           autoRecoverLogged[ch] = false;  // next recovery logs its own episode
+          ringStable[ch] = 0;
           sysData->channels[ch].status = STATUS_TRIPPED;
           logEvent(ch, STATUS_TRIPPED, "Load back — alarm resumed", energy);
         } else {
@@ -101,6 +109,7 @@ void LimitManager::checkLimits() {
       tripNotified[ch] = false;
       autoRecoverLogged[ch] = false;
       autoRecovered[ch] = false;
+      ringStable[ch] = 0;
       sysData->channels[ch].status = STATUS_OK;
     }
   }
