@@ -51,11 +51,15 @@ const eq = (name, got, want) =>
 
   await page.addInitScript(() => {
     window.__wsSent = [];
+    window.__wsSeen = [];
     const Orig = window.WebSocket;
     window.WebSocket = function (url, protocols) {
       const s = protocols ? new Orig(url, protocols) : new Orig(url);
       const origSend = s.send.bind(s);
       s.send = function (d) { try { window.__wsSent.push(d); } catch (e) {} return origSend(d); };
+      s.addEventListener('message', (e) => {
+        try { window.__wsSeen.push(JSON.parse(e.data)); } catch (x) { /* raw text */ }
+      });
       return s;
     };
     window.WebSocket.prototype = Orig.prototype;
@@ -65,9 +69,9 @@ const eq = (name, got, want) =>
   await page.goto(BASE + '/', { waitUntil: 'networkidle' });
   await page.waitForSelector('#statusBar', { timeout: 10000 });
 
-  // The board really is mid-calibration. Asserted from the snapshot the page
-  // rendered, so a mock that stopped honouring its env vars cannot let the
-  // rest of this file pass against an idle board.
+  // The board really is mid-calibration. Asserted from a snapshot the socket
+  // actually received, so a mock that stopped honouring its env contract cannot
+  // let the rest of this file pass against an idle board.
   const seen = await page.waitForFunction(
     () => window.__wsSeen && window.__wsSeen.some((d) => d && d.azActive === true),
     null, { timeout: 10000 }).catch(() => null);
@@ -75,19 +79,6 @@ const eq = (name, got, want) =>
     console.log('  FAIL the mock never sent azActive=true (is MOCK_AZ_CHANNEL set?)');
     failures++; checks++;
   }
-  await page.addInitScript(() => {
-    window.__wsSeen = [];
-    const Orig = window.WebSocket;
-    window.WebSocket = function (url, protocols) {
-      const s = protocols ? new Orig(url, protocols) : new Orig(url);
-      s.addEventListener('message', (e) => {
-        try { window.__wsSeen.push(JSON.parse(e.data)); } catch (x) { /* raw text */ }
-      });
-      return s;
-    };
-    window.WebSocket.prototype = Orig.prototype;
-    Object.assign(window.WebSocket, Orig);
-  });
 
   console.log(`== ${WIDTH}px: auto-zero running on Ch${AZ_ACTIVE + 1} ==`);
 
