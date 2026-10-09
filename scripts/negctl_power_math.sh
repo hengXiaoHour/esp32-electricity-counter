@@ -113,6 +113,39 @@ run_case N2 "voltageRMS * noiseFloor subtracted from active power"
 
 echo
 echo "=============================================================="
+echo "  N3: delete the no-load deadband"
+echo "=============================================================="
+python3 - "$WORK/test.c" <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+old = """  if (filtI < NO_LOAD_I || rawP < NO_LOAD_P) {
+    *sOut = 0.0; *pfOut = 0.0; return 0.0;
+  }"""
+assert old in s, "N3 anchor not found"
+open(p,'w').write(s.replace(old, "  /* MUTANT: deadband deleted, noise passes through */"))
+print("    mutant written")
+PY
+run_case N3 "idle noise and trickle loads pass the deadband"
+
+echo
+echo "=============================================================="
+echo "  N4: collapse the 0.3/0.4 hysteresis to a single line"
+echo "=============================================================="
+python3 - "$WORK/test.c" <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+old = "      if (pf > RETRIP_PF) { hRecovered = 0; hStatus = 1; }"
+assert old in s, "N4 anchor not found"
+new = "      if (pf > RECOVER_PF) { hRecovered = 0; hStatus = 1; }  /* MUTANT: no band */"
+open(p,'w').write(s.replace(old, new))
+print("    mutant written")
+PY
+run_case N4 "PF spikes under 0.4 re-ring a recovered trip"
+
+echo
+echo "=============================================================="
 echo "  integrity"
 echo "=============================================================="
 sha_after=$(sha256sum "$SRC" | cut -d' ' -f1)
