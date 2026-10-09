@@ -18,11 +18,12 @@
  *      the term.
  *   3. No-load PF was computed down to S > 0.001 VA, so an empty socket got a
  *      "valid" PF that is really a ratio of two noise numbers, flickering
- *      across the 0.3 auto-recover line and re-ringing a latched trip one 80 ms
+ *      across the 0.2 auto-recover line and re-ringing a latched trip one 80 ms
  *      cycle at a time, while fabs() rectified noise crept ~1-2 W into kWh.
  *      Fixed with a no-load deadband (P=0/S=0/PF=0, no integration below
- *      0.05 A or 2 W), a 5 VA PF floor, and 0.3/0.4 hysteresis in the trip
- *      machine (sections 6-8 below).
+ *      0.05 A or 2 W), a 5 VA PF floor, and ring persistence in the trip
+ *      machine (PF must hold above 0.2 for 19 straight cycles, ~1.5 s,
+ *      before a silenced trip re-rings; sections 6-8 below).
  *
  * IMPORTANT: the accumulators below are `float`, not `double`, on purpose. The
  * whole of defect 1 is a float32 precision problem, so a host test written in
@@ -276,9 +277,9 @@ int main(void) {
   double apparent = 230.0 * curA;
   double pfNew = wNew / apparent;
   double pfOld = wOld / apparent;
-  check(pfNew > 0.30, "PF clears AUTO_RECOVER_PF with the load still on");
-  check(pfOld < 0.30, "the old maths would have auto-recovered a tripped channel");
-  printf("     PF new %.3f | PF old %.3f | threshold 0.30\n", pfNew, pfOld);
+  check(pfNew > 0.20, "PF clears AUTO_RECOVER_PF with the load still on");
+  check(pfOld < 0.20, "the old maths would have auto-recovered a tripped channel");
+  printf("     PF new %.3f | PF old %.3f | threshold 0.20\n", pfNew, pfOld);
 
   /* --- 5. the floor's own dead zone, pinned as KNOWN behaviour ------------ */
   printf("\n[5] KNOWN: an over-set floor still erases small loads\n");
