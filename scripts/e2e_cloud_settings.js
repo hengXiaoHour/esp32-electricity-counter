@@ -178,6 +178,34 @@ let failures = 0;
   eq('LPF alpha rows', state.lpf, ['1.00', '0.50', '0.25', '0.12', '0.06']);
   eq('billing reset day (same payload, same path)', state.resetDay, '25');
   eq('channel cards rendered', state.cards, 5);
+
+  // The install UI is cloud-only, so this is the only place it can be checked.
+  // A name-level grep proves the markup shipped; this proves the module LOADED
+  // and its handlers are live, which is what actually makes the button work.
+  const inst = await page.evaluate(() => {
+    const q = (id) => document.getElementById(id);
+    const vis = (el) => !!el && el.getClientRects().length > 0;
+    return {
+      loaded: ['promptInstall', 'showInstallRow', 'hideInstallRow'].every(
+        (fn) => typeof window[fn] === 'function'),
+      // Hidden until the browser actually offers an install prompt.
+      hiddenNow: ['installRow', 'installBtnTop'].map((id) =>
+        !vis(q(id))),
+      // And the manual-steps hint is what answers when no prompt exists.
+      hint: q('installHint') ? q('installHint').classList.contains('hidden') : null,
+    };
+  });
+  eq('the install module loaded on the hosted page', inst.loaded, true);
+  eq('no install control is offered before the browser asks', inst.hiddenNow, [true, true]);
+  eq('the manual-steps hint starts hidden', inst.hint, true);
+  // Drive the handler the way a click would, on a page where no prompt exists.
+  const afterClick = await page.evaluate(() => {
+    promptInstall();
+    return document.getElementById('installHint').classList.contains('hidden');
+  });
+  check('the install button reveals the manual steps when no prompt exists',
+    afterClick === false, 'hint still hidden after promptInstall()');
+
   eq('no uncaught page errors', pageErrors, []);
 
   await browser.close();
