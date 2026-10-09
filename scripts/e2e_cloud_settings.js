@@ -180,31 +180,39 @@ let failures = 0;
   eq('channel cards rendered', state.cards, 5);
 
   // The install UI is cloud-only, so this is the only place it can be checked.
-  // A name-level grep proves the markup shipped; this proves the module LOADED
-  // and its handlers are live, which is what actually makes the button work.
+  // A name-level grep proves the markup shipped; this proves the module LOADED,
+  // its controls are on screen, and the fallback path works - which is what
+  // actually makes the button do something on a browser that never fires
+  // beforeinstallprompt.
   const inst = await page.evaluate(() => {
     const q = (id) => document.getElementById(id);
     const vis = (el) => !!el && el.getClientRects().length > 0;
     return {
       loaded: ['promptInstall', 'showInstallRow', 'hideInstallRow'].every(
         (fn) => typeof window[fn] === 'function'),
-      // Hidden until the browser actually offers an install prompt.
-      hiddenNow: ['installRow', 'installBtnTop'].map((id) =>
-        !vis(q(id))),
-      // And the manual-steps hint is what answers when no prompt exists.
+      // Offered straight away on the hosted page: the click either triggers the
+      // browser prompt or reveals the manual steps, so there is nothing to wait
+      // for. (The BOARD page has no such controls - see e2e_aponly.js.)
+      visible: ['installRow', 'installBtnTop'].map((id) => vis(q(id))),
       hint: q('installHint') ? q('installHint').classList.contains('hidden') : null,
     };
   });
   eq('the install module loaded on the hosted page', inst.loaded, true);
-  eq('no install control is offered before the browser asks', inst.hiddenNow, [true, true]);
+  eq('the install controls are on screen', inst.visible, [true, true]);
   eq('the manual-steps hint starts hidden', inst.hint, true);
   // Drive the handler the way a click would, on a page where no prompt exists.
   const afterClick = await page.evaluate(() => {
     promptInstall();
     return document.getElementById('installHint').classList.contains('hidden');
   });
-  check('the install button reveals the manual steps when no prompt exists',
-    afterClick === false, 'hint still hidden after promptInstall()');
+  eq('the install button reveals the manual steps when no prompt exists',
+    afterClick, false);
+  // And it puts itself away again, so the hint cannot become permanent.
+  const afterSecond = await page.evaluate(() => {
+    promptInstall();
+    return document.getElementById('installHint').classList.contains('hidden');
+  });
+  eq('a second press hides the hint again', afterSecond, true);
 
   eq('no uncaught page errors', pageErrors, []);
 
