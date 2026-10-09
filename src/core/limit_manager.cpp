@@ -18,6 +18,7 @@ void LimitManager::begin(NVSManager &nvsRef,
     tripNotified[ch] = false;
     autoRecoverLogged[ch] = false;
     autoRecovered[ch] = false;
+    ringStable[ch] = 0;
   }
 }
 
