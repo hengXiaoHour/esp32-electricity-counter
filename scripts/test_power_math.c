@@ -32,6 +32,10 @@
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
+/* M_SQRT2 is a POSIX/GNU extension, not standard C11 - -std=c11 hides it. */
+#ifndef M_SQRT2
+#define M_SQRT2 1.41421356237309504880
+#endif
 
 #define N            1000
 #define ADC_MAX      4095.0
