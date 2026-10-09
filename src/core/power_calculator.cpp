@@ -59,23 +59,36 @@ void PowerCalculator::computeAll() {
   float vPinVoltage = (vAdcRMS / ADC_MAX_VALUE) * ADC_REFERENCE_V;
   voltageRMS = vPinVoltage * voltageCal;
 
+  // The current channels need their means BEFORE the variance can be summed,
+  // so this is a separate first pass. Splitting the loop is what removes the
+  // float32 cancellation of E[X^2] - E[X]^2: at the ~2048-count mid-supply
+  // bias, E[X^2] is ~4.19e6 and one float32 ULP there is 0.5 counts^2, while
+  // the variance of a 0.01 A load is ~0.01 counts^2. The one-pass form returned
+  // rounding noise instead of the signal; see doc/design.md for the measured
+  // before/after. (The voltage path above was already two-pass.)
+  float iMean[NUM_CHANNELS];
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {
     float iSum = 0.0f;
+    for (int i = 0; i < rmsSamples; i++) iSum += currentSamples[ch][i];
+    iMean[ch] = iSum / rmsSamples;
+  }
+
+  for (int ch = 0; ch < NUM_CHANNELS; ch++) {
     float iSumSq = 0.0f;
     float pSum = 0.0f;
 
     for (int i = 0; i < rmsSamples; i++) {
       float vCentered = voltageSamples[i] - vMean;
-      float iCentered = currentSamples[ch][i];
+      // Genuinely centered now. It was named iCentered while still holding the
+      // raw sample; the covariance was still correct because vCentered sums to
+      // zero, but the name invited the reader to assume a trim that was absent.
+      float iCentered = currentSamples[ch][i] - iMean[ch];
 
-      iSum += currentSamples[ch][i];
-      iSumSq += currentSamples[ch][i] * currentSamples[ch][i];
+      iSumSq += iCentered * iCentered;
       pSum += vCentered * iCentered;
     }
 
-    float iMean = iSum / rmsSamples;
-    float iMeanSq = iSumSq / rmsSamples;
-    float iVariance = iMeanSq - iMean * iMean;
+    float iVariance = iSumSq / rmsSamples;
     float iAdcRMS = sqrtf(iVariance > 0.0f ? iVariance : 0.0f);
     float iPinVoltage = (iAdcRMS / ADC_MAX_VALUE) * ADC_REFERENCE_V;
     float rawRMS = iPinVoltage * currentCal[ch];
@@ -98,8 +111,13 @@ void PowerCalculator::computeAll() {
     float pMean = pSum / rmsSamples;
     float adcToVolt = ADC_REFERENCE_V / ADC_MAX_VALUE;
     float pWatts = pMean * adcToVolt * adcToVolt * voltageCal * currentCal[ch];
-    float noisePower = voltageRMS * floor;
-    activePower[ch] = fabsf(pWatts) - noisePower;
+    // NO noise-power subtraction here. pWatts is a covariance of two
+    // mean-removed signals, so it already excludes the sensor's DC offset
+    // (i_dc * mean(vCentered) = i_dc * 0) and any AC ripple uncorrelated with
+    // the mains waveform. The old `fabsf(pWatts) - voltageRMS * floor` removed
+    // a bias that was never present, and because the two trims disagreed the
+    // board could show 0.62 A of current alongside 0 W of power.
+    activePower[ch] = fabsf(pWatts);
     if (activePower[ch] < 0.0f) activePower[ch] = 0.0f;
 
     float vActual = (vAdcRMS / ADC_MAX_VALUE) * ADC_REFERENCE_V * voltageCal;
