@@ -16,6 +16,13 @@
  *      clamp real power to 0 W while the channel still showed current flowing,
  *      which then tripped the AUTO_RECOVER_PF auto-recovery. Fixed by dropping
  *      the term.
+ *   3. No-load PF was computed down to S > 0.001 VA, so an empty socket got a
+ *      "valid" PF that is really a ratio of two noise numbers, flickering
+ *      across the 0.3 auto-recover line and re-ringing a latched trip one 80 ms
+ *      cycle at a time, while fabs() rectified noise crept ~1-2 W into kWh.
+ *      Fixed with a no-load deadband (P=0/S=0/PF=0, no integration below
+ *      0.05 A or 2 W), a 5 VA PF floor, and 0.3/0.4 hysteresis in the trip
+ *      machine (sections 6-8 below).
  *
  * IMPORTANT: the accumulators below are `float`, not `double`, on purpose. The
  * whole of defect 1 is a float32 precision problem, so a host test written in
