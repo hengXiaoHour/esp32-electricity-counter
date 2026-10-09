@@ -1051,13 +1051,15 @@ function updateDashboard(data) {
           </div>
           <button class="btn-sm" onclick="sendCurrentCal(${idx})">Set</button>
         </div>
-        <div class="cal-param-row">
-          <label>Noise Floor:</label>
-          <div class="cal-field">
-            <input type="number" id="nf_${idx}" step="0.001" value="${nf}" oninput="this.dataset.userSet='true'">
-            <span class="az-chip" id="azChip_${idx}"></span>
+        <div class="cal-nf">
+          <div class="cal-param-row">
+            <label>Noise Floor:</label>
+            <div class="cal-field">
+              <input type="number" id="nf_${idx}" step="0.001" value="${nf}" oninput="this.dataset.userSet='true'">
+            </div>
+            <button class="btn-sm btn-az" id="azBtn_${idx}" onclick="autoZeroChannel(${idx})">Auto-Zero</button>
           </div>
-          <button class="btn-sm" onclick="autoZeroChannel(${idx})" style="color:#e67e22;">Auto-Zero</button>
+          <div class="az-chip" id="azChip_${idx}"></div>
         </div>
         <div class="cal-param-row">
           <label>LPF Alpha:</label>
