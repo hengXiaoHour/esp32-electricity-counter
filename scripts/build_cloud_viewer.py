@@ -353,10 +353,11 @@ def main() -> int:
   './style.css?v=%s',
   './script.js?v=%s',
   './cloud.js?v=%s',
+  './install.js?v=%s',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png'
-]""" % (stamp, stamp, stamp),
+]""" % (stamp, stamp, stamp, stamp),
         sw,
         flags=re.S,
     )
