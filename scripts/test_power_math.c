@@ -341,31 +341,34 @@ int main(void) {
     check(pf > 0.5, "its PF is nowhere near the recover band");
   }
 
-  /* --- 8. hysteresis: a recovered trip cannot chatter back on noise ------- */
-  printf("\n[8] PF spikes under 0.4 never re-ring a recovered trip\n");
+  /* --- 8. ring persistence: a recovered trip needs PF > 0.2 for ~1.5 s -- */
+  printf("\n[8] spikes never re-ring; 19 steady cycles above 0.2 do\n");
   hystReset();
   hystStep(50.0, 48.0, 0.80);               /* over budget, load on: TRIPPED */
   check(hStatus == 1, "over budget with load on rings");
   hystStep(50.0, 48.0, 0.10);               /* load removed: recovers, silent */
   check(hStatus == 0, "load removed silences the alarm");
   {
-    /* The user's phantom: empty socket, PF flickering 0..0.35. */
-    static const double spikes[] = {0.0, 0.31, 0.0, 0.35, 0.12, 0.0, 0.33, 0.28};
+    /* The user's phantom: empty socket, PF flickering, brief stabs over 0.2. */
+    static const double spikes[] = {0.0, 0.21, 0.0, 0.5, 0.5, 0.0, 0.35, 0.0, 0.28};
     int rang = 0;
     for (unsigned k = 0; k < sizeof(spikes) / sizeof(spikes[0]); k++) {
       hystStep(50.0, 48.0, spikes[k]);
       if (hStatus == 1) rang = 1;
     }
-    check(!rang, "no spike under 0.4 re-rings the recovered trip");
+    check(!rang, "brief stabs over 0.2 never re-ring the recovered trip");
   }
-  hystStep(50.0, 48.0, 0.35);
-  check(hStatus == 0, "0.35 holds the recovery (band, not a line)");
-  hystStep(50.0, 48.0, 0.60);
-  check(hStatus == 1, "a real 0.6 PF load re-arms the alarm");
-  hystStep(50.0, 48.0, 0.35);
-  check(hStatus == 1, "0.35 holds the TRIP too (same band, other side)");
-  hystStep(50.0, 48.0, 0.20);
-  check(hStatus == 0, "falling under 0.3 recovers again");
+  check(!hystHold(50.0, 48.0, 0.60, RING_STABLE_N - 1),
+        "18 steady cycles at 0.6 PF: still silent (one short of proof)");
+  check(hystHold(50.0, 48.0, 0.60, 1),
+        "the 19th steady cycle re-arms the alarm");
+  check(hStatus == 1, "alarm is TRIPPED after ~1.5 s of steady load");
+  hystStep(50.0, 48.0, 0.10);
+  check(hStatus == 0, "falling under 0.2 silences instantly");
+  check(hystHold(50.0, 48.0, 0.25, RING_STABLE_N),
+        "a steady 0.25 PF (just over the line) still re-rings after ~1.5 s");
+  hystStep(50.0, 48.0, 0.19);
+  check(hStatus == 0, "0.19 is below the line: silent");
   hystStep(10.0, 48.0, 0.90);
   check(hStatus == 0, "back under budget clears everything");
 
