@@ -1459,9 +1459,12 @@ function autoZeroChannel(idx) {
   if (nf) delete nf.dataset.userSet;
 
   const az = lastAzState;
+  // The button is disabled while this channel runs or waits, so this guard is
+  // the backstop for the paths that can still reach it: a tap that lands in
+  // the same tick the snapshot arrives, or autoZeroChannel(2) from the console.
   const already = (az.active && az.channel === idx) || (az.queue && az.queue.includes(idx));
   if (already) {
-    showToast(`Ch${idx + 1} is already in the auto-zero queue \u2014 please wait`);
+    showToast(`Ch${idx + 1} is already in the auto-zero queue \u2014 please wait`, 3000, 'warn');
     return;
   }
 
@@ -1469,7 +1472,7 @@ function autoZeroChannel(idx) {
     const busy = az.active || (az.queue && az.queue.length > 0);
     showToast(busy
       ? `Ch${idx + 1} queued \u2014 please wait (calibrating Ch${az.channel + 1})`
-      : `Ch${idx + 1} auto-zero started \u2014 the noise floor updates shortly`);
+      : `Ch${idx + 1} auto-zero started \u2014 the noise floor updates shortly`, 3500);
   });
 }
 
