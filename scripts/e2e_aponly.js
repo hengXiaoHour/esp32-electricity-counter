@@ -798,8 +798,18 @@ function check(name, cond, detail) {
   check('eco state renders from the snapshot',
         /Full|ECO/.test(await page.locator('#ecoStatus').textContent()),
         'eco="' + await page.locator('#ecoStatus').textContent() + '"');
-  check('top bar has its own install button (connect panel hides on connect)',
-        await page.locator('#installBtnTop').count() === 1);
+  // The install UI is CLOUD-ONLY now. The board serves this page over plain
+  // http on a LAN IP, which is not a secure context: no browser fires
+  // beforeinstallprompt there and none offers "Install" from the address bar,
+  // so the button could only ever be a dead control. Asserting its ABSENCE is
+  // the contract - a count of 0 is the passing state, and a regression that
+  // re-adds it to the board copy fails this instead of shipping a dead button.
+  check('the board page carries no install UI (http LAN origin cannot install)',
+        await page.locator('#installBtnTop').count() === 0
+        && await page.locator('#installRow').count() === 0
+        && await page.locator('#installHint').count() === 0);
+  check('and no install handler is defined on the board page',
+        await page.evaluate(() => typeof window.promptInstall === 'undefined'));
 
   console.log('\n' + checks + ' checks, ' + failures + ' failures');
   await browser.close();

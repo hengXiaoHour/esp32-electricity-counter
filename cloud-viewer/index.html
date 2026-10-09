@@ -14,7 +14,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="style.css?v=2ff5224e">
+<link rel="stylesheet" href="style.css?v=c766d77c">
 <script>
 // The board is always on location.host, so there is no session to restore and
 // nothing to decide before the first paint. This only hides the connect panel
@@ -47,6 +47,12 @@
     </div>
 
     <div id="connectStatus" class="connect-status disconnected">Connecting to the board...</div>
+    <div class="install-row" id="installRow">
+      <button class="btn-outline" id="installBtn" onclick="promptInstall()">&#8595; Install App</button>
+    </div>
+    <div id="installHint" class="install-hint hidden">
+      This browser will not offer a one-tap install here, so add it by hand: Android Chrome &rarr; menu &#8942; &rarr; Add to home screen &middot; iPhone Safari &rarr; Share &rarr; Add to Home Screen &middot; Desktop Chrome &rarr; install icon in the address bar or menu &rarr; Install.
+    </div>
   </div>
 </div>
 
@@ -96,6 +102,9 @@
         <div class="stat"><span class="stat-label">P</span><span id="totalPower" class="stat-value mono">0 W</span></div>
         <div class="stat"><span class="stat-label">I</span><span id="totalCurrent" class="stat-value mono">0.00 A</span></div>
         <div class="stat stat-clock"><span id="todayDate" class="mono stat-sub">--</span><span id="deviceTime" class="mono stat-sub">--</span></div>
+        <button id="installBtnTop" class="icon-btn hidden" onclick="promptInstall()" title="Install app">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 21h16"/></svg>
+        </button>
       </div>
     </header>
 
@@ -421,8 +430,9 @@
   </div>
 </div>
 
-<script src="script.js?v=2ff5224e"></script>
-<script src="cloud.js?v=2ff5224e"></script>
+<script src="script.js?v=c766d77c"></script>
+<script src="cloud.js?v=c766d77c"></script>
+<script src="install.js?v=c766d77c"></script>
 <script>
 if ('serviceWorker' in navigator && window.isSecureContext) {
   window.addEventListener('load', function () {
