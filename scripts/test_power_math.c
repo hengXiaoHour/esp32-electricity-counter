@@ -2,37 +2,46 @@
  * Host regression test for the current/power trim maths in
  * src/core/power_calculator.cpp::computeAll().
  *
- * Why this exists (2026-10-09): the board trimmed the sensor's DC offset by
- * taking a variance, which is correct, but two real defects sat on top of it:
+ * Why this exists (2026-10-09): the board trims the sensor's DC offset by
+ * taking a variance, which is correct and exact. Two defects sat on top of it:
  *
  *   1. The variance was one-pass: E[X^2] - E[X]^2. At the ~2048-count
- *      mid-supply bias, E[X^2] ~ 4.19e6 where one float ULP is 0.5 counts^2,
- *      while a 0.01 A load has a variance of ~0.01 counts^2. Small signals came
- *      out as rounding noise.
+ *      mid-supply bias E[X^2] ~ 4.19e6, where one float32 ULP is 0.5 counts^2,
+ *      while a 0.05 A load has a variance of ~0.15 counts^2. Small signals came
+ *      out as rounding noise. Fixed by splitting into a mean pass and a
+ *      variance pass.
  *   2. Active power subtracted `voltageRMS * noiseFloor` even though pWatts is
- *      a covariance of two mean-removed signals and already excludes the DC
- *      offset. The two trims disagreed, so a channel could show 0.62 A of
- *      current next to 0 W of power.
+ *      a covariance of two mean-removed signals and therefore already excludes
+ *      the DC offset. On a low-PF load the two trims disagreed badly enough to
+ *      clamp real power to 0 W while the channel still showed current flowing,
+ *      which then tripped the AUTO_RECOVER_PF auto-recovery. Fixed by dropping
+ *      the term.
  *
- * These are the exact expressions from computeAll(), transcribed so the maths
- * can be exercised on a host without hardware. Negative controls run last: if
- * the one-pass or the noise-power term is ever put back, they must FAIL.
+ * IMPORTANT: the accumulators below are `float`, not `double`, on purpose. The
+ * whole of defect 1 is a float32 precision problem, so a host test written in
+ * double cannot see it -- it passes against the broken formula. Compiled with
+ * -O0/-O2 on any IEEE-754 host this reproduces ESP32 arithmetic exactly.
  *
- * Build:  cc -O2 -o /tmp/pctest test_power_math.c -lm && /tmp/pctest
+ * Build:  cc -O2 -o /tmp/pctest scripts/test_power_math.c -lm && /tmp/pctest
  */
 
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <string.h>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 #define N            1000
 #define ADC_MAX      4095.0
 #define VREF         3.3
-#define CURRENT_CAL  100.0
+#define CURRENT_CAL  100.0          /* src/config.h DEFAULT_CURRENT_CALIBRATION */
+#define VOLTAGE_CAL  260.0          /* src/config.h DEFAULT_VOLTAGE_CALIBRATION */
 #define BIAS         2048.0
 
-/* 1 count at currentCal=100 is this many amps. */
+/* One ADC count, in amps, at currentCal=100. This is the resolution floor:
+ * 0.01 A is an eighth of a count and cannot be measured at this gain. */
 static const double A_PER_COUNT = (1.0 / ADC_MAX) * VREF * CURRENT_CAL;
 
 static int failures = 0;
@@ -51,159 +60,167 @@ static void near(double got, double want, double tol, const char *what) {
   }
 }
 
-/* xorshift so the fixtures are byte-identical on every host. */
+/* Deterministic uniform noise so fixtures are identical on every host. */
 static uint32_t rngState = 0x12345678u;
-static double nextGaussish(double sigma) {
+static double noise(double sigma) {
   rngState ^= rngState << 13;
   rngState ^= rngState >> 17;
   rngState ^= rngState << 5;
-  double u = ((double)(rngState & 0xFFFFFF) / (double)0xFFFFFF) - 0.5;
-  return u * 2.0 * sigma * 1.732;   /* uniform -> roughly gaussian */
+  double u = ((double)(rngState & 0xFFFFFFu) / (double)0xFFFFFFu) - 0.5;
+  return u * 2.0 * sigma * 1.732;
 }
 
-/* voltageCal as configured in src/config.h */
-static const double VOLTAGE_CAL = 260.0;
+static float clampCounts(double v) {
+  if (v < 0.0) return 0.0f;
+  if (v > ADC_MAX) return (float)ADC_MAX;
+  return (float)v;
+}
 
-/* signalA is an RMS value, so the sine peak is RMS * sqrt(2). Getting this
- * wrong silently divides every reading by sqrt(2). */
-static void buildSamples(double *buf, double dcCounts, double signalA,
-                         double rippleCounts) {
+/* Current channel. rmsA is a TRUE RMS value (so peak = rms * sqrt(2));
+ * phaseDeg shifts current relative to voltage, which is what sets the PF. */
+static void buildCurrent(float *buf, double dcCounts, double rmsA,
+                         double rippleCounts, double phaseDeg) {
+  double peak = (rmsA / A_PER_COUNT) * M_SQRT2;
+  double ph = phaseDeg * M_PI / 180.0;
   for (int i = 0; i < N; i++) {
     double t = 2.0 * M_PI * i / N;
-    double peakCounts = (signalA / A_PER_COUNT) * M_SQRT2;
-    double v = BIAS + dcCounts + peakCounts * sin(t) + nextGaussish(rippleCounts);
-    if (v < 0.0) v = 0.0;
-    if (v > ADC_MAX) v = ADC_MAX;
-    buf[i] = v;
+    double v = BIAS + dcCounts + peak * sin(t - ph) + noise(rippleCounts);
+    buf[i] = clampCounts(v);
   }
 }
 
-/* Mains voltage channel: RMS volts -> ADC counts, biased to mid-supply. */
-static void buildVoltage(double *buf, double rmsVolts) {
+static void buildVoltage(float *buf, double rmsVolts) {
   double adcRms = (rmsVolts / VOLTAGE_CAL) / VREF * ADC_MAX;
   double peak = adcRms * M_SQRT2;
   for (int i = 0; i < N; i++) {
     double t = 2.0 * M_PI * i / N;
-    double v = BIAS + peak * sin(t) + nextGaussish(1.0);
-    if (v < 0.0) v = 0.0;
-    if (v > ADC_MAX) v = ADC_MAX;
-    buf[i] = v;
+    buf[i] = clampCounts(BIAS + peak * sin(t) + noise(1.0));
   }
 }
 
-/* ---- the two variance forms, as they appear in the firmware ------------- */
+/* ---- the variance forms, transcribed from computeAll() ------------------ */
 
-static double rmsTwoPass(const double *x) {          /* what the board does NOW */
-  double mean = 0.0;
-  for (int i = 0; i < N; i++) mean += x[i];
-  mean /= N;
-  double acc = 0.0;
-  for (int i = 0; i < N; i++) { double d = x[i] - mean; acc += d * d; }
-  return sqrt(acc / N) / ADC_MAX * VREF * CURRENT_CAL;
+static float rmsTwoPass(const float *x) {          /* what the board does NOW */
+  float sum = 0.0f;
+  for (int i = 0; i < N; i++) sum += x[i];
+  float mean = sum / (float)N;
+  float acc = 0.0f;
+  for (int i = 0; i < N; i++) { float d = x[i] - mean; acc += d * d; }
+  return sqrtf(acc / (float)N) / (float)ADC_MAX * (float)VREF * (float)CURRENT_CAL;
 }
 
-static double rmsOnePass(const double *x) {          /* the OLD form */
-  double isum = 0.0, isq = 0.0;
+static float rmsOnePass(const float *x) {          /* the OLD, broken form */
+  float isum = 0.0f, isq = 0.0f;
   for (int i = 0; i < N; i++) { isum += x[i]; isq += x[i] * x[i]; }
-  double mean = isum / N, meansq = isq / N;
-  return sqrt(meansq - mean * mean) / ADC_MAX * VREF * CURRENT_CAL;
+  float mean = isum / (float)N, meansq = isq / (float)N;
+  return sqrtf(meansq - mean * mean) / (float)ADC_MAX * (float)VREF * (float)CURRENT_CAL;
 }
 
+/* Quadratic (RSS) noise-floor subtraction, as computeAll() :96-99. */
 static double trimToNoiseFloor(double raw, double floorA) {
   return (raw * raw > floorA * floorA) ? sqrt(raw * raw - floorA * floorA) : 0.0;
 }
 
-/* active power, current code: covariance only, no noise-power subtraction. */
-static double powerNow(const double *v, const double *i) {
-  double vMean = 0.0, iMean = 0.0;
+/* Active power, current code: covariance only, no noise-power subtraction. */
+static double powerNow(const float *v, const float *i) {
+  float vMean = 0.0f, iMean = 0.0f;
   for (int k = 0; k < N; k++) { vMean += v[k]; iMean += i[k]; }
-  vMean /= N; iMean /= N;
-  double pSum = 0.0;
-  for (int k = 0; k < N; k++)
-    pSum += (v[k] - vMean) * (i[k] - iMean);
-  double pMean = pSum / N;
-  double adcToVolt = VREF / ADC_MAX;
-  return fabs(pMean * adcToVolt * adcToVolt * 260.0 * CURRENT_CAL);
+  vMean /= (float)N; iMean /= (float)N;
+  float pSum = 0.0f;
+  for (int k = 0; k < N; k++) pSum += (v[k] - vMean) * (i[k] - iMean);
+  float pMean = pSum / (float)N;
+  float adcToVolt = (float)VREF / (float)ADC_MAX;
+  return (double)fabsf(pMean * adcToVolt * adcToVolt * (float)VOLTAGE_CAL * (float)CURRENT_CAL);
 }
 
-/* active power, OLD code: the bogus voltageRMS * floor term. */
-static double powerOld(const double *v, const double *i, double floorA) {
-  double p = powerNow(v, i);
-  double vMean = 0.0;
+/* Active power, OLD code: the bogus `voltageRMS * noiseFloor` term. */
+static double powerOld(const float *v, const float *i, double floorA) {
+  float vMean = 0.0f;
   for (int k = 0; k < N; k++) vMean += v[k];
-  vMean /= N;
-  double acc = 0.0;
-  for (int k = 0; k < N; k++) { double d = v[k] - vMean; acc += d * d; }
-  double vRms = sqrt(acc / N) / ADC_MAX * VREF * 260.0;
-  double noisePower = vRms * floorA;
-  double out = p - noisePower;
+  vMean /= (float)N;
+  float acc = 0.0f;
+  for (int k = 0; k < N; k++) { float d = v[k] - vMean; acc += d * d; }
+  float vRms = sqrtf(acc / (float)N) / (float)ADC_MAX * (float)VREF * (float)VOLTAGE_CAL;
+  double out = powerNow(v, i) - (double)vRms * floorA;
   return out < 0.0 ? 0.0 : out;
 }
 
 int main(void) {
-  static double cur[N], volt[N];
-  const double dc4A = 4.0 / A_PER_COUNT;   /* the user's 4.0 A offset */
+  static float cur[N], volt[N];
+  const double dc4A = 4.0 / A_PER_COUNT;      /* the 4.0 A sensor offset */
 
-  printf("1 count = %.4f A at currentCal=100\n", A_PER_COUNT);
+  printf("1 count = %.4f A at currentCal=100  (float32 accumulators)\n", A_PER_COUNT);
 
   /* --- 1. a DC offset must not leak into the current reading ------------- */
-  printf("\n[1] DC offset of 4.0 A with a 0.10 A real load\n");
+  printf("\n[1] DC offset trimmed exactly (the user's 4.0 A scenario)\n");
   rngState = 0x12345678u;
-  buildSamples(cur, dc4A, 0.10, 0.8);
-  near(rmsTwoPass(cur), 0.10, 0.05, "two-pass recovers the load, offset trimmed");
+  buildCurrent(cur, dc4A, 0.10, 0.8, 0.0);
+  near(rmsTwoPass(cur), 0.10, 0.03, "4.0 A offset + 0.10 A load reads 0.10 A");
 
-  /* same signal, 10x the offset: the reading must not move */
   rngState = 0x12345678u;
-  static double bigDc[N];
-  buildSamples(bigDc, 50.0, 0.10, 0.8);   /* ~4 A of offset, same place */
-  near(rmsTwoPass(bigDc), 0.10, 0.05, "reading independent of the DC offset");
+  buildCurrent(cur, 0.0, 0.10, 0.8, 0.0);
+  near(rmsTwoPass(cur), 0.10, 0.03, "no offset + 0.10 A load reads the same");
 
-  /* --- 2. two-pass vs one-pass on small signals --------------------------- */
-  printf("\n[2] one-pass cancellation is fixed\n");
-  double worstOld = 0.0;
-  const double probes[] = {0.05, 0.10, 0.30, 0.50};
+  rngState = 0x12345678u;
+  buildCurrent(cur, 2.0 / A_PER_COUNT, 0.10, 0.8, 0.0);
+  near(rmsTwoPass(cur), 0.10, 0.03, "a 2.0 A offset changes nothing either");
+
+  /* --- 2. float32 cancellation: one-pass vs two-pass --------------------- */
+  printf("\n[2] one-pass cancellation is gone\n");
+  double worstOne = 0.0, worstTwo = 0.0;
+  const double probes[] = {0.05, 0.10, 0.30, 0.50, 1.00};
   for (unsigned p = 0; p < sizeof(probes) / sizeof(probes[0]); p++) {
     rngState = 0xABCDEF01u;
-    buildSamples(cur, dc4A, probes[p], 0.0);   /* zero ripple: pure signal */
-    double two = rmsTwoPass(cur), one = rmsOnePass(cur);
-    near(two, probes[p], probes[p] * 0.25, "two-pass tracks the probe");
-    double errOne = fabs(one - probes[p]);
-    if (errOne > worstOld) worstOld = errOne;
-    printf("     probe %.2f A -> one-pass %.4f A, two-pass %.4f A\n",
-           probes[p], one, two);
+    buildCurrent(cur, dc4A, probes[p], 0.0, 0.0);   /* zero ripple: pure signal */
+    double one = rmsOnePass(cur), two = rmsTwoPass(cur);
+    double e1 = fabs(one - probes[p]), e2 = fabs(two - probes[p]);
+    if (e1 > worstOne) worstOne = e1;
+    if (e2 > worstTwo) worstTwo = e2;
+    printf("     %5.2f A -> one-pass %7.4f A (err %.4f) | two-pass %7.4f A (err %.4f)\n",
+           probes[p], one, e1, two, e2);
   }
-  check(worstOld > 0.10,
-        "the one-pass form was genuinely broken on these probes");
+  near(worstTwo, 0.0, 0.02, "two-pass has no cancellation error left");
+  check(worstOne > 0.02,
+        "the one-pass form really was broken on these probes (test has teeth)");
 
-  /* --- 3. current and power must agree ------------------------------------ */
-  printf("\n[3] a floored channel shows current AND power together\n");
+  /* --- 3. the dropped noise-power term ----------------------------------- */
+  printf("\n[3] a low-PF load keeps its power\n");
   rngState = 0x55AA55AAu;
   buildVoltage(volt, 230.0);
-  buildSamples(cur, dc4A, 0.50, 0.8);
+  buildCurrent(cur, dc4A, 0.50, 0.4, 60.0);    /* PF = cos(60 deg) = 0.5 */
 
   const double floorA = 0.30;
   double curA = trimToNoiseFloor(rmsTwoPass(cur), floorA);
   double wNew = powerNow(volt, cur);
   double wOld = powerOld(volt, cur, floorA);
 
-  check(curA > 0.0, "the 0.50 A load survives a 0.30 A floor");
-  check(wNew > 0.0, "the same load registers power (was clamped to 0)");
-  check(wOld == 0.0,
-        "the OLD noise-power term really did clamp this to zero");
-  printf("     current %.3f A | power new %.1f W | power old %.1f W\n",
-         curA, wNew, wOld);
-  check(wNew > 100.0 && wNew < 150.0,
-        "power is now in the physically sensible range for 230V x 0.5A");
+  check(curA > 0.0, "current survives the floor");
+  check(wOld == 0.0, "the OLD term clamped this real power to zero");
+  check(wNew > 20.0, "the new maths keeps the power");
+  near(wNew, 230.0 * 0.50 * 0.5, 6.0, "power matches V*I*PF");
+  printf("     current %.3f A | power new %.1f W | power old %.1f W\n", curA, wNew, wOld);
 
-  /* --- 4. power factor stays meaningful (the auto-recover regression) ----- */
-  printf("\n[4] power factor no longer collapses to 0 while current flows\n");
+  /* --- 4. the auto-recover regression ------------------------------------ */
+  printf("\n[4] power factor no longer collapses under a load that is ON\n");
   double apparent = 230.0 * curA;
-  double pf = wNew / apparent;
-  check(pf > 0.3, "PF clears AUTO_RECOVER_PF with the load still on");
-  check(powerOld(volt, cur, floorA) / apparent < 0.3,
-        "the old maths would have auto-recovered a tripped channel");
-  printf("     PF new %.3f (threshold 0.3), PF old %.3f\n",
-         pf, wOld / apparent);
+  double pfNew = wNew / apparent;
+  double pfOld = wOld / apparent;
+  check(pfNew > 0.30, "PF clears AUTO_RECOVER_PF with the load still on");
+  check(pfOld < 0.30, "the old maths would have auto-recovered a tripped channel");
+  printf("     PF new %.3f | PF old %.3f | threshold 0.30\n", pfNew, pfOld);
+
+  /* --- 5. the floor's own dead zone, pinned as KNOWN behaviour ------------ */
+  printf("\n[5] KNOWN: an over-set floor still erases small loads\n");
+  for (unsigned f = 0; f < 3; f++) {
+    static const double fl[] = {0.10, 0.30, 0.50};
+    rngState = 0x77AA77AAu;
+    buildCurrent(cur, dc4A, 0.05, 0.4, 0.0);    /* a real 0.05 A load */
+    double t = trimToNoiseFloor(rmsTwoPass(cur), fl[f]);
+    printf("     floor %.2f A -> a 0.05 A load reads %.3f A%s\n",
+           fl[f], t, t == 0.0 ? "  (KILLED)" : "");
+  }
+  check(trimToNoiseFloor(rmsTwoPass(cur), 0.50) == 0.0,
+        "a 0.50 A floor really does erase a 0.05 A load");
 
   printf("\n%d checks, %d failures\n", checks, failures);
   return failures ? 1 : 0;
