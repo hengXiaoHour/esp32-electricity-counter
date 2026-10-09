@@ -1281,7 +1281,10 @@ function saveModalSettings() {
   closeEditModal();
 }
 
-function showToast(msg, ms) {
+// kind: 'ok' (default, green), 'warn' (amber) or 'err' (red). The colour is
+// the only thing that changes - the box is a solid fill with white text in
+// every case, so a rejected value can never be mistaken for a success.
+function showToast(msg, ms, kind) {
   let toast = document.getElementById('toast');
   if (!toast) {
     toast = document.createElement('div');
@@ -1289,11 +1292,18 @@ function showToast(msg, ms) {
     document.body.appendChild(toast);
   }
   toast.textContent = msg;
+  toast.dataset.kind = kind === 'err' || kind === 'warn' ? kind : 'ok';
   toast.className = 'toast show';
   clearTimeout(toast._hide);
   // Callers that are about to lose the connection need longer than the default:
   // 2.5 s is gone before a phone has finished switching WiFi networks.
   toast._hide = setTimeout(() => { toast.className = 'toast'; }, ms || 2500);
+}
+
+// Every "that will not work" message goes through here, so the red fill is
+// applied by the call site rather than left to the reader to remember.
+function showError(msg, ms) {
+  showToast(msg, ms, 'err');
 }
 
 function zeroSubCardDisplay(idx) {
