@@ -1335,7 +1335,8 @@ function eventTag(ev) {
   const m = String((ev && ev.m) || '');
   if (ev && ev.c === 0 &&
       (m.indexOf('Boot \u2014') === 0 || m.indexOf('Billing') === 0 ||
-       m.indexOf('Monthly reset') === 0 || m.indexOf('Rollover test armed') === 0)) {
+       m.indexOf('Monthly reset') === 0 || m.indexOf('Rollover test armed') === 0 ||
+       m.indexOf('Eco ') === 0)) {
     return 'SYS';
   }
   return 'CH' + (ev.c + 1);
