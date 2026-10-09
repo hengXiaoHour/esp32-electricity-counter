@@ -136,7 +136,7 @@ int main(void) {
 
   /* same signal, 10x the offset: the reading must not move */
   rngState = 0x12345678u;
-  double bigDc[20];
+  static double bigDc[N];
   buildSamples(bigDc, 50.0, 0.10, 0.8);   /* ~4 A of offset, same place */
   near(rmsTwoPass(bigDc), 0.10, 0.05, "reading independent of the DC offset");
 
