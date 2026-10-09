@@ -374,7 +374,7 @@ Per channel, when `limit > 0 && energy >= limit`:
   This is the anti-flood latch. The event is what the dashboard turns into a
   Web Notification — there is no server-side push left, so the buzzer, the
   channel `status` field and this event are the whole alarm path.
-- If power factor drops below `AUTO_RECOVER_PF` (0.2) — i.e. the load was removed
+- If power factor drops below `AUTO_RECOVER_PF` (0.3) — i.e. the load was removed
   — status returns to `STATUS_OK` and one `autoRecoverLogged` event is written.
   **The trip latch stays set on purpose**: energy is still over budget, so
   clearing it would re-trip and re-notify on the very next 80 ms cycle. The

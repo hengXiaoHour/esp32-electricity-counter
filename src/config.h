@@ -151,7 +151,12 @@ constexpr const char *AP_PASS_DEFAULT = "configure123";
 // ==============================
 // Auto-Recovery (limit trip)
 // ==============================
-#define AUTO_RECOVER_PF 0.2f
+// While a channel is over its monthly budget the buzzer keeps ringing, but a
+// power factor below this value means the load was actually removed, so the
+// alarm is silenced (status returns to STATUS_OK) while the trip stays latched.
+// Higher = the buzzer cuts out sooner; too high and a genuinely weak-power-factor
+// load is mistaken for "nobody there".
+#define AUTO_RECOVER_PF 0.3f
 
 // ==============================
 // Timing Constants (milliseconds)
