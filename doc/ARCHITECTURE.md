@@ -437,17 +437,21 @@ Per channel, when `limit > 0 && energy >= limit`:
   This is the anti-flood latch. The event is what the dashboard turns into a
   Web Notification — there is no server-side push left, so the buzzer, the
   channel `status` field and this event are the whole alarm path.
-- If power factor drops below `AUTO_RECOVER_PF` (0.3) — i.e. the load was removed
-  — status returns to `STATUS_OK` and one `autoRecoverLogged` event is written.
+- If power factor drops below `AUTO_RECOVER_PF` (0.2) — i.e. the load was removed
+  — status returns to `STATUS_OK` immediately, and one `autoRecoverLogged`
+  event is written. A removed load pins PF at 0 via the deadband, so there is
+  nothing to confirm before going quiet.
   **The trip latch stays set on purpose**: energy is still over budget, so
   clearing it would re-trip and re-notify on the very next 80 ms cycle. The
   status shows "recovered" while the alarm is still latched.
-- A recovered channel re-alarms only when PF rises above `AUTO_RETRIP_PF`
-  (0.4), tracked by per-channel `autoRecovered[ch]`. This 0.3/0.4 hysteresis
-  band — not a single line — is what keeps no-load PF flicker from re-ringing
-  the latched trip one cycle at a time; between the two thresholds the state
-  holds either way. Re-alarming writes one "Load back — alarm resumed" event
-  and re-arms the recover log for the next episode.
+- A recovered channel re-rings only after PF reads above `AUTO_RECOVER_PF`
+  (0.2) for `PF_RING_STABLE_CYCLES` (19) consecutive cycles — about 1.5 s at
+  the 80 ms sensor period. Each cycle above the line increments per-channel
+  `ringStable[ch]`; any single cycle at or below the line resets it to zero.
+  A flickering noise spike can never bank 19 confirmations in a row, while a
+  real steady load delivers them back-to-back. Re-ringing writes one "Load
+  back — alarm resumed" event and re-arms the recover log for the next
+  episode.
 - Otherwise status is `STATUS_TRIPPED`.
 
 Re-arming only happens in the `else` branch — once energy is genuinely back under
