@@ -279,6 +279,82 @@ int main(void) {
   check(trimToNoiseFloor(rmsTwoPass(cur), 0.50) == 0.0,
         "a 0.50 A floor really does erase a 0.05 A load");
 
+  /* --- 6. the no-load deadband: an empty socket reads exactly zero -------- */
+  printf("\n[6] KNOWN NOISE: empty socket blanks to P=0/S=0/PF=0, no kWh creep\n");
+  rngState = 0x1EA1BE1u;
+  buildVoltage(volt, 230.0);
+  for (int i = 0; i < N; i++)              /* current sensor, nothing plugged */
+    cur[i] = clampCounts(BIAS + noise(0.8));
+  {
+    double rawI = trimToNoiseFloor(rmsTwoPass(cur), 0.0);
+    double rawP = powerNow(volt, cur);
+    double s, pf;
+    double gatedP = gateLoad(rawI, rawP, 230.0, &s, &pf);
+    printf("     raw I %.3f A | raw |P| %.2f W -> gated P %.1f W S %.1f VA PF %.3f\n",
+           rawI, rawP, gatedP, s, pf);
+    check(rawP < NO_LOAD_P,
+          "the power gate is what blanks idle noise (test has teeth)");
+    check(gatedP == 0.0 && s == 0.0 && pf == 0.0,
+          "idle noise blanks to P=0/S=0/PF=0");
+    double kwh = 0.0;                       /* 1000 sensor cycles add nothing */
+    for (int k = 0; k < 1000; k++) kwh += gatedP * (0.08 / 3600.0) / 1000.0;
+    check(kwh == 0.0, "no kWh creep from an empty socket");
+  }
+
+  /* --- 7. the deadband boundary: small real loads ------------------------- */
+  printf("\n[7] a 0.02 A load is blanked, a 0.10 A load passes\n");
+  rngState = 0xB0A7DA1u;
+  buildCurrent(cur, dc4A, 0.02, 0.4, 0.0);
+  {
+    double rawI = trimToNoiseFloor(rmsTwoPass(cur), 0.0);
+    double rawP = powerNow(volt, cur);
+    double s, pf;
+    double gatedP = gateLoad(rawI, rawP, 230.0, &s, &pf);
+    printf("     0.02 A -> raw I %.3f A P %.2f W -> gated %.1f W\n", rawI, rawP, gatedP);
+    check(gatedP == 0.0, "a 0.02 A trickle does not register (documented cost)");
+  }
+  rngState = 0xB0A7DA2u;
+  buildCurrent(cur, dc4A, 0.10, 0.4, 0.0);
+  {
+    double rawI = trimToNoiseFloor(rmsTwoPass(cur), 0.0);
+    double rawP = powerNow(volt, cur);
+    double s, pf;
+    double gatedP = gateLoad(rawI, rawP, 230.0, &s, &pf);
+    printf("     0.10 A -> raw I %.3f A P %.2f W -> gated %.1f W PF %.3f\n",
+           rawI, rawP, gatedP, pf);
+    check(gatedP > 0.0, "a 0.10 A load survives the deadband");
+    near(gatedP, 230.0 * 0.10, 4.0, "0.10 A resistive reads ~23 W");
+    check(pf > 0.5, "its PF is nowhere near the recover band");
+  }
+
+  /* --- 8. hysteresis: a recovered trip cannot chatter back on noise ------- */
+  printf("\n[8] PF spikes under 0.4 never re-ring a recovered trip\n");
+  hystReset();
+  hystStep(50.0, 48.0, 0.80);               /* over budget, load on: TRIPPED */
+  check(hStatus == 1, "over budget with load on rings");
+  hystStep(50.0, 48.0, 0.10);               /* load removed: recovers, silent */
+  check(hStatus == 0, "load removed silences the alarm");
+  {
+    /* The user's phantom: empty socket, PF flickering 0..0.35. */
+    static const double spikes[] = {0.0, 0.31, 0.0, 0.35, 0.12, 0.0, 0.33, 0.28};
+    int rang = 0;
+    for (unsigned k = 0; k < sizeof(spikes) / sizeof(spikes[0]); k++) {
+      hystStep(50.0, 48.0, spikes[k]);
+      if (hStatus == 1) rang = 1;
+    }
+    check(!rang, "no spike under 0.4 re-rings the recovered trip");
+  }
+  hystStep(50.0, 48.0, 0.35);
+  check(hStatus == 0, "0.35 holds the recovery (band, not a line)");
+  hystStep(50.0, 48.0, 0.60);
+  check(hStatus == 1, "a real 0.6 PF load re-arms the alarm");
+  hystStep(50.0, 48.0, 0.35);
+  check(hStatus == 1, "0.35 holds the TRIP too (same band, other side)");
+  hystStep(50.0, 48.0, 0.20);
+  check(hStatus == 0, "falling under 0.3 recovers again");
+  hystStep(10.0, 48.0, 0.90);
+  check(hStatus == 0, "back under budget clears everything");
+
   printf("\n%d checks, %d failures\n", checks, failures);
   return failures ? 1 : 0;
 }
