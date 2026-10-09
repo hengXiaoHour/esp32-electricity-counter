@@ -359,6 +359,9 @@ int main(void) {
     }
     check(!rang, "brief stabs over 0.2 never re-ring the recovered trip");
   }
+  hystReset();                                  /* fresh trip, then recover */
+  hystStep(50.0, 48.0, 0.80);
+  hystStep(50.0, 48.0, 0.10);
   check(!hystHold(50.0, 48.0, 0.60, RING_STABLE_N - 1),
         "18 steady cycles at 0.6 PF: still silent (one short of proof)");
   check(hystHold(50.0, 48.0, 0.60, 1),
