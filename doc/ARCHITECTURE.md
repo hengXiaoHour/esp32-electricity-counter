@@ -344,7 +344,10 @@ Triggered by `set_noise_floor` with no `val` (dashboard) or `auto_zero <ch>`
 (console). It is **queued per channel** so all six can be requested at once
 without the sensing loop stalling.
 
-- `requestAutoZero(ch)` appends to a FIFO; duplicates are rejected.
+- `requestAutoZero(ch)` appends to a FIFO; duplicates are rejected. A rejection is
+  reported as such — `processCommand` sets `handled` from the return value and
+  answers "already calibrating or already queued" instead of a bare success, so a
+  client cannot be told a calibration started when none did.
 - `AZ_BATCHES = 1` capture of a full `collectSamples()+computeAll()` pass, so a
   channel's floor is measured in a single batch — one sensor cycle total. (This
   used to average 32 samples; with 1 sample the value is the raw floor and

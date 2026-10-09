@@ -100,3 +100,32 @@ arrival, so a snapshot arriving 6× a second does not re-notify but a newly
 tripped channel does. `tag` replaces the previous notification instead of
 stacking them, and the first one of an episode uses `requireInteraction` so it
 stays on screen while the buzzer is going.
+
+### Auto-Zero is disabled while it runs (2026-10-09)
+The Auto-Zero button used to stay live on the channel being calibrated. The board
+refuses a second calibration for that channel (`requestAutoZero` returns false),
+and the dashboard ignored the return value, so the tap produced no answer and the
+toast still claimed the noise floor would update shortly. The button is now
+`disabled` for the running channel and for anything already queued — the two cases
+the firmware would refuse — while every idle channel stays enabled, because the
+board runs a queue rather than refusing concurrent clicks. The colour moved from
+an inline `style` to `.btn-sm.btn-az` for that: an inline colour beats any
+`:disabled` rule, so a "disabled" button that still looked live was the bug.
+The firmware now also reports the refusal instead of claiming success.
+
+### The calibration status lives under its row, not in the field (2026-10-09)
+The `◐ Calibrating…` chip sat inside the `.cal-field` cell beside the Noise Floor
+input. On a 360 px phone the leftover width after the 85 px label, the input and
+the 104 px Auto-Zero button is smaller than the text, so the chip painted itself
+straight over the button it was describing — the status covered the control. It is
+now a block under its own row, indented to the field column, and the Auto-Zero
+button keeps a clean column at every width.
+
+### The feedback box is a solid fill with white text (2026-10-09)
+`#toast` was a dark card with a 1 px green edge. It is now a filled box with
+fully white text. The fill is deliberately deeper than the `--ok` accent
+(`#3ec972`), because white on that accent is only ~2.1:1 while white on this
+pair is ~5:1 — "fully white text" has to stay readable, not just literal.
+`showToast(msg, ms, kind)` gives it three fills (`ok` green, `warn` amber,
+`err` red) and `showError()` routes every rejected value through the red one, so
+"LPF Alpha must be 0.01-1" can never be painted in the colour of a success.
