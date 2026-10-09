@@ -275,13 +275,15 @@ def patch_index(src: str) -> str:
     # a rebuild over an already-patched file cannot double them.
     if 'id="installRow"' not in html:
         html = html.replace(
-            '<div id="connectStatus" class="connect-status disconnected">',
-            INSTALL_ROW.strip('\n') + '\n\n    '
-            '<div id="connectStatus" class="connect-status disconnected">',
+            '<div id="connectStatus" class="connect-status disconnected">Connecting to the board...</div>',
+            '<div id="connectStatus" class="connect-status disconnected">Connecting to the board...</div>\n'
+            + INSTALL_ROW.strip('\n'),
             1,
         )
     if 'id="installBtnTop"' not in html:
-        html = html.replace('      </div>\n    </header>', INSTALL_BTN_TOP + '      </div>\n    </header>', 1)
+        # Anchored on </header>, which appears exactly once in the page.
+        html = html.replace('      </div>\n    </header>',
+                            INSTALL_BTN_TOP + '      </div>\n    </header>', 1)
     if 'src="install.js' not in html:
         html = html.replace(
             '<script src="cloud.js"></script>',
