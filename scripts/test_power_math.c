@@ -156,6 +156,52 @@ static double powerOld(const float *v, const float *i, double floorA) {
   return out < 0.0 ? 0.0 : out;
 }
 
+/* ---- the no-load deadband + PF floor, transcribed from computeAll() ------ */
+#define NO_LOAD_I  0.05          /* src/config.h NO_LOAD_CURRENT_A */
+#define NO_LOAD_P  2.0           /* src/config.h NO_LOAD_POWER_W */
+#define PF_MIN_VA  5.0           /* src/config.h PF_MIN_VA */
+#define RECOVER_PF 0.3           /* src/config.h AUTO_RECOVER_PF */
+#define RETRIP_PF  0.4           /* src/config.h AUTO_RETRIP_PF */
+
+/* Mirrors the firmware exactly: deadband blanks P/S/PF together, otherwise
+ * S is always reported and only PF is floored. */
+static double gateLoad(double filtI, double rawP, double vRms,
+                       double *sOut, double *pfOut) {
+  if (filtI < NO_LOAD_I || rawP < NO_LOAD_P) {
+    *sOut = 0.0; *pfOut = 0.0; return 0.0;
+  }
+  double s = vRms * filtI;
+  *sOut = s;
+  if (s > PF_MIN_VA) {
+    double pf = rawP / s;
+    if (pf > 1.0) pf = 1.0;
+    *pfOut = pf;
+  } else {
+    *pfOut = 0.0;
+  }
+  return rawP;
+}
+
+/* ---- the trip hysteresis, transcribed from LimitManager::checkLimits() ----
+ * Latch/notify/event-log omitted: only the OK-vs-TRIPPED decision is modelled,
+ * which is what drives the buzzer. */
+static int hTripped, hRecovered, hStatus;   /* 0 = OK, 1 = TRIPPED */
+
+static void hystReset(void) { hTripped = hRecovered = hStatus = 0; }
+
+static void hystStep(double energy, double limit, double pf) {
+  if (limit > 0.0 && energy >= limit) {
+    hTripped = 1;
+    if (!hRecovered) {
+      if (pf < RECOVER_PF) { hRecovered = 1; hStatus = 0; }
+      else hStatus = 1;
+    } else {
+      if (pf > RETRIP_PF) { hRecovered = 0; hStatus = 1; }
+      else hStatus = 0;
+    }
+  } else { hTripped = 0; hRecovered = 0; hStatus = 0; }
+}
+
 int main(void) {
   static float cur[N], volt[N];
   const double dc4A = 4.0 / A_PER_COUNT;      /* the 4.0 A sensor offset */
