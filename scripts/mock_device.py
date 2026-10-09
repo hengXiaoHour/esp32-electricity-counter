@@ -282,6 +282,18 @@ class State:
         self.ap_pass = AP_PASS_DEFAULT
         self.reset_day = 25        # NVS reset_day; set by `reset_day <1-28>`
         self.rebooted = False
+        # Auto-zero state, driven by the ENVIRONMENT so a test can put the
+        # board in the middle of a calibration and assert what the dashboard
+        # does about it. A real calibration takes 20 batches over several
+        # seconds, which no test should sit through, and a UI check that never
+        # renders the calibrating state checks a state the user never sees.
+        #   MOCK_AZ_CHANNEL  index running now, -1 = idle
+        #   MOCK_AZ_QUEUE    comma-separated indices waiting behind it
+        #   MOCK_AZ_PROGRESS batches captured so far
+        self.az_channel = int(os.environ.get("MOCK_AZ_CHANNEL", "-1"))
+        self.az_queue = [int(x) for x in os.environ.get("MOCK_AZ_QUEUE", "").split(",")
+                         if x.strip() != ""]
+        self.az_progress = int(os.environ.get("MOCK_AZ_PROGRESS", "0"))
         self.reboot_reason = None
 
     def snapshot(self):
