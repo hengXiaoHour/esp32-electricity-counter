@@ -130,19 +130,19 @@ run_case N3 "idle noise and trickle loads pass the deadband"
 
 echo
 echo "=============================================================="
-echo "  N4: collapse the 0.3/0.4 hysteresis to a single line"
+echo "  N4: bypass the 19-cycle ring persistence (fire on first spike)"
 echo "=============================================================="
 python3 - "$WORK/test.c" <<'PY'
 import sys
 p = sys.argv[1]
 s = open(p).read()
-old = "      if (pf > RETRIP_PF) { hRecovered = 0; hStatus = 1; }"
+old = "      if (hStable >= RING_STABLE_N) { hRecovered = 0; hStable = 0; hStatus = 1; }"
 assert old in s, "N4 anchor not found"
-new = "      if (pf > RECOVER_PF) { hRecovered = 0; hStatus = 1; }  /* MUTANT: no band */"
+new = "      if (hStable >= 1) { hRecovered = 0; hStable = 0; hStatus = 1; }  /* MUTANT: no persistence */"
 open(p,'w').write(s.replace(old, new))
 print("    mutant written")
 PY
-run_case N4 "PF spikes under 0.4 re-ring a recovered trip"
+run_case N4 "a single above-line spike re-rings the recovered trip"
 
 echo
 echo "=============================================================="
