@@ -502,13 +502,37 @@ def main():
           re.search(r"val !== again[\s\S]{0,200}?return Promise\.resolve\(false\)",
                     js) is not None)
 
-    # --- install button lives in the top bar, not just the connect panel --
-    # The shipped bug: the only Install button lived in the connect panel,
-    # which hides the instant the dashboard connects. It then moved to
-    # Settings, and now to the header so it is one tap away on mobile and
-    # desktop alike. The manual-steps hint stays in the connect panel.
-    c.add("the top bar has its own install button",
-          'id="installBtnTop"' in html and "installBtnTop" in js)
+    # --- install UI is cloud-only ---------------------------------------
+    # It used to live in the connect panel, then Settings, then the header - all
+    # on the BOARD page, where it could never work: that page is plain http on a
+    # LAN IP, so no browser registers the service worker there and none fires
+    # beforeinstallprompt. The button was a dead control on the one origin that
+    # cannot install. It now ships only with the hosted (https) dashboard, and
+    # these claims pin BOTH halves: nothing install-shaped in the board's copy,
+    # and the cloud build still carrying the whole UI.
+    _embed = read("scripts/embed_web.py")
+    _install_js = read("cloud-viewer/install.js") if (
+        ROOT / "cloud-viewer/install.js").exists() else ""
+    c.add("the board page has no install UI at all",
+          'id="installRow"' not in html and 'id="installBtnTop"' not in html
+          and 'id="installHint"' not in html and "promptInstall" not in js,
+          "frontend/index.html or frontend/script.js still carries install markup")
+    c.add("the board firmware does not embed the install module",
+          "install.js" not in _embed,
+          "scripts/embed_web.py would put an install asset in the firmware image")
+    c.add("the hosted page has the install UI, header button included",
+          'id="installBtnTop"' in cl_html and 'id="installRow"' in cl_html
+          and 'id="installHint"' in cl_html and 'src="install.js' in cl_html,
+          "build_cloud_viewer.py stopped injecting the cloud-only install UI")
+    c.add("the cloud install module is wired end to end",
+          all(t in _install_js for t in ("beforeinstallprompt", "appinstalled",
+                                         "function promptInstall",
+                                         "showInstallRow", "hideInstallRow"))
+          and "Cloud-only additions" in cl_css and ".install-row" in cl_css,
+          "cloud-viewer/install.js or its CSS block is incomplete")
+    c.add("the cloud service worker precaches the install module",
+          "./install.js?v=" in cl_sw,
+          "cloud-viewer/sw.js does not list install.js in its SHELL")
     c.add("the station defaults live in config.h",
           "STA_SSID_DEFAULT" in cfg and "STA_PASS_DEFAULT" in cfg)
     c.add("station credentials are read from NVS first, defaults second",
