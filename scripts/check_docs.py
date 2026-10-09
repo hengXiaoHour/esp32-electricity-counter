@@ -644,25 +644,28 @@ def main():
     c.add("ARCHITECTURE records that the AP identity is persisted",
           "`ap_ssid`, `ap_pass`" in arch and "set_ap" in arch and "reset_ap" in arch)
 
-    # --- no-load deadband + PF hysteresis (phantom-buzzer fix) ------------
-    # An empty socket must read exactly zero and a recovered trip must need
-    # PF > 0.4 (not just back above 0.3) to re-ring. Each threshold lives in
-    # config.h, is consumed in exactly one place, and is quoted in
-    # ARCHITECTURE - all three sides asserted so none can drift alone. Values
-    # are parsed as floats and compared numerically, never as formatted
+    # --- no-load deadband + ring persistence (phantom-buzzer fix) ---------
+    # An empty socket must read exactly zero, and a silenced trip must see PF
+    # above 0.2 for PF_RING_STABLE_CYCLES straight cycles before it re-rings.
+    # Each threshold lives in config.h, is consumed in exactly one place, and
+    # is quoted in ARCHITECTURE - all three sides asserted so none can drift
+    # alone. Values are parsed and compared numerically, never as formatted
     # strings ("2.0" vs "2.00" must not fail a correct tree).
     def _cfg_float(name):
         m = re.search(r"#define\s+%s\s+([\d.]+)f?" % name, cfg)
         return float(m.group(1)) if m else None
+    def _cfg_int(name):
+        m = re.search(r"#define\s+%s\s+(\d+)" % name, cfg)
+        return int(m.group(1)) if m else None
     _dead_i = _cfg_float("NO_LOAD_CURRENT_A")
     _dead_p = _cfg_float("NO_LOAD_POWER_W")
     _pf_min = _cfg_float("PF_MIN_VA")
     _rec_pf = _cfg_float("AUTO_RECOVER_PF")
-    _ret_pf = _cfg_float("AUTO_RETRIP_PF")
-    c.add("the deadband/hysteresis thresholds live in config.h with recover < re-trip",
+    _ring_n = _cfg_int("PF_RING_STABLE_CYCLES")
+    c.add("the deadband/persistence thresholds live in config.h (recover 0.2, 19 cycles)",
           _dead_i == 0.05 and _dead_p == 2.0 and _pf_min == 5.0 and
-          _rec_pf == 0.3 and _ret_pf == 0.4,
-          "i=%s p=%s pfmin=%s rec=%s ret=%s" % (_dead_i, _dead_p, _pf_min, _rec_pf, _ret_pf))
+          _rec_pf == 0.2 and _ring_n == 19,
+          "i=%s p=%s pfmin=%s rec=%s ring_n=%s" % (_dead_i, _dead_p, _pf_min, _rec_pf, _ring_n))
     _pc_code = strip_comments(pc)
     c.add("computeAll() blanks power/PF/energy under the deadband",
           "NO_LOAD_CURRENT_A" in _pc_code and "NO_LOAD_POWER_W" in _pc_code and
@@ -670,13 +673,15 @@ def main():
     c.add("the PF gate uses PF_MIN_VA, not the old 0.001 VA noise line",
           "PF_MIN_VA" in _pc_code and "0.001f" not in _pc_code)
     _lm_code = strip_comments(lm)
-    c.add("checkLimits() re-arms a recovered trip only above AUTO_RETRIP_PF",
-          "AUTO_RETRIP_PF" in _lm_code and "autoRecovered[ch]" in _lm_code and
-          "autoRecovered" in strip_comments(lm_h))
-    c.add("ARCHITECTURE quotes the deadband/hysteresis constants and numbers",
+    c.add("checkLimits() re-rings only after PF_RING_STABLE_CYCLES steady cycles",
+          "PF_RING_STABLE_CYCLES" in _lm_code and "ringStable[ch]" in _lm_code and
+          "ringStable" in strip_comments(lm_h))
+    c.add("ARCHITECTURE quotes the deadband/persistence constants and numbers",
           all(k in arch for k in ["NO_LOAD_CURRENT_A", "NO_LOAD_POWER_W",
-                                  "PF_MIN_VA", "AUTO_RECOVER_PF", "AUTO_RETRIP_PF"]) and
-          all(k in arch for k in ["(0.05)", "(2.0)", "(5.0)", "(0.3)", "(0.4)"]))
+                                  "PF_MIN_VA", "AUTO_RECOVER_PF",
+                                  "PF_RING_STABLE_CYCLES"]) and
+          "`AUTO_RECOVER_PF` (0.2)" in arch and
+          "`PF_RING_STABLE_CYCLES` (19)" in arch)
 
     # --- firmware version / size ---------------------------------------
     m = re.search(r'#define FIRMWARE_VERSION "([^"]+)"', cfg)
