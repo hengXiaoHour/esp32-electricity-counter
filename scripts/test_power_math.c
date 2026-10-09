@@ -178,13 +178,7 @@ int main(void) {
   /* --- 3. current and power must agree ------------------------------------ */
   printf("\n[3] a floored channel shows current AND power together\n");
   rngState = 0x55AA55AAu;
-  buildSamples(volt, 0.0, 0.0, 0.0);
-  for (int k = 0; k < N; k++) {
-    double t = 2.0 * M_PI * k / N;
-    volt[k] = BIAS + (230.0 / 260.0) * (1.0 / ADC_MAX) * VREF * ADC_MAX
-                      * 0.7071 * sin(t) + nextGaussish(1.0);
-    if (volt[k] > ADC_MAX) volt[k] = ADC_MAX;
-  }
+  buildVoltage(volt, 230.0);
   buildSamples(cur, dc4A, 0.50, 0.8);
 
   const double floorA = 0.30;
