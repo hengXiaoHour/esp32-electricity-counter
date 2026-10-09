@@ -513,6 +513,9 @@ def main():
     _embed = read("scripts/embed_web.py")
     _install_js = read("cloud-viewer/install.js") if (
         ROOT / "cloud-viewer/install.js").exists() else ""
+    cl_html = read("cloud-viewer/index.html")
+    cl_css = read("cloud-viewer/style.css")
+    fr_sw = read("frontend/sw.js")
     c.add("the board page has no install UI at all",
           'id="installRow"' not in html and 'id="installBtnTop"' not in html
           and 'id="installHint"' not in html and "promptInstall" not in js,
@@ -530,9 +533,11 @@ def main():
                                          "showInstallRow", "hideInstallRow"))
           and "Cloud-only additions" in cl_css and ".install-row" in cl_css,
           "cloud-viewer/install.js or its CSS block is incomplete")
+    # Same shape as the cloud.js precache claim further down: the module is in
+    # the hosted shell and NOT in the board's, so one cannot leak into the other.
     c.add("the cloud service worker precaches the install module",
-          "./install.js?v=" in cl_sw,
-          "cloud-viewer/sw.js does not list install.js in its SHELL")
+          "./install.js" in read("cloud-viewer/sw.js") and "./install.js" not in fr_sw,
+          "install.js is missing from the cloud shell or present in the board's")
     c.add("the station defaults live in config.h",
           "STA_SSID_DEFAULT" in cfg and "STA_PASS_DEFAULT" in cfg)
     c.add("station credentials are read from NVS first, defaults second",
