@@ -235,6 +235,7 @@ void LimitManager::rolloverIfNeeded() {
     tripNotified[ch] = false;
     autoRecoverLogged[ch] = false;
     autoRecovered[ch] = false;
+    ringStable[ch] = 0;
   }
   nvs->commit();  // persist immediately — prevents repeat on next boot
   if (buzzer) buzzer->stop();
@@ -290,6 +291,7 @@ void LimitManager::resetCounter(uint8_t ch) {
   tripNotified[ch] = false;
   autoRecoverLogged[ch] = false;
   autoRecovered[ch] = false;
+  ringStable[ch] = 0;
   if (buzzer) buzzer->stop();
   nvs->saveEnergyKWh(ch, 0.0f);
   logForensicEvent(ch, STATUS_OK, "Manual reset — counter zeroed", 0.0f);
