@@ -333,7 +333,7 @@ def main() -> int:
 
     html_path = CLOUD / "index.html"
     html = html_path.read_text(encoding="utf-8")
-    html = re.sub(r'(src|href)="(script\.js|cloud\.js|style\.css)(\?v=[0-9a-z]+)?"',
+    html = re.sub(r'(src|href)="(script\.js|cloud\.js|install\.js|style\.css)(\?v=[0-9a-z]+)?"',
                   lambda m: '%s="%s?v=%s"' % (m.group(1), m.group(2), stamp), html)
     html_path.write_text(html, encoding="utf-8")
 
