@@ -442,6 +442,12 @@ Per channel, when `limit > 0 && energy >= limit`:
   **The trip latch stays set on purpose**: energy is still over budget, so
   clearing it would re-trip and re-notify on the very next 80 ms cycle. The
   status shows "recovered" while the alarm is still latched.
+- A recovered channel re-alarms only when PF rises above `AUTO_RETRIP_PF`
+  (0.4), tracked by per-channel `autoRecovered[ch]`. This 0.3/0.4 hysteresis
+  band — not a single line — is what keeps no-load PF flicker from re-ringing
+  the latched trip one cycle at a time; between the two thresholds the state
+  holds either way. Re-alarming writes one "Load back — alarm resumed" event
+  and re-arms the recover log for the next episode.
 - Otherwise status is `STATUS_TRIPPED`.
 
 Re-arming only happens in the `else` branch — once energy is genuinely back under
