@@ -160,8 +160,8 @@ static double powerOld(const float *v, const float *i, double floorA) {
 #define NO_LOAD_I  0.05          /* src/config.h NO_LOAD_CURRENT_A */
 #define NO_LOAD_P  2.0           /* src/config.h NO_LOAD_POWER_W */
 #define PF_MIN_VA  5.0           /* src/config.h PF_MIN_VA */
-#define RECOVER_PF 0.3           /* src/config.h AUTO_RECOVER_PF */
-#define RETRIP_PF  0.4           /* src/config.h AUTO_RETRIP_PF */
+#define RECOVER_PF 0.2            /* src/config.h AUTO_RECOVER_PF */
+#define RING_STABLE_N 19          /* src/config.h PF_RING_STABLE_CYCLES (~1.5 s) */
 
 /* Mirrors the firmware exactly: deadband blanks P/S/PF together, otherwise
  * S is always reported and only PF is floored. */
@@ -182,9 +182,11 @@ static double gateLoad(double filtI, double rawP, double vRms,
   return rawP;
 }
 
-/* ---- the trip hysteresis, transcribed from LimitManager::checkLimits() ----
+/* ---- the recover + ring-persistence logic, transcribed from
+ * LimitManager::checkLimits() ----
  * Latch/notify/event-log omitted: only the OK-vs-TRIPPED decision is modelled,
- * which is what drives the buzzer. */
+ * which is what drives the buzzer. Silence is instant below the line; ringing
+ * from a recovery needs RING_STABLE_N consecutive cycles above it. */
 static int hTripped, hRecovered, hStatus;   /* 0 = OK, 1 = TRIPPED */
 
 static void hystReset(void) { hTripped = hRecovered = hStatus = 0; }
