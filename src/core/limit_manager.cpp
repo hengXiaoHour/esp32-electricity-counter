@@ -55,30 +55,50 @@ void LimitManager::checkLimits() {
       if (!tripNotified[ch]) {
         tripNotified[ch] = true;
         autoRecoverLogged[ch] = false;  // allow one recover log per trip
+        autoRecovered[ch] = false;      // a new trip starts un-recovered
         logForensicEvent(ch, STATUS_TRIPPED, "Monthly limit reached — over budget", energy);
         // No server-side push here any more: ntfy.sh needs the internet,
         // and this board has none. The trip is signalled by the buzzer, the
         // channel status field in the WebSocket snapshot, and this event -
         // which is what makes the dashboard raise a browser Notification.
       }
-      if (powerCalc->getPowerFactor(ch) < AUTO_RECOVER_PF) {
-        sysData->channels[ch].status = STATUS_OK;
-        // Latch stays SET here: energy is still over budget, so clearing
-        // it would re-arm the trip and re-log + re-notify + re-beep on the
-        // very next cycle (event-log flood). Re-arm happens only in the
-        // else branch, once energy is back under the limit.
-        if (!autoRecoverLogged[ch]) {
-          autoRecoverLogged[ch] = true;
-          logEvent(ch, STATUS_OK, "Auto-recovered — load removed", energy);
+      // Hysteresis band, not a line: recover below AUTO_RECOVER_PF (0.3),
+      // re-alarm only above AUTO_RETRIP_PF (0.4). Between the two the state
+      // holds. The deadband in computeAll() pins no-load PF at exactly 0, so
+      // an empty socket can never climb into the band on noise alone; this
+      // hysteresis covers real marginal loads hovering at the edge.
+      float pf = powerCalc->getPowerFactor(ch);
+      if (!autoRecovered[ch]) {
+        if (pf < AUTO_RECOVER_PF) {
+          autoRecovered[ch] = true;
+          sysData->channels[ch].status = STATUS_OK;
+          // Latch stays SET here: energy is still over budget, so clearing
+          // it would re-arm the trip and re-log + re-notify + re-beep on the
+          // very next cycle (event-log flood). Re-arm happens only in the
+          // else branch, once energy is back under the limit.
+          if (!autoRecoverLogged[ch]) {
+            autoRecoverLogged[ch] = true;
+            logEvent(ch, STATUS_OK, "Auto-recovered — load removed", energy);
+          }
+        } else {
+          sysData->channels[ch].status = STATUS_TRIPPED;
         }
       } else {
-        sysData->channels[ch].status = STATUS_TRIPPED;
+        if (pf > AUTO_RETRIP_PF) {
+          autoRecovered[ch] = false;
+          autoRecoverLogged[ch] = false;  // next recovery logs its own episode
+          sysData->channels[ch].status = STATUS_TRIPPED;
+          logEvent(ch, STATUS_TRIPPED, "Load back — alarm resumed", energy);
+        } else {
+          sysData->channels[ch].status = STATUS_OK;
+        }
       }
     } else {
       // Energy back under the limit (manual reset / monthly rollover):
       // re-arm the trip so the next over-budget excursion notifies again.
       tripNotified[ch] = false;
       autoRecoverLogged[ch] = false;
+      autoRecovered[ch] = false;
       sysData->channels[ch].status = STATUS_OK;
     }
   }
