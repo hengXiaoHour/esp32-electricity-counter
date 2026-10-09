@@ -61,12 +61,30 @@ static double nextGaussish(double sigma) {
   return u * 2.0 * sigma * 1.732;   /* uniform -> roughly gaussian */
 }
 
+/* voltageCal as configured in src/config.h */
+static const double VOLTAGE_CAL = 260.0;
+
+/* signalA is an RMS value, so the sine peak is RMS * sqrt(2). Getting this
+ * wrong silently divides every reading by sqrt(2). */
 static void buildSamples(double *buf, double dcCounts, double signalA,
                          double rippleCounts) {
   for (int i = 0; i < N; i++) {
     double t = 2.0 * M_PI * i / N;
-    double sigCounts = (signalA / A_PER_COUNT) * sin(t);
-    double v = BIAS + dcCounts + sigCounts + nextGaussish(rippleCounts);
+    double peakCounts = (signalA / A_PER_COUNT) * M_SQRT2;
+    double v = BIAS + dcCounts + peakCounts * sin(t) + nextGaussish(rippleCounts);
+    if (v < 0.0) v = 0.0;
+    if (v > ADC_MAX) v = ADC_MAX;
+    buf[i] = v;
+  }
+}
+
+/* Mains voltage channel: RMS volts -> ADC counts, biased to mid-supply. */
+static void buildVoltage(double *buf, double rmsVolts) {
+  double adcRms = (rmsVolts / VOLTAGE_CAL) / VREF * ADC_MAX;
+  double peak = adcRms * M_SQRT2;
+  for (int i = 0; i < N; i++) {
+    double t = 2.0 * M_PI * i / N;
+    double v = BIAS + peak * sin(t) + nextGaussish(1.0);
     if (v < 0.0) v = 0.0;
     if (v > ADC_MAX) v = ADC_MAX;
     buf[i] = v;
