@@ -12,11 +12,18 @@
 set -u
 
 WORK="${WORK:-/tmp/opencode/pc-negctl}"
-SRC="$(cd "$(dirname "$0")" && pwd)/../src/core/power_calculator.cpp"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+SRC="$HERE/../src/core/power_calculator.cpp"
 mkdir -p "$WORK"
 cp "$SRC" "$WORK/pristine.cpp"
 
-restore() { cp "$WORK/pristine.cpp" "$WORK/mutant.cpp"; }
+restore() {
+  cp "$WORK/pristine.cpp" "$WORK/mutant.cpp"
+  # BOTH files must be reset. Resetting only the firmware let N1's mutation
+  # leak into N2, so N2 "failed" partly on an N1 assertion -- a mutant that
+  # trips the wrong check proves nothing about the check it was built for.
+  cp "$HERE/test_power_math.c" "$WORK/test.c"
+}
 sha_before=$(sha256sum "$SRC" | cut -d' ' -f1)
 
 run_case() {
@@ -42,7 +49,7 @@ run_case() {
   restore
 }
 
-cp "$(dirname "$0")/test_power_math.c" "$WORK/test.c"
+cp "$HERE/test_power_math.c" "$WORK/test.c"
 restore
 FAILED=0
 

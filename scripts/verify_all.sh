@@ -116,6 +116,27 @@ else
   record $? "$(tail -1 /tmp/opencode/verify_jsonesc.log)"
 fi
 
+# --- 2f. Current/power trim maths (host build, no hardware) ----------------
+# The DC-offset trim lives in computeAll(). It is a float32 variance, so a
+# host test written in `double` CANNOT see the one-pass cancellation bug and
+# would pass against the broken formula - test_power_math.c therefore uses
+# float accumulators on purpose. Negative controls in
+# scripts/negctl_power_math.sh reintroduce each defect and require a FAIL.
+stage "Power trim maths"
+gcc -std=c11 -Wall -Wextra scripts/test_power_math.c \
+    -o /tmp/opencode/power_math_test -lm \
+    2>/tmp/opencode/verify_powermath_build.log
+if [ $? -ne 0 ]; then
+  record 1 "test_power_math.c compiles"
+  sed -n '1,12p' /tmp/opencode/verify_powermath_build.log
+else
+  record 0 "test_power_math.c compiles"
+  /tmp/opencode/power_math_test >/tmp/opencode/verify_powermath.log 2>&1
+  record $? "$(tail -1 /tmp/opencode/verify_powermath.log)"
+  bash scripts/negctl_power_math.sh >/tmp/opencode/verify_powermath_negctl.log 2>&1
+  record $? "$(tail -1 /tmp/opencode/verify_powermath_negctl.log)"
+fi
+
 # --- 2e. Setup wizard (host test, no hardware) ---------------------------
 # scripts/setup.py provisions a board over USB serial (setwifi, setcloud,
 # dashboard IP). The suite drives it against a fake board on a pty that

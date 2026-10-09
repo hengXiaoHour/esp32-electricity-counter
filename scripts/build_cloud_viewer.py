@@ -16,6 +16,11 @@ rendering files verbatim and applies only small cloud patches:
                events, settings, console). cloud.js overrides the TRANSPORT
                functions after load (connect/send/auth), never the rendering.
   manifest.json, icons/, sw.js : copied (sw cache name bumped for cloud).
+  install UI : INJECTED (markup + script tag + CSS). frontend/ has none on
+               purpose - the board serves its page over plain http on a LAN IP,
+               which is not a secure context, so browsers never offer "Install"
+               there. The hosted site is https, so install.js (hand-written,
+               like cloud.js) is what makes the button real.
 
 Re-run after any frontend change:
     python3 scripts/build_cloud_viewer.py
@@ -64,6 +69,22 @@ CLOUD_BAR = """    <!-- Cloud device panel: lives in Settings so the header stat
       </div>
       <div id="cloudCmdStatus" class="mono dim cloud-status">No command sent yet.</div>
     </div>
+"""
+
+# The install UI is CLOUD-ONLY. Both hooks are asserted in its header comment;
+# the board's frontend/index.html deliberately has no install markup.
+INSTALL_ROW = """
+    <div class="install-row" id="installRow">
+      <button class="btn-outline" id="installBtn" onclick="promptInstall()">&#8595; Install App</button>
+    </div>
+    <div id="installHint" class="install-hint hidden">
+      This browser will not offer a one-tap install here, so add it by hand: Android Chrome &rarr; menu &#8942; &rarr; Add to home screen &middot; iPhone Safari &rarr; Share &rarr; Add to Home Screen &middot; Desktop Chrome &rarr; install icon in the address bar or menu &rarr; Install.
+    </div>
+"""
+
+INSTALL_BTN_TOP = """        <button id="installBtnTop" class="icon-btn hidden" onclick="promptInstall()" title="Install app">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 21h16"/></svg>
+        </button>
 """
 
 def _panel_spans(text):
