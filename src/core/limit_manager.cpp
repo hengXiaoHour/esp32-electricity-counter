@@ -57,6 +57,7 @@ void LimitManager::checkLimits() {
         tripNotified[ch] = true;
         autoRecoverLogged[ch] = false;  // allow one recover log per trip
         autoRecovered[ch] = false;      // a new trip starts un-recovered
+        ringStable[ch] = 0;
         logForensicEvent(ch, STATUS_TRIPPED, "Monthly limit reached — over budget", energy);
         // No server-side push here any more: ntfy.sh needs the internet,
         // and this board has none. The trip is signalled by the buzzer, the
