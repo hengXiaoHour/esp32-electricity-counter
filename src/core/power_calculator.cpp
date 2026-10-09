@@ -117,7 +117,22 @@ void PowerCalculator::computeAll() {
     // the mains waveform. The old `fabsf(pWatts) - voltageRMS * floor` removed
     // a bias that was never present, and because the two trims disagreed the
     // board could show 0.62 A of current alongside 0 W of power.
-    activePower[ch] = fabsf(pWatts);
+    //
+    // No-load deadband (see NO_LOAD_CURRENT_A / NO_LOAD_POWER_W in config.h):
+    // below either threshold the channel reports P=0, S=0, PF=0 and integrates
+    // nothing. fabs() rectifies noise, so without this an empty socket reads a
+    // flickering 1-2 W that creeps into kWh and gives noise a "valid" PF that
+    // re-rings a latched trip one cycle at a time. The displayed current keeps
+    // its measured (floor-trimmed) value — only power, PF and energy blank.
+    float rawP = fabsf(pWatts);
+    bool noLoad = (filteredCurrentRMS[ch] < NO_LOAD_CURRENT_A) || (rawP < NO_LOAD_POWER_W);
+    if (noLoad) {
+      activePower[ch] = 0.0f;
+      apparentPower[ch] = 0.0f;
+      powerFactor[ch] = 0.0f;
+      continue;
+    }
+    activePower[ch] = rawP;
     if (activePower[ch] < 0.0f) activePower[ch] = 0.0f;
 
     float vActual = (vAdcRMS / ADC_MAX_VALUE) * ADC_REFERENCE_V * voltageCal;
