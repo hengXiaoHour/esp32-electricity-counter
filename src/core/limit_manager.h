@@ -55,12 +55,15 @@ private:
   // Logged the one "Auto-recovered" event for the current trip. Prevents
   // re-logging the recovery every cycle while energy stays over budget.
   bool autoRecoverLogged[NUM_CHANNELS];
-  // Hysteresis state for the PF auto-recover (see AUTO_RECOVER_PF /
-  // AUTO_RETRIP_PF in config.h). Set when a tripped channel's PF falls below
-  // the recover line; cleared only when PF rises above the HIGHER re-trip
-  // line. Without the split band, no-load PF noise flickering across one line
-  // re-rings the latched trip for a single 80 ms cycle at a time.
+  // Silenced-but-still-over-budget flag (see AUTO_RECOVER_PF in config.h). Set
+  // when a tripped channel's PF falls below the line; cleared only when PF
+  // reads above it for PF_RING_STABLE_CYCLES consecutive cycles. Without the
+  // persistence count, no-load PF flicker across the line would re-ring the
+  // latched trip one 80 ms cycle at a time.
   bool autoRecovered[NUM_CHANNELS];
+  // Consecutive-cycle counter feeding the re-ring gate above. Any cycle at or
+  // below the line resets it to zero. Only meaningful while autoRecovered.
+  uint8_t ringStable[NUM_CHANNELS];
   // One-shot boot marker (see loop()): proves a restart happened and when,
   // so a counter drop can be attributed to reboot + NVS reload afterwards.
   bool bootEventLogged = false;
