@@ -508,13 +508,35 @@ body.role-guest:not(.conn-mode-demo) .admin-only { display: none !important; }
 }
 
 /* ============ Toast ============ */
+/* A solid fill, not an outlined card: on a phone the message was a dark box
+   with a thin green edge and grey-white text, which is easy to miss and reads
+   as disabled chrome. The green is deliberately DEEPER than --ok (#3ec972):
+   white on that accent is only 2.1:1, while white on this pair is ~5:1, so
+   "fully white text" is still readable rather than decorative. Errors use the
+   same shape in red, so a refused value can never look like a success. */
 #toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
-  background: var(--bg-card); border: 1px solid var(--ok); color: var(--text);
-  padding: 10px 20px; border-radius: 8px; font-size: 0.8rem; font-weight: 600; z-index: 1100;
-  opacity: 0; transition: opacity 0.3s; pointer-events: none; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  max-width: min(420px, calc(100vw - 28px));
+  background: linear-gradient(135deg, #1a8047, #146b3a);
+  color: #fff; border: none;
+  padding: 13px 22px; border-radius: 10px;
+  font-size: 0.8rem; font-weight: 700; line-height: 1.45; text-align: center;
+  z-index: 1100; opacity: 0; pointer-events: none;
+  transition: opacity 0.25s, transform 0.25s;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55), 0 6px 22px rgba(26, 128, 71, 0.45),
+              inset 0 1px 0 rgba(255, 255, 255, 0.16);
 }
-#toast.show { opacity: 1; }
+#toast[data-kind="warn"] {
+  background: linear-gradient(135deg, #8a5a10, #6f470c);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55), 0 6px 22px rgba(138, 90, 16, 0.45),
+              inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+#toast[data-kind="err"] {
+  background: linear-gradient(135deg, #b8382b, #8f2a20);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55), 0 6px 22px rgba(184, 56, 43, 0.45),
+              inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(-4px); }
 
 /* ============ Mobile Bottom Nav ============ */
 #mobileNav { display: none; }
