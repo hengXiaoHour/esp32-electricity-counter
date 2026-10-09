@@ -44,6 +44,15 @@ public:
   // never call while holding it.
   void logOTAVerified();
 
+  // Eco-mode transitions, so the History event log (local + cloud) shows WHY
+  // the radio is quiet: without these the `eco` snapshot bit is only a live
+  // badge with no trail, and there is no way to tell afterwards whether the
+  // board really slept. Both take dataMutex internally; never call while
+  // holding it. Called from updateEcoMode() on networkTask, at most once per
+  // transition (enter after 60 s idle, exit on first viewer back).
+  void logEcoSleep();
+  void logEcoWake();
+
 private:
   NVSManager *nvs;
   PowerCalculator *powerCalc;
