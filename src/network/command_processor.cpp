@@ -211,10 +211,22 @@ bool processCommand(NVSManager *nvs, SystemData *sysData,
         float val = s.substring(vi + 6).toFloat();
         powerCalc->setNoiseFloor(ch, val);
         nvs->saveNoiseFloor(ch, val);
+        handled = true;
       } else {
-        powerCalc->requestAutoZero(ch);
+        // Report the request HONESTLY. requestAutoZero() refuses a channel
+        // that is already running or already queued, and this branch used to
+        // claim success anyway - which is how the UI could be told a second
+        // calibration had started when nothing had. `handled` is what decides
+        // whether a reply goes back at all.
+        bool queued = powerCalc && powerCalc->requestAutoZero(ch);
+        handled = queued;
+        if (responseOut) {
+          *responseOut = queued
+            ? String("  Auto-zero queued for Ch") + String(ch + 1) + "."
+            : String("  Auto-zero refused: Ch") + String(ch + 1) +
+              " is already calibrating or already queued.";
+        }
       }
-      handled = true;
     }
 
   } else if (s.indexOf("\"cmd\":\"set_lpf\"") >= 0) {
