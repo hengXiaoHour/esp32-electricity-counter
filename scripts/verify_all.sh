@@ -270,6 +270,41 @@ elif curl -sf -o /dev/null "http://127.0.0.1:$PORT/"; then
   else
     printf '  \033[33mSKIP\033[0m UI layout check (playwright not installed globally)\n'
   fi
+
+  # --- 4c. Auto-zero in progress + the feedback box -----------------------
+  # A SECOND mock, on its own port, with the board mid-calibration. The main
+  # mock is idle, so this is the only way to render the state the bug lived in:
+  # a real calibration takes 20 batches over seconds, and the Auto-Zero button
+  # that could not work was left live through all of them.
+  AZ_PORT=$((PORT + 1))
+  MOCK_AZ_CHANNEL=1 MOCK_AZ_QUEUE=2 MOCK_AZ_PROGRESS=5 \
+    python3 scripts/mock_device.py --port "$AZ_PORT" >/tmp/opencode/verify_mock_az.log 2>&1 &
+  AZ_PID=$!
+  for _ in $(seq 1 25); do
+    curl -sf -o /dev/null "http://127.0.0.1:$AZ_PORT/" && break
+    sleep 0.2
+  done
+  if ! kill -0 "$AZ_PID" 2>/dev/null || ! curl -sf -o /dev/null "http://127.0.0.1:$AZ_PORT/"; then
+    record 1 "the auto-zero mock board came up on port $AZ_PORT"
+  elif ! node -e "require(require('child_process').execSync('npm root -g',{encoding:'utf8'}).trim()+'/playwright')" 2>/dev/null; then
+    printf '  \033[33mSKIP\033[0m auto-zero UI check (playwright not installed globally)\n'
+  else
+    AZ_OK=0
+    AZ_W=360
+    # 360 is the phone width the bug was reported at; 1280 proves the fix is not
+    # a narrow-screen-only patch.
+    for AZ_W in 360 1280; do
+      node scripts/e2e_autozero.js "http://127.0.0.1:$AZ_PORT" "$AZ_W" \
+        >"/tmp/opencode/verify_az_$AZ_W.log" 2>&1 || { AZ_OK=1; break; }
+    done
+    record "$AZ_OK" "Auto-Zero is disabled while calibrating and the status text clears its button"
+    if [ "$AZ_OK" -ne 0 ]; then
+      grep -E 'FAIL|checks passed' "/tmp/opencode/verify_az_$AZ_W.log" \
+        | head -8 | sed 's/^/      /'
+    fi
+  fi
+  kill "$AZ_PID" 2>/dev/null
+  wait "$AZ_PID" 2>/dev/null
 else
   record 1 "mock board did not come up on port $PORT"
 fi
