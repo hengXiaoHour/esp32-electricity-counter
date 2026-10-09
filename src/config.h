@@ -158,6 +158,31 @@ constexpr const char *AP_PASS_DEFAULT = "configure123";
 // load is mistaken for "nobody there".
 #define AUTO_RECOVER_PF 0.3f
 
+// Hysteresis partner of AUTO_RECOVER_PF. Once a tripped channel has
+// auto-recovered, its PF must rise ABOVE this (not just back above 0.3) before
+// the alarm re-arms. A single threshold chatters by construction: no-load PF is
+// a ratio of two noise numbers and flickers across any one line, ringing the
+// latched trip for one 80 ms cycle at a time. The 0.3/0.4 band holds state.
+#define AUTO_RETRIP_PF 0.4f
+
+// No-load deadband ("zero blanking", what real energy-meter chips call the
+// creep threshold). Below EITHER of these the channel reports P=0, S=0, PF=0
+// and integrates no energy — an empty socket reads exactly zero forever.
+// Without it, fabs() rectified noise integrates ~1-2 W around the clock
+// (~1.4 kWh/month of phantom energy) and no-load PF spikes re-ring a latched
+// trip. 0.05 A is below one ADC count (0.081 A at currentCal=100), so anything
+// under it is sensor ripple by definition; 2 W at 230 V is the same idea in
+// the power domain for highly reactive edge cases. Known cost: real loads
+// under ~0.05 A / 2 W (a phone on trickle standby) do not register.
+#define NO_LOAD_CURRENT_A 0.05f
+#define NO_LOAD_POWER_W 2.0f
+
+// PF is undefined without a real load to measure it on, so it is only computed
+// when apparent power clears this. The old 0.001 VA gate (≈4 uA at 230 V) let
+// pure noise through with a "valid" PF. 5 VA is unreachable under the deadband
+// anyway (0.05 A × 230 V ≈ 11.5 VA) — this is the second lock on the same door.
+#define PF_MIN_VA 5.0f
+
 // ==============================
 // Timing Constants (milliseconds)
 // ==============================
