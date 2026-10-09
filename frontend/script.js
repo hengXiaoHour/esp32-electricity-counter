@@ -54,9 +54,6 @@ const NUM_CHANNELS = 5;
     handleConnect();
   }
 
-  if (isStandalone()) hideInstallRow();
-  else showInstallRow();
-
   // Close modal on Escape key
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeEditModal();
