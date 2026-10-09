@@ -475,6 +475,22 @@ def main():
           re.search(r"WiFi\.setSleep\(false\)", ino) is not None)
     c.add("eco state rides the snapshot and the dashboard shows it",
           '\\"eco\\"' in sysjson and 'getElementById(\'ecoStatus\')' in js)
+    # The live `eco` bit alone leaves no trail: without event-log entries
+    # there is no way to tell afterwards whether the board really slept.
+    # Both transitions must be forensic events (survive reboot, mirrored to
+    # the cloud payload which already carries the last 10 events) and render
+    # as SYS, not CH1.
+    c.add("eco transitions are logged as forensic events (sleep + wake)",
+          "logEcoSleep()" in ino and "logEcoWake()" in ino and
+          "void logEcoSleep();" in lm_h and "void logEcoWake();" in lm_h and
+          "Eco on — radio idling (no viewers)" in lm and
+          "Eco off — viewer back, full power" in lm and
+          "logForensicEvent(0, STATUS_OK, \"Eco on" in lm and
+          "logForensicEvent(0, STATUS_OK, \"Eco off" in lm,
+          "updateEcoMode() changes power with no History trail")
+    c.add("eco events render as SYS, not CH1",
+          "m.indexOf('Eco ') === 0" in js,
+          "eventTag() would claim only Counter 1 slept")
 
     # --- chip temperature rides the snapshot --------------------------------
     c.add("the snapshot carries MCU temperature, null when sensorless",
