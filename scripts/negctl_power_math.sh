@@ -7,8 +7,11 @@
 #
 #   N1  restore the one-pass variance E[X^2] - E[X]^2
 #   N2  restore the `voltageRMS * noiseFloor` power subtraction
+#   N3  delete the no-load deadband
+#   N4  bypass the 19-cycle ring persistence (fire on the first spike)
+#   N5  delete the energy PF gate (count noise current again)
 #
-# Both write to $WORK (default /tmp/opencode/pc-negctl), never to the repo.
+# All cases write to $WORK (default /tmp/opencode/pc-negctl), never to the repo.
 set -u
 
 WORK="${WORK:-/tmp/opencode/pc-negctl}"
@@ -143,6 +146,28 @@ open(p,'w').write(s.replace(old, new))
 print("    mutant written")
 PY
 run_case N4 "a single above-line spike re-rings the recovered trip"
+
+echo
+echo "=============================================================="
+echo "  N5: delete the energy PF gate (count any PF)"
+echo "=============================================================="
+python3 - "$WORK/test.c" <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+old = """static double energyNow(double P, double pf, double dtS) {
+  if (pf <= ENERGY_MIN_PF) return 0.0;
+  return P * (dtS / 3600.0) / 1000.0;
+}"""
+new = """static double energyNow(double P, double pf, double dtS) {
+  (void)pf;  /* MUTANT: energy PF gate deleted */
+  return P * (dtS / 3600.0) / 1000.0;
+}"""
+assert old in s, "N5 anchor not found"
+open(p,'w').write(s.replace(old, new))
+print("    mutant written")
+PY
+run_case N5 "noise current with PF ~0.05 keeps adding kWh"
 
 echo
 echo "=============================================================="

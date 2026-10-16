@@ -186,6 +186,17 @@ constexpr const char *AP_PASS_DEFAULT = "configure123";
 // anyway (0.05 A × 230 V ≈ 11.5 VA) — this is the second lock on the same door.
 #define PF_MIN_VA 5.0f
 
+// Energy PF gate: kWh accumulates only while PF is ABOVE this. Noise that
+// outruns the deadband (a drifted or over-set noise floor, induced hum, a
+// floating CT) rides in as CURRENT with no real power behind it, so its PF
+// sits near zero no matter how many amps the channel displays — and a noisy
+// floor is exactly why auto-zero alone cannot be trusted to catch it. Real
+// loads clear 0.1 easily (even a cheap SMPS without PFC runs 0.3-0.6, and a
+// genuine PF<0.1 load at 230 V is a near-pure reactance, not a consumer).
+// The gate touches the INTEGRATION only: current and power still display what
+// the sensor measured; the kWh counter simply refuses to bill noise.
+#define ENERGY_MIN_PF 0.1f
+
 // ==============================
 // Timing Constants (milliseconds)
 // ==============================

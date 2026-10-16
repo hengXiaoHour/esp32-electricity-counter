@@ -364,7 +364,7 @@ silenced and "Auto-recovered — load removed", permanently, because the latch
 only re-arms once energy falls back under the limit. Removing the term fixes it;
 `scripts/test_power_math.c` pins the case.
 
-### 5. Apparent power, PF, energy — with a no-load deadband
+### 5. Apparent power, PF, energy — with a no-load deadband and an energy PF gate
 
 ```
 // EITHER condition blanks the channel: an empty socket reads exactly zero.
@@ -373,7 +373,10 @@ if (filteredCurrentRMS[ch] < NO_LOAD_CURRENT_A (0.05) || |pWatts| < NO_LOAD_POWE
 else:
     apparentPower = vActual * filteredCurrentRMS
     powerFactor   = (apparentPower > PF_MIN_VA (5.0)) ? clamp(activePower / apparentPower, 0, 1) : 0
-    energyKWh    += activePower * (deltaSeconds / 3600) / 1000
+
+// kWh integrates only while the PF says a real load is behind the current:
+if (powerFactor > ENERGY_MIN_PF (0.1)):
+    energyKWh += activePower * (deltaSeconds / 3600) / 1000
 ```
 
 Why the deadband exists: `|pWatts|` rectifies noise, so an empty socket
@@ -390,13 +393,27 @@ The 5 VA PF floor is the second lock on the same door (the old 0.001 VA gate
 was ≈4 µA at 230 V — pure noise passed as "valid"). It is unreachable under
 the deadband anyway (0.05 A × 230 V ≈ 11.5 VA); it guards the transition band.
 
-Known cost: real loads under ~0.05 A / 2 W (a phone on trickle standby) do not
-register — same class of sharp edge as the noise floor in §3, documented in
-the test, not hidden.
+The energy PF gate is the third lock, and the one that still holds when the
+other two do not. `ENERGY_MIN_PF` (0.1): noise that outruns the deadband — a
+drifted or over-set noise floor, induced hum, a floating CT — rides in as
+CURRENT with no real power behind it, so its power factor sits near zero no
+matter how many amps the channel displays. The gate applies to the
+INTEGRATION only: the dashboard still shows what the sensor measured (2 A,
+PF 0.05), while the kWh counter refuses to bill it. Real loads are nowhere
+near the line — even a cheap SMPS without PFC runs 0.3–0.6 — and a genuine
+PF < 0.1 load at 230 V is a near-pure reactance, not a consumer. Under the
+deadband PF is already 0, so the gate is closed there too; it only matters
+in the gap the deadband cannot see (`scripts/test_power_math.c` §9 pins a
+2 A / PF 0.05 channel that would otherwise creep >10 kWh/month).
 
-Energy integrates **every** sensor cycle using the real elapsed time measured
-with `millis()`, so it is independent of the nominal 80 ms period — and under
-the deadband it integrates exactly zero.
+Known cost: real loads under ~0.05 A / 2 W (a phone on trickle standby) do not
+register, and a load whose PF never clears 0.1 never counts either — same class
+of sharp edge as the noise floor in §3, documented in the test, not hidden.
+
+Energy integrates **every** sensor cycle whose PF clears the gate, using the
+real elapsed time measured with `millis()`, so it is independent of the nominal
+80 ms period — under the deadband (or below the PF line) it integrates exactly
+zero.
 
 ### 6. Auto-zero (noise-floor capture)
 

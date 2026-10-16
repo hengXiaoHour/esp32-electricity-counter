@@ -24,6 +24,12 @@
  *      0.05 A or 2 W), a 5 VA PF floor, and ring persistence in the trip
  *      machine (PF must hold above 0.2 for 19 straight cycles, ~1.5 s,
  *      before a silenced trip re-rings; sections 6-8 below).
+ *   4. The kWh counter trusted the deadband alone. When the noise floor has
+ *      drifted (or the CT floats), noise outruns 0.05 A / 2 W and was counted
+ *      at face value: amps on the display, PF under 0.1, and the monthly total
+ *      crept anyway. Fixed with an energy PF gate — kWh accumulates only while
+ *      PF > ENERGY_MIN_PF (0.1), because a current with no real power behind
+ *      it is noise, not consumption (section 9).
  *
  * IMPORTANT: the accumulators below are `float`, not `double`, on purpose. The
  * whole of defect 1 is a float32 precision problem, so a host test written in
@@ -181,6 +187,17 @@ static double gateLoad(double filtI, double rawP, double vRms,
     *pfOut = 0.0;
   }
   return rawP;
+}
+
+/* ---- the energy PF gate, transcribed from PowerCalculator::update() ------ */
+#define ENERGY_MIN_PF 0.1        /* src/config.h ENERGY_MIN_PF */
+
+/* kWh added by one dtS-second cycle at P watts. The firmware skips the cycle
+ * entirely when the channel's PF is at or below ENERGY_MIN_PF, so noise
+ * current never reaches the counter no matter how many amps it shows. */
+static double energyNow(double P, double pf, double dtS) {
+  if (pf <= ENERGY_MIN_PF) return 0.0;
+  return P * (dtS / 3600.0) / 1000.0;
 }
 
 /* ---- the recover + ring-persistence logic, transcribed from
@@ -375,6 +392,60 @@ int main(void) {
   check(hStatus == 0, "0.19 is below the line: silent");
   hystStep(10.0, 48.0, 0.90);
   check(hStatus == 0, "back under budget clears everything");
+
+  /* --- 9. the energy PF gate: noise current never reaches the kWh --------- */
+  printf("\n[9] the energy PF gate: 2 A of noise counts nothing\n");
+  /* The field report: a channel showing ~2 A with PF under 0.1 kept adding
+   * kWh. Reproduce it — 2.0 A at 87 deg means PF = cos(87 deg) ~= 0.05 and
+   * ~24 W, which is OVER the 2 W deadband, so only the PF gate can stop the
+   * creep. (Display keeps the numbers on purpose; only the counter blanks.) */
+  rngState = 0xFACADE01u;
+  buildVoltage(volt, 230.0);
+  buildCurrent(cur, dc4A, 2.00, 0.4, 87.0);
+  {
+    double rawI = trimToNoiseFloor(rmsTwoPass(cur), 0.0);
+    double rawP = powerNow(volt, cur);
+    double s, pf;
+    double gatedP = gateLoad(rawI, rawP, 230.0, &s, &pf);
+    printf("     2.00 A at 87deg -> I %.3f A P %.2f W S %.1f VA PF %.3f\n",
+           rawI, rawP, s, pf);
+    check(gatedP > NO_LOAD_P,
+          "2 A at PF~0.05 clears the deadband (the PF gate is what stops it)");
+    check(pf < ENERGY_MIN_PF,
+          "its PF really sits under the 0.1 line (test has teeth)");
+    double kwhOld = 0.0, kwhNew = 0.0;
+    for (int c = 0; c < 45000; c++) {          /* 45000 x 80 ms = one hour */
+      kwhOld += gatedP * (0.08 / 3600.0) / 1000.0;  /* pre-gate: counted */
+      kwhNew += energyNow(gatedP, pf, 0.08);        /* post-gate: refused */
+    }
+    printf("     one hour: old maths %.4f kWh (%.1f/month) | gated %.4f kWh\n",
+           kwhOld, kwhOld * 720.0, kwhNew);
+    check(kwhOld * 720.0 > 10.0, "without the gate this creeps >10 kWh/month");
+    check(kwhNew == 0.0, "with the PF gate the same hour adds exactly zero");
+  }
+
+  /* A real load still counts — the gate rejects noise, not consumers. */
+  rngState = 0xFACADE02u;
+  buildCurrent(cur, dc4A, 1.00, 0.4, 0.0);     /* 1.0 A resistive, PF ~1 */
+  {
+    double rawI = trimToNoiseFloor(rmsTwoPass(cur), 0.0);
+    double rawP = powerNow(volt, cur);
+    double s, pf;
+    double gatedP = gateLoad(rawI, rawP, 230.0, &s, &pf);
+    double kwhReal = 0.0;
+    for (int c = 0; c < 45000; c++) kwhReal += energyNow(gatedP, pf, 0.08);
+    printf("     1.00 A resistive -> P %.1f W PF %.3f -> %.4f kWh in one hour\n",
+           gatedP, pf, kwhReal);
+    check(gatedP > 0.0 && pf > 0.5,
+          "a real load passes the deadband and the PF gate");
+    near(kwhReal, gatedP / 1000.0, 0.001, "one hour of real load counts P x 1 h");
+  }
+
+  /* Boundary: the rule is ABOVE 0.1 — 0.10 is out, 0.11 is in. */
+  check(energyNow(100.0, 0.10, 0.08) == 0.0, "PF exactly 0.10 does not count");
+  check(energyNow(100.0, 0.11, 0.08) > 0.0, "PF 0.11 counts");
+  check(energyNow(100.0, 0.0, 0.08) == 0.0,
+        "PF 0 (deadband-blanked channel) does not count either");
 
   printf("\n%d checks, %d failures\n", checks, failures);
   return failures ? 1 : 0;

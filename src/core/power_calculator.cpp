@@ -24,8 +24,14 @@ void PowerCalculator::update(float deltaSeconds) {
   collectSamples();
   computeAll();
 
+  float deltaHours = deltaSeconds / 3600.0f;
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {
-    float deltaHours = deltaSeconds / 3600.0f;
+    // Energy PF gate (ENERGY_MIN_PF in config.h): noise reaches the counter
+    // as current with no real power behind it, so its PF sits near zero even
+    // while the channel displays amps. Only a load with real power behind it
+    // accumulates kWh. Deadband-blanked channels carry PF=0 and stop here
+    // too, so this is the third lock on the same door — see ARCHITECTURE §5.
+    if (powerFactor[ch] <= ENERGY_MIN_PF) continue;
     energyKWh[ch] += activePower[ch] * deltaHours / 1000.0f;
   }
 }

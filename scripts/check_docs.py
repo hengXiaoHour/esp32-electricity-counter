@@ -678,6 +678,7 @@ def main():
     _pf_min = _cfg_float("PF_MIN_VA")
     _rec_pf = _cfg_float("AUTO_RECOVER_PF")
     _ring_n = _cfg_int("PF_RING_STABLE_CYCLES")
+    _energy_pf = _cfg_float("ENERGY_MIN_PF")
     c.add("the deadband/persistence thresholds live in config.h (recover 0.2, 19 cycles)",
           _dead_i == 0.05 and _dead_p == 2.0 and _pf_min == 5.0 and
           _rec_pf == 0.2 and _ring_n == 19,
@@ -688,6 +689,10 @@ def main():
           "powerFactor[ch] = 0.0f" in _pc_code)
     c.add("the PF gate uses PF_MIN_VA, not the old 0.001 VA noise line",
           "PF_MIN_VA" in _pc_code and "0.001f" not in _pc_code)
+    c.add("the energy PF gate lives in config.h (0.1) and guards update()",
+          _energy_pf == 0.1 and "ENERGY_MIN_PF" in _pc_code and
+          "powerFactor[ch] <= ENERGY_MIN_PF" in _pc_code,
+          "cfg=%s pc=%s" % (_energy_pf, "ENERGY_MIN_PF" in _pc_code))
     _lm_code = strip_comments(lm)
     c.add("checkLimits() re-rings only after PF_RING_STABLE_CYCLES steady cycles",
           "PF_RING_STABLE_CYCLES" in _lm_code and "ringStable[ch]" in _lm_code and
@@ -695,9 +700,10 @@ def main():
     c.add("ARCHITECTURE quotes the deadband/persistence constants and numbers",
           all(k in arch for k in ["NO_LOAD_CURRENT_A", "NO_LOAD_POWER_W",
                                   "PF_MIN_VA", "AUTO_RECOVER_PF",
-                                  "PF_RING_STABLE_CYCLES"]) and
+                                  "PF_RING_STABLE_CYCLES", "ENERGY_MIN_PF"]) and
           "`AUTO_RECOVER_PF` (0.2)" in arch and
-          "`PF_RING_STABLE_CYCLES` (19)" in arch)
+          "`PF_RING_STABLE_CYCLES` (19)" in arch and
+          "`ENERGY_MIN_PF` (0.1)" in arch)
 
     # --- firmware version / size ---------------------------------------
     m = re.search(r'#define FIRMWARE_VERSION "([^"]+)"', cfg)
