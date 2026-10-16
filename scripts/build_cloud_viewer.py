@@ -303,14 +303,19 @@ def main() -> int:
     shutil.copy2(FRONT / "script.js", CLOUD / "script.js")
 
     # style.css: verbatim + cloud additions.
+    # Every write is newline="\n" on purpose: cloud-viewer/ is a COMMITTED
+    # artifact and the gate asserts the builder is a no-op, so a Windows
+    # checkout (where text-mode writes become CRLF) must produce the same
+    # bytes as a Linux one or the tree dirties itself on every rebuild.
     css = (FRONT / "style.css").read_text(encoding="utf-8")
     if "Cloud-only additions" not in css:
         css = css.rstrip("\n") + "\n" + CLOUD_CSS
-    (CLOUD / "style.css").write_text(css, encoding="utf-8")
+    (CLOUD / "style.css").write_text(css, encoding="utf-8", newline="\n")
 
     # index.html: patched copy.
     html = (FRONT / "index.html").read_text(encoding="utf-8")
-    (CLOUD / "index.html").write_text(patch_index(html), encoding="utf-8")
+    (CLOUD / "index.html").write_text(patch_index(html), encoding="utf-8",
+                                      newline="\n")
 
     # PWA shell: same icons + manifest so install works from hosting too.
     shutil.copy2(FRONT / "manifest.json", CLOUD / "manifest.json")
@@ -335,7 +340,7 @@ def main() -> int:
     html = html_path.read_text(encoding="utf-8")
     html = re.sub(r'(src|href)="(script\.js|cloud\.js|install\.js|style\.css)(\?v=[0-9a-z]+)?"',
                   lambda m: '%s="%s?v=%s"' % (m.group(1), m.group(2), stamp), html)
-    html_path.write_text(html, encoding="utf-8")
+    html_path.write_text(html, encoding="utf-8", newline="\n")
 
     # Service worker: same logic, cloud cache name + cloud shell.
     # Both carry the content stamp so a deploy always busts every cache.
@@ -361,7 +366,7 @@ def main() -> int:
         sw,
         flags=re.S,
     )
-    (CLOUD / "sw.js").write_text(sw, encoding="utf-8")
+    (CLOUD / "sw.js").write_text(sw, encoding="utf-8", newline="\n")
 
     print("cloud-viewer rebuilt from frontend/ (+ cloud.js stays hand-written)")
     return 0
