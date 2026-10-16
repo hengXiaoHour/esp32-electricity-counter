@@ -14,6 +14,10 @@ import threading
 import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
+# The dead-code gate pins scripts/__pycache__ as a deletion that stays
+# deleted, and the suite exports PYTHONDONTWRITEBYTECODE=1 for its own
+# runs - a hand-run of this test must not leave it behind either.
+sys.dont_write_bytecode = True
 import setup
 
 PASS = []
