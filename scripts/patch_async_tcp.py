@@ -110,6 +110,11 @@ def version_major(version):
     return int(head) if head.isdigit() else None
 
 
+def _compact(name):
+    """Lowercase alphanumerics only: both 'AsyncTCP' and 'Async_TCP' -> 'asynctcp'."""
+    return "".join(ch for ch in name.lower() if ch.isalnum())
+
+
 def find_lib_dir(explicit=None):
     """Return the AsyncTCP src/ directory, or None."""
     if explicit:
@@ -124,7 +129,10 @@ def find_lib_dir(explicit=None):
             continue
         for entry in sorted(base.iterdir()):
             cpp = entry / "src" / "AsyncTCP.cpp"
-            if cpp.is_file() and "asynctcp" in entry.name.lower():
+            # Compare on the compacted name: arduino-cli turns the registry
+            # name into the folder name, so ESP32Async's "Async TCP" lands as
+            # Async_TCP while a git-url install lands as AsyncTCP.
+            if cpp.is_file() and "asynctcp" in _compact(entry.name):
                 return cpp.parent
     return None
 
