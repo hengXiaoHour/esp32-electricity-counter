@@ -685,6 +685,7 @@ def main():
     _rec_pf = _cfg_float("AUTO_RECOVER_PF")
     _ring_n = _cfg_int("PF_RING_STABLE_CYCLES")
     _energy_pf = _cfg_float("ENERGY_MIN_PF")
+    _energy_dwell = _cfg_int("ENERGY_PF_STABLE_CYCLES")
     c.add("the deadband/persistence thresholds live in config.h (recover 0.2, 19 cycles)",
           _dead_i == 0.05 and _dead_p == 2.0 and _pf_min == 5.0 and
           _rec_pf == 0.2 and _ring_n == 19,
@@ -699,6 +700,32 @@ def main():
           _energy_pf == 0.1 and "ENERGY_MIN_PF" in _pc_code and
           "powerFactor[ch] <= ENERGY_MIN_PF" in _pc_code,
           "cfg=%s pc=%s" % (_energy_pf, "ENERGY_MIN_PF" in _pc_code))
+    # The energy gate is a DWELL, not a bare threshold: a burst that clears
+    # ENERGY_MIN_PF for a few cycles must not bill. Asserted on all three
+    # sides - the constant's VALUE (which must exceed one second at the
+    # sensor cycle), its use in update() (count up, reset on one bad cycle),
+    # and the counter's declared type (a constant over 255 would saturate the
+    # counter below the threshold and stop the channel billing forever).
+    c.add("the energy PF dwell is >1 s and lives in config.h",
+          _energy_dwell is not None and
+          _energy_dwell * float(_cycle_ms) > 1000 and _energy_dwell <= 255,
+          "dwell=%s cycle_ms=%s (>1000 ms required)"
+          % (_energy_dwell, _cycle_ms))
+    c.add("update() holds the PF line for the dwell before it bills",
+          "pfStableCycles[ch] < ENERGY_PF_STABLE_CYCLES" in _pc_code and
+          "pfStableCycles[ch]++" in _pc_code and
+          "pfStableCycles[ch] = 0;" in _pc_code,
+          "the dwell count/reset is gone from update()")
+    c.add("the dwell counter is a uint8_t and a bad constant fails the build",
+          "uint8_t pfStableCycles[NUM_CHANNELS]" in strip_comments(pc_h) and
+          "static_assert(ENERGY_PF_STABLE_CYCLES <= 255" in pc,
+          "an oversized dwell would saturate the counter and stop billing forever")
+    c.add("the dwell is exercised by the host test and by a negative control",
+          "ENERGY_PF_STABLE_CYCLES" in pm_test and
+          "energyNowNoDwell" in pm_test and
+          "bursting PF" in pm_test and
+          "N6" in negctl and "dwell deleted" in negctl,
+          "the dwell has no test, or the control that proves it is missing")
     _lm_code = strip_comments(lm)
     c.add("checkLimits() re-rings only after PF_RING_STABLE_CYCLES steady cycles",
           "PF_RING_STABLE_CYCLES" in _lm_code and "ringStable[ch]" in _lm_code and
