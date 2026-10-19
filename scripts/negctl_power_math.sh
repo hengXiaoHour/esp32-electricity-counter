@@ -159,7 +159,8 @@ old = """  if (pf <= ENERGY_MIN_PF) {
     *stable = 0;
     return 0.0;
   }"""
-new = """  if (0) {  /* MUTANT: energy PF threshold deleted, dwell kept */
+new = """  (void)pf;  /* MUTANT: energy PF threshold deleted, dwell kept */
+  if (0) {
     *stable = 0;
     return 0.0;
   }"""
