@@ -717,10 +717,19 @@ def main():
           _energy_dwell * float(_cycle_ms) > 1000 and _energy_dwell <= 255,
           "dwell=%s cycle_ms=%s (>1000 ms required)"
           % (_energy_dwell, _cycle_ms))
+    # Scoped to update()'s BODY, not the file: `pfStableCycles[ch] = 0;` also
+    # appears in begin(), so a file-wide substring test still passes when the
+    # reset is deleted from the only place that matters — which leaves a LEAKY
+    # counter that never forgets a bad cycle, exactly the bug the dwell is for.
+    # Found by mutation, not by reading.
+    _upd = re.search(r"void PowerCalculator::update\([^)]*\) \{([\s\S]*?)\n\}\n",
+                     pc)
+    _upd_b = strip_comments(_upd.group(1)) if _upd else ""
     c.add("update() holds the PF line for the dwell before it bills",
-          "pfStableCycles[ch] < ENERGY_PF_STABLE_CYCLES" in _pc_code and
-          "pfStableCycles[ch]++" in _pc_code and
-          "pfStableCycles[ch] = 0;" in _pc_code,
+          _upd is not None and
+          "pfStableCycles[ch] < ENERGY_PF_STABLE_CYCLES" in _upd_b and
+          "pfStableCycles[ch]++" in _upd_b and
+          "pfStableCycles[ch] = 0;" in _upd_b,
           "the dwell count/reset is gone from update()")
     c.add("the dwell counter is a uint8_t and a bad constant fails the build",
           "uint8_t pfStableCycles[NUM_CHANNELS]" in strip_comments(pc_h) and
