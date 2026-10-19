@@ -485,6 +485,72 @@ int main(void) {
   check(energyNowNoDwell(100.0, 0.0, 0.08) == 0.0,
         "PF 0 (deadband-blanked channel) does not count either");
 
+  /* --- 10. the dwell: a PF that BURSTS never bills --------------------- */
+  printf("\n[10] the energy dwell: a bursting PF is worth exactly zero\n");
+  /* The case lock 1 cannot see. §9's noise sits at PF~0.05 forever, so the
+   * threshold alone refused it. But noise that outruns the deadband does not
+   * sit still: on some cycles the ratio of two noise numbers lands above 0.1
+   * by luck, and each of those cycles passes the threshold and integrates
+   * watt-seconds that are indistinguishable from a real load once written to
+   * NVS. Requiring the reading to HOLD is what rejects them. */
+  {
+    const int N = 45000;                 /* one hour at the 80 ms cycle */
+    const double P = 24.0;               /* the §9 noise's watts */
+    const int good = 3, bad = 7;         /* ~30% of cycles clear 0.1 */
+    double kwhDwell = 0.0, kwhNoDwell = 0.0;
+    int stable = 0;
+    for (int c = 0; c < N; c++) {
+      double pf = ((c % (good + bad)) < good) ? 0.15 : 0.05;
+      kwhNoDwell += energyNowNoDwell(P, pf, 0.08);
+      kwhDwell   += energyNow(P, pf, 0.08, &stable);
+    }
+    printf("     bursting PF 0.15/0.05 at 24 W, one hour:\n");
+    printf("       threshold alone %.4f kWh (%.2f/month) | dwell %.4f kWh\n",
+           kwhNoDwell, kwhNoDwell * 720.0, kwhDwell);
+    check(kwhNoDwell > 0.0,
+          "the burst really does clear the threshold (test has teeth)");
+    check(kwhNoDwell * 720.0 > 1.0,
+          "and on its own it would bill >1 kWh/month of nothing");
+    check(kwhDwell == 0.0,
+          "with the dwell the same bursting hour bills exactly zero");
+  }
+
+  /* The dwell boundary, pinned exactly rather than by tolerance — a dwell that
+   * drifts from "N cycles" to "one cycle per N" is precisely the bug. */
+  {
+    int stable = 0;
+    double duringDwell = 0.0;
+    for (int c = 0; c < ENERGY_PF_STABLE_CYCLES; c++)
+      duringDwell += energyNow(100.0, 0.5, 0.08, &stable);
+    check(duringDwell == 0.0,
+          "the first N consecutive good cycles bill exactly nothing");
+    check(stable == ENERGY_PF_STABLE_CYCLES,
+          "the counter counted all N and stopped there");
+    check(energyNow(100.0, 0.5, 0.08, &stable) > 0.0,
+          "the next good cycle is the first that bills");
+  }
+
+  /* A single bad cycle throws the whole run away — no leaky counting, so a
+   * PF that flickers over the line can never creep a run together. */
+  {
+    int stable = 0;
+    for (int c = 0; c < ENERGY_PF_STABLE_CYCLES + 5; c++)
+      energyNow(100.0, 0.5, 0.08, &stable);      /* qualified now */
+    check(energyNow(100.0, 0.05, 0.08, &stable) == 0.0,
+          "one cycle back under the line bills nothing");
+    check(stable == 0, "and resets the dwell to zero");
+    check(energyNow(100.0, 0.5, 0.08, &stable) == 0.0,
+          "so the next run has to earn the full dwell again");
+  }
+
+  /* The whole point is that it is longer than a second. */
+  check(ENERGY_PF_STABLE_CYCLES * 0.08 > 1.0,
+        "the dwell exceeds 1 s at the 80 ms sensor cycle");
+  /* And the counter type can actually hold it — a larger constant would
+   * saturate below the threshold and stop the channel billing forever. */
+  check(ENERGY_PF_STABLE_CYCLES <= 255,
+        "the dwell length fits the uint8_t the firmware counts it in");
+
   printf("\n%d checks, %d failures\n", checks, failures);
   return failures ? 1 : 0;
 }
