@@ -155,15 +155,14 @@ python3 - "$WORK/test.c" <<'PY'
 import sys
 p = sys.argv[1]
 s = open(p).read()
-old = """static double energyNow(double P, double pf, double dtS, int *stable) {
-  if (pf <= ENERGY_MIN_PF) {
+old = """  if (pf <= ENERGY_MIN_PF) {
     *stable = 0;
     return 0.0;
   }"""
-new = """static double energyNow(double P, double pf, double dtS, int *stable) {
-  (void)pf; (void)stable;  /* MUTANT: energy PF gate deleted */
-  return P * (dtS / 3600.0) / 1000.0;
-  if (0) {"""
+new = """  if (0) {  /* MUTANT: energy PF threshold deleted, dwell kept */
+    *stable = 0;
+    return 0.0;
+  }"""
 assert old in s, "N5 anchor not found"
 open(p,'w').write(s.replace(old, new))
 print("    mutant written")
