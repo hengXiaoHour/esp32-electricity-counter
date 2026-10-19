@@ -415,10 +415,39 @@ Known cost: real loads under ~0.05 A / 2 W (a phone on trickle standby) do not
 register, and a load whose PF never clears 0.1 never counts either — same class
 of sharp edge as the noise floor in §3, documented in the test, not hidden.
 
-Energy integrates **every** sensor cycle whose PF clears the gate, using the
-real elapsed time measured with `millis()`, so it is independent of the nominal
-80 ms period — under the deadband (or below the PF line) it integrates exactly
-zero.
+The threshold is necessary but not sufficient, which is what
+`ENERGY_PF_STABLE_CYCLES` (13) is for. §9's noise sits below 0.1 forever, so
+the threshold alone refuses it — but noise that outruns the deadband does not
+sit still. On some cycles the ratio of two noise numbers lands above 0.1 by
+luck, and every one of those cycles passes a per-cycle test and integrates
+watt-seconds that are indistinguishable from consumption once they are in NVS.
+A threshold answers "is this cycle valid?"; a burst makes that question worth
+too little on its own. So the reading has to **hold**: a per-channel counter
+must see `ENERGY_PF_STABLE_CYCLES` consecutive cycles above the line before the
+channel bills anything at all, and a single cycle back at or below resets it to
+zero. The shape deliberately mirrors `PF_RING_STABLE_CYCLES` (19) above — same
+"consecutive cycles or nothing" idea, applied to the bill instead of the buzzer.
+
+The cycle is paced by `vTaskDelayUntil`, so the true period is `max(80 ms, the
+work in the loop)` — 13 cycles can only ever take **longer** than a second,
+never shorter, and the gate is never weakened by a fast loop. The dwell cost is
+exactly the first 13 cycles of a load's run, asserted as an exact subtraction
+in `scripts/test_power_math.c` §9 so "≈1 s" cannot quietly become "1 s per
+cycle". `scripts/test_power_math.c` §10 is the case the threshold structurally
+cannot see: a PF alternating above and below the line bills **exactly zero**,
+while the same burst bills ~5 kWh/month with the dwell removed — and
+`negctl_power_math.sh` N6 deletes the dwell to prove §10 has teeth, since N5's
+threshold mutation leaves §9 green.
+
+Energy integrates every sensor cycle from then on, using the real elapsed time
+measured with `millis()`, so it is independent of the nominal 80 ms period —
+under the deadband, or below the PF line, or inside the dwell, it integrates
+exactly zero.
+
+Known cost of the dwell: a load whose *entire* run is shorter than ~1 s never
+counts, and a short-cycling load pays the dwell again on every restart. That is
+the same class of sharp edge as the deadband, stated rather than hidden — and it
+is the one constant that trades real measured energy against phantom energy.
 
 ### 6. Auto-zero (noise-floor capture)
 
