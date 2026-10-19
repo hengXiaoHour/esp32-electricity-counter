@@ -191,11 +191,39 @@ static double gateLoad(double filtI, double rawP, double vRms,
 
 /* ---- the energy PF gate, transcribed from PowerCalculator::update() ------ */
 #define ENERGY_MIN_PF 0.1        /* src/config.h ENERGY_MIN_PF */
+#define ENERGY_PF_STABLE_CYCLES 13   /* src/config.h ENERGY_PF_STABLE_CYCLES */
 
-/* kWh added by one dtS-second cycle at P watts. The firmware skips the cycle
- * entirely when the channel's PF is at or below ENERGY_MIN_PF, so noise
- * current never reaches the counter no matter how many amps it shows. */
-static double energyNow(double P, double pf, double dtS) {
+/* kWh added by one dtS-second cycle at P watts, plus the per-channel dwell
+ * counter that decides whether this cycle is allowed to bill at all.
+ *
+ * Two locks, both transcribed from update():
+ *   1. THRESHOLD - the cycle is skipped entirely when the channel's PF is at
+ *      or below ENERGY_MIN_PF, so noise current never reaches the counter no
+ *      matter how many amps it shows.
+ *   2. DWELL - a threshold alone is not enough. Noise that outruns the
+ *      deadband clears a threshold in BURSTS, and every burst cycle would
+ *      integrate watt-seconds indistinguishable from real consumption. The
+ *      reading has to HOLD above the line for ENERGY_PF_STABLE_CYCLES
+ *      consecutive cycles (>1 s at the 80 ms cycle) before this channel bills
+ *      anything; one cycle at or below the line resets the count to zero.
+ *
+ * *stable is the caller's pfStableCycles[ch], so a caller can run one hour on
+ * one channel and then start another without the run leaking across. */
+static double energyNow(double P, double pf, double dtS, int *stable) {
+  if (pf <= ENERGY_MIN_PF) {
+    *stable = 0;
+    return 0.0;
+  }
+  if (*stable < ENERGY_PF_STABLE_CYCLES) {
+    (*stable)++;
+    return 0.0;
+  }
+  return P * (dtS / 3600.0) / 1000.0;
+}
+
+/* The threshold alone, with the dwell defeated - the "what if we only had lock
+ * 1" baseline the burst case below is measured against. */
+static double energyNowNoDwell(double P, double pf, double dtS) {
   if (pf <= ENERGY_MIN_PF) return 0.0;
   return P * (dtS / 3600.0) / 1000.0;
 }
