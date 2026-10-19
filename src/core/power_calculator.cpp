@@ -1,12 +1,20 @@
 #include "power_calculator.h"
 #include <math.h>
 
+// The dwell count is held in a uint8_t. A constant above 255 would saturate the
+// counter below the threshold and stop the channel EVER billing again — a
+// silent, permanent undercount on a meter, which is the worst failure this
+// file could have. Refuse to build instead.
+static_assert(ENERGY_PF_STABLE_CYCLES <= 255,
+              "ENERGY_PF_STABLE_CYCLES must fit a uint8_t (see pfStableCycles)");
+
 void PowerCalculator::begin() {
   rmsSamples = MAX_RMS_SAMPLES / 2;
   voltageCal = DEFAULT_VOLTAGE_CALIBRATION;
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {
     currentCal[ch] = DEFAULT_CURRENT_CALIBRATION;
     energyKWh[ch] = 0.0f;
+    pfStableCycles[ch] = 0;
     noiseFloor[ch] = 0.0f;
     lpfAlpha[ch] = DEFAULT_LPF_ALPHA;
     filteredCurrentRMS[ch] = 0.0f;
@@ -31,7 +39,21 @@ void PowerCalculator::update(float deltaSeconds) {
     // while the channel displays amps. Only a load with real power behind it
     // accumulates kWh. Deadband-blanked channels carry PF=0 and stop here
     // too, so this is the third lock on the same door — see ARCHITECTURE §5.
-    if (powerFactor[ch] <= ENERGY_MIN_PF) continue;
+    if (powerFactor[ch] <= ENERGY_MIN_PF) {
+      pfStableCycles[ch] = 0;
+      continue;
+    }
+    // The threshold above is necessary but NOT sufficient: noise clears it in
+    // bursts, and every burst cycle would integrate watt-seconds that end up
+    // in NVS looking exactly like consumption. So the reading has to HOLD for
+    // ENERGY_PF_STABLE_CYCLES consecutive cycles (>1 s at the 80 ms cycle)
+    // before this channel bills anything at all. Bursts never accumulate a
+    // run that long; a real load does it on the first cycle of its start-up.
+    // See ARCHITECTURE §5 for what the dwell costs a short-cycling load.
+    if (pfStableCycles[ch] < ENERGY_PF_STABLE_CYCLES) {
+      pfStableCycles[ch]++;
+      continue;  // still qualifying — deliberately billing nothing yet
+    }
     energyKWh[ch] += activePower[ch] * deltaHours / 1000.0f;
   }
 }

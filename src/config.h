@@ -197,6 +197,30 @@ constexpr const char *AP_PASS_DEFAULT = "configure123";
 // the sensor measured; the kWh counter simply refuses to bill noise.
 #define ENERGY_MIN_PF 0.1f
 
+// Energy PF dwell: kWh accumulates only once the channel's PF has read ABOVE
+// ENERGY_MIN_PF for this many CONSECUTIVE sensor cycles (~80 ms each, so
+// 13 ~= 1.04 s). ENERGY_MIN_PF on its own is a per-cycle THRESHOLD test, and
+// noise that outruns the deadband clears a threshold in BURSTS — a handful of
+// cycles where PF happens to spike over 0.1 integrate phantom watt-seconds,
+// which are indistinguishable from real consumption once they are in NVS.
+// Requiring the reading to HOLD turns a burst into a value that never
+// qualifies. Any single cycle back at or below ENERGY_MIN_PF resets the count
+// to zero, the same shape as PF_RING_STABLE_CYCLES above: a real load sits far
+// above 0.1 (0.3–0.6 typical) and never flickers across it, while noise does
+// nothing but.
+//
+// The cycle is paced by vTaskDelayUntil, so the true period is max(80 ms, the
+// work in the loop) — this can only ever take LONGER than one second, never
+// shorter. Keep the product above 1000 ms when changing this.
+//
+// Known cost, same class of sharp edge as the deadband above and documented
+// rather than hidden: a channel must hold the line for this long before it
+// bills at all, so a load whose ENTIRE run is shorter than ~1 s never counts,
+// and a short-cycling load pays the dwell again on every restart. Raise this
+// to reject noisier floors; it is the one constant that trades real measured
+// energy against phantom energy.
+#define ENERGY_PF_STABLE_CYCLES 13
+
 // ==============================
 // Timing Constants (milliseconds)
 // ==============================

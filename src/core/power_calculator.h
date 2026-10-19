@@ -60,6 +60,11 @@ private:
   float apparentPower[NUM_CHANNELS];
   float powerFactor[NUM_CHANNELS];
   float energyKWh[NUM_CHANNELS];
+  // Consecutive cycles this channel's PF has read above ENERGY_MIN_PF. The
+  // energy gate is a dwell, not a bare threshold: kWh only starts integrating
+  // once this reaches ENERGY_PF_STABLE_CYCLES, and one cycle at or below the
+  // line resets it to zero. Saturated, so a mis-set constant can never wrap.
+  uint8_t pfStableCycles[NUM_CHANNELS];
 
   int azQueue[NUM_CHANNELS];
   int azQueueLen;
