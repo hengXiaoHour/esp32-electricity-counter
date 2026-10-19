@@ -118,6 +118,9 @@ def main():
     lm = read("src/core/limit_manager.cpp")
     lm_h = read("src/core/limit_manager.h")
     pc = read("src/core/power_calculator.cpp")
+    pc_h = read("src/core/power_calculator.h")
+    pm_test = read("scripts/test_power_math.c")
+    negctl = read("scripts/negctl_power_math.sh")
     buzz_h = read("src/ui/buzzer.h")
     buzz_cpp = read("src/ui/buzzer.cpp")
     cl_cfg_h = read("src/network/cloud_cfg.h")
@@ -686,6 +689,9 @@ def main():
     _ring_n = _cfg_int("PF_RING_STABLE_CYCLES")
     _energy_pf = _cfg_float("ENERGY_MIN_PF")
     _energy_dwell = _cfg_int("ENERGY_PF_STABLE_CYCLES")
+    # The dwell is only "longer than a second" relative to the real sensor
+    # period, so the cycle is read from config.h rather than assumed 80 ms.
+    _cycle_ms = _cfg_int("SENSOR_CYCLE_INTERVAL_MS")
     c.add("the deadband/persistence thresholds live in config.h (recover 0.2, 19 cycles)",
           _dead_i == 0.05 and _dead_p == 2.0 and _pf_min == 5.0 and
           _rec_pf == 0.2 and _ring_n == 19,
