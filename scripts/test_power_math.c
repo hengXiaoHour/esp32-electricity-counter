@@ -494,12 +494,12 @@ int main(void) {
    * watt-seconds that are indistinguishable from a real load once written to
    * NVS. Requiring the reading to HOLD is what rejects them. */
   {
-    const int N = 45000;                 /* one hour at the 80 ms cycle */
+    const int oneHour = 45000;           /* one hour at the 80 ms cycle */
     const double P = 24.0;               /* the §9 noise's watts */
     const int good = 3, bad = 7;         /* ~30% of cycles clear 0.1 */
     double kwhDwell = 0.0, kwhNoDwell = 0.0;
     int stable = 0;
-    for (int c = 0; c < N; c++) {
+    for (int c = 0; c < oneHour; c++) {
       double pf = ((c % (good + bad)) < good) ? 0.15 : 0.05;
       kwhNoDwell += energyNowNoDwell(P, pf, 0.08);
       kwhDwell   += energyNow(P, pf, 0.08, &stable);
