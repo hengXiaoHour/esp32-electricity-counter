@@ -76,14 +76,18 @@ bool WebSocketServer::serveAsset(AsyncWebServerRequest *request) {
   const WebAsset *asset = findAsset(request->url());
   if (!asset) return false;
 
-  // Explicit-length response. The uint8_t overload is required: the char*
-  // overload measures with strlen(), which would truncate every PNG at its
-  // first 0x00 byte. beginResponse (not the deprecated beginResponse_P) is
-  // what ESPAsyncWebServer 3.12 wants.
+  // Use callback-based beginResponse for ESPAsyncWebServer 3.x
+  // The AwsResponseFiller callback writes the binary data directly to the response
+  auto filler = [asset](uint8_t *buffer, size_t maxLen, size_t index) -> size_t {
+    if (index >= asset->size) return 0;
+    size_t remaining = asset->size - index;
+    size_t toCopy = (maxLen < remaining) ? maxLen : remaining;
+    memcpy(buffer, asset->data + index, toCopy);
+    return toCopy;
+  };
+
   AsyncWebServerResponse *res = request->beginResponse(
-      200, String(asset->mime), (const uint8_t *)asset->data, asset->size);
-  // The device is the only origin and the assets live in flash, so there is
-  // nothing to revalidate against - force the browser to ask every time.
+      String(asset->mime), asset->size, filler, nullptr);
   res->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
   request->send(res);
   return true;
