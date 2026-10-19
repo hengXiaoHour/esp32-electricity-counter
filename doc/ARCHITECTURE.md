@@ -374,8 +374,13 @@ else:
     apparentPower = vActual * filteredCurrentRMS
     powerFactor   = (apparentPower > PF_MIN_VA (5.0)) ? clamp(activePower / apparentPower, 0, 1) : 0
 
-// kWh integrates only while the PF says a real load is behind the current:
-if (powerFactor > ENERGY_MIN_PF (0.1)):
+// kWh integrates only while the PF says a real load is behind the current
+// AND that reading has held long enough to be believed:
+if (powerFactor <= ENERGY_MIN_PF (0.1)):
+    pfStableCycles = 0                       // one bad cycle throws the run away
+elif (pfStableCycles < ENERGY_PF_STABLE_CYCLES (13)):   // still qualifying (~1.04 s)
+    pfStableCycles++
+else:
     energyKWh += activePower * (deltaSeconds / 3600) / 1000
 ```
 
