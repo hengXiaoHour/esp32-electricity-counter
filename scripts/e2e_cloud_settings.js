@@ -26,7 +26,7 @@ const MAC = 'EC64C998B0EC';
 // falls back to its HTML default (100 / 1000 / 48) cannot pass either.
 const PAYLOAD = {
   dev: MAC, epoch: 1760000000, uptime: 4242, rssi: -58, v: 231.4, mcu: 51.2,
-  eco: false, wifi: true, ap: false, staIp: '192.168.1.50', apIp: '',
+  wifi: true, ap: false, staIp: '192.168.1.50', apIp: '',
   voltageCalibration: 231.4,
   currentCalibration: [100.0, 88.5, 112.0, 97.3, 105.6],
   rmsSamples: 1000,

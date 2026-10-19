@@ -346,7 +346,6 @@ class State:
                           "host": self.cloud_host,
                           "acct": self.cloud_email},
                 "mcuTemp": 51.2,
-                "eco": False,
                 "ota": False,
                 "otaProgress": 0,
                 "chip": "esp32",

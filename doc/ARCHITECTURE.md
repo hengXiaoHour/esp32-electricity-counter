@@ -702,23 +702,29 @@ There is no retry ladder, connect timeout or boot-failure counter, and no
 `STA_GOT_IP`-gated banner. Each of those existed to escape a station link that
 could not come up; an AP that must beacon anyway has nothing to escape.
 
-### Eco mode is back (presence-based)
+### Eco mode is gone (removed 2026-10-19)
 
-The AP-era deletion ("an AP must keep beaconing") no longer applies in
-STA-only mode, where nothing broadcasts. Presence is WebSocket viewers — an
-OTA in progress also counts, because flashing needs a solid link, and so does
-an enabled cloud push, because a napping radio cannot push. After
-60 s with no viewer the board lets the WiFi modem sleep; sensing, limits,
-NVS, buzzer and LED logic are untouched, only the radio quiets down, which
-is where the heat comes from. A returning viewer restores full power before
-needing the link. In fallback-AP mode eco only means "no viewers" (the AP
-keeps beaconing regardless). The `eco` snapshot bit drives the Connection
-panel's Power row, so the mode is visible, not mysterious. Both transitions
-are also forensic events (`Eco on — radio idling (no viewers)` /
-`Eco off — viewer back, full power`, channel 0, `STATUS_OK`), so History
-shows the trail on the local dashboard AND the cloud viewer (the cloud
-payload already mirrors the last 10 events) and it survives a reboot like
-every other event.
+There is no eco mode. The board's WiFi modem runs at full power always.
+
+Eco used to be presence-based: with no WebSocket viewer, no OTA running and no
+cloud push for 60 s, it called `WiFi.setSleep(true)` so the modem would nap
+between DTIM beacons. It was reintroduced after the AP-era deletion, then
+removed again once it was clear the saving was not worth the cost — a sleeping
+radio delays every cloud push (1 s cadence), every downlink poll (2 s) and
+every LAN OTA, and a viewer arriving into a napping modem pays the wake-up
+latency before the first frame. The heat it saved was a few degrees on a
+board whose entire job is to stay reachable.
+
+Removed with it: the `eco` snapshot bit (and its cloud payload twin), the
+Connection panel's Power row, the `Eco on`/`Eco off` forensic events, and
+`CloudPush::wantsRadio()`, which existed only to veto the nap. The radio is
+now simply awake; `WiFi.setSleep(false)` stays on the two connect paths so a
+reconnect never leaves a modem napping.
+
+One trace remains deliberately: `eventTag()` still maps the `Eco ` event
+prefix to `SYS`. Those events are persisted in the board's NVS ring, so an
+upgraded board still lists them in History and would otherwise be mislabelled
+as "Counter 1". No new `Eco ` event can ever be written.
 
 ### Remote monitoring (cloud), minus the old mistakes
 
@@ -754,7 +760,7 @@ actually shows them.
 | Calibration rides the push like any other reading | One renderer, two serializers. Anything the cloud omits is invisible in the cloud UI - and passwords are still the one thing that never leaves the board. |
 | PIN-gated board-side | Same gate as every mutating verb (`setcloud`/`clearcloud` serial + WS) - the Firebase account is a setting, and changing settings needs the PIN. |
 | Password never leaves the board except inside the TLS tunnel | Not in the snapshot, not in logs, not on the dashboard. The panel shows host + account + MAC + push health only. |
-| Cloud on = eco off | Stated in the UI next to the toggle. A radio that naps cannot push; pretending otherwise would show stale "last push" ages with no explanation. |
+
 | Runs on networkTask, mutex held only for the snapshot | A slow handshake stalls broadcasts for a couple of seconds, never sensing. Classic ESP32 needed `min_spiffs` for this: TLS put it at 103% of the default 1.2 MB app slot; min_spiffs gives 1.9 MB with OTA kept. |
 
 ## B.9 One Command Path, One Gate
@@ -991,7 +997,7 @@ The LED blinks yellow while `isInProgress()` and the dashboard shows
 | Clock re-lend | 10 min | `timeSyncTimer` in the dashboard |
 | ntfy retry | — | gone with ntfy |
 | NVS energy save | ~15 s | `sensorTask` |
-| Eco decision | — | gone with eco mode |
+| Eco decision | — | gone with eco mode (removed 2026-10-19) |
 | Auto-zero | 2 batches per 80 ms cycle, 1 batch total | `AZ_BATCHES_PER_CYCLE` / `AZ_BATCHES` |
 | WiFi connect timeout / retry | — | gone with STA |
 | AP fallback after retries | — | gone with STA |

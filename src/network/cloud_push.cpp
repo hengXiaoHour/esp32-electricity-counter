@@ -171,10 +171,6 @@ void CloudPush::begin(NVSManager *nvsRef) {
   DEBUG_LOG("  [CLOUD] %s\n", enabled_ ? "enabled" : "off (no valid account)");
 }
 
-bool CloudPush::wantsRadio() const {
-  return enabled_ && WiFi.status() == WL_CONNECTED;
-}
-
 uint32_t CloudPush::secondsSincePush() const {
   if (lastOkMs_ == 0) return UINT32_MAX;
   return (millis() - lastOkMs_) / 1000;
@@ -221,7 +217,6 @@ bool CloudPush::snapshot(SystemData *sysData, SemaphoreHandle_t *mutex,
   uint32_t up = sysData->uptime;
   int8_t rssi = sysData->wifiRSSI;
   float mcu = sysData->mcuTempC;
-  bool eco = sysData->ecoMode;
   bool wifi = sysData->wifiConnected;
   bool ap = sysData->apMode;
   char staIp[16] = {0}, apIp[16] = {0};
@@ -326,8 +321,6 @@ bool CloudPush::snapshot(SystemData *sysData, SemaphoreHandle_t *mutex,
   body += ",\"mcu\":";
   if (isnan(mcu)) body += "null";
   else body += String(mcu, 1);
-  body += ",\"eco\":";
-  body += eco ? "true" : "false";
   body += ",\"wifi\":";
   body += wifi ? "true" : "false";
   body += ",\"ap\":";

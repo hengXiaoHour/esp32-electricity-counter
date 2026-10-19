@@ -795,9 +795,7 @@ function check(name, cond, detail) {
   check('the Board row names the reachable address, not a blank',
         /192\.168\.1\.50/.test(await page.locator('#connectedIp').textContent()),
         'board="' + await page.locator('#connectedIp').textContent() + '"');
-  check('eco state renders from the snapshot',
-        /Full|ECO/.test(await page.locator('#ecoStatus').textContent()),
-        'eco="' + await page.locator('#ecoStatus').textContent() + '"');
+  
   // The install UI is CLOUD-ONLY now. The board serves this page over plain
   // http on a LAN IP, which is not a secure context: no browser fires
   // beforeinstallprompt there and none offers "Install" from the address bar,

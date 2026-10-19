@@ -843,12 +843,6 @@ function updateDashboard(data) {
     mcuEl.textContent = (typeof data.mcuTemp === 'number')
       ? data.mcuTemp.toFixed(1) + ' °C (approx)' : '--';
   }
-  const ecoEl = document.getElementById('ecoStatus');
-  if (ecoEl) {
-    ecoEl.textContent = data.eco ? 'ECO — nobody watching' : 'Full';
-    ecoEl.style.color = data.eco ? 'var(--muted, #8a8a8a)' : '';
-  }
-
   // System status LED
   const led = document.getElementById('sysLed');
   if (led) {
@@ -1332,6 +1326,9 @@ function eventTag(ev) {
   // System-wide events are logged with channel 0 (same slot as Counter 1),
   // so rendering them as CH1 claims only Counter 1 was affected — while the
   // Monthly reset actually zeroes all five. Tag those SYS instead.
+  // The 'Eco ' prefix is dead firmware (no eco mode any more) but stays here
+  // on purpose: those events are persisted in the board's NVS ring, so an
+  // upgraded board still shows them in History and would mislabel them CH1.
   const m = String((ev && ev.m) || '');
   if (ev && ev.c === 0 &&
       (m.indexOf('Boot \u2014') === 0 || m.indexOf('Billing') === 0 ||

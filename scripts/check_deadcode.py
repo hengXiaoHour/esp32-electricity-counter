@@ -517,7 +517,7 @@ def main():
     # The cloud updater is gone on purpose: no github download, no staged
     # link, no `ota` console verb, no Check/Update buttons. What must stay
     # is the LAN path (ArduinoOTA begin/handle) plus the progress signal
-    # the LED, eco and the banner read. Each absence below is asserted as
+    # the LED and the banner read. Each absence below is asserted as
     # well as each presence: a re-added cloud layer must fail loudly.
     ota_cpp_s = strip_cpp(read("src/network/ota_handler.cpp"))
     ota_h_s = strip_cpp(read("src/network/ota_handler.h"))
@@ -533,7 +533,7 @@ def main():
              "ArduinoOTA.begin()" in ota_cpp_s),
             ("LAN handler pumps ArduinoOTA",
              "ArduinoOTA.handle()" in ota_cpp_s),
-            ("progress signal kept for LED/eco/banner",
+            ("progress signal kept for LED/banner",
              has("isInProgress", ota_h_s)),
             ("no cloud download loop", "loopCloud" not in ota_cpp_s),
             ("no staged-link validator call",

@@ -90,7 +90,7 @@ const CLOUD_LATEST = {
   rssi: -58,
   v: 231.4,
   mcu: 51.2,
-  eco: false,
+  
   wifi: true,
   ap: false,
   staIp: '192.168.1.50',

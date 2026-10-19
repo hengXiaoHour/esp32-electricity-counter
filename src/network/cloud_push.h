@@ -46,8 +46,7 @@ class LimitManager;
 //
 // Cost, stated honestly: token refresh happens inside the SDK and each
 // push/poll is a short round trip. Broadcasts pause during that window;
-// sensing on Core 1 never notices. Enabling cloud also keeps eco from
-// sleeping (see wantsRadio) - a radio that naps cannot push.
+// sensing on Core 1 never notices.
 class CloudPush {
 public:
   void begin(NVSManager *nvsRef);
@@ -67,9 +66,6 @@ public:
                NVSManager *nvsRef);
 
   bool enabled() const { return enabled_; }
-  // True while cloud needs the radio awake. updateEcoMode() counts this as
-  // watched: cloud on means eco off, stated in the UI so it is not mysterious.
-  bool wantsRadio() const;
   bool lastPushOk() const { return lastOk_; }
   // Seconds since the last 200 OK, or UINT32_MAX when nothing ever landed.
   uint32_t secondsSincePush() const;

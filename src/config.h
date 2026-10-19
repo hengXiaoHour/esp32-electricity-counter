@@ -266,7 +266,6 @@ struct SystemData {
   char apIp[16];
 
   float mcuTempC;    // on-die temperature, °C (NAN when the chip has no sensor)
-  bool ecoMode;      // true while nobody is watching (modem-sleep + quiet radio)
 
   // Remote-monitoring status for the dashboard. No secret here by construction:
   // the token lives only in NVS and inside the TLS tunnel - cloudDev is the

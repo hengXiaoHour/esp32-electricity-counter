@@ -310,9 +310,9 @@ def main():
           "getJSON(" in _poll_b and "s_pollFbdo" in _poll_b and
           "getJSON(" not in strip_comments(cl_cpp).replace(_poll.group(0), ""),
           "a read path outside pollCmd, or a non-SDK read")
-    # Scoped to loop()'s body, not the file: WL_CONNECTED also appears in
-    # wantsRadio(), so a file-wide substring rule passes after the loop's own
-    # gate is deleted (proven by mutation, not by reading).
+    # Scoped to loop()'s body, not the file: a file-wide substring rule would
+    # pass for a gate that lives anywhere else in the translation unit
+    # (proven by mutation, not by reading).
     _loop = re.search(r"void CloudPush::loop\([^)]*\) \{([\s\S]*?)\n\}\n", cl_cpp)
     c.add("pushes are STA-gated (fallback AP has no internet)",
           _loop is not None and "WL_CONNECTED" in _loop.group(1),
@@ -344,9 +344,10 @@ def main():
     c.add("the shape helpers are unit-tested and the suite runs in verify_all",
           "test_cloud_cfg" in verify_sh and "CLOUD_DEVICE_ID_LEN" in cl_test,
           "validation without a runner")
-    c.add("cloud counts as watched, so cloud-on means eco-off",
-          "cloudPush.wantsRadio()" in ino,
-          "eco can nap a radio that must push")
+    c.add("the pusher no longer has to veto a sleeping radio",
+          "wantsRadio" not in strip_comments(cl_cpp) and
+          "wantsRadio" not in strip_comments(cl_h),
+          "an eco-era wantsRadio() came back with no caller")
     # Session hygiene: the SDK owns the ID token internally - no token buffer
     # lives in this code at all, so there is nothing to leak to flash and no
     # hand-rolled refresh to rot. A prefs.putString in the pusher means
@@ -465,32 +466,37 @@ def main():
           "6-Channel" not in ino and "6-Channel" not in rdme and
           "6-Channel" not in arch and "ch1–ch6" not in arch,
           "a 6-channel claim is back")
-    c.add("presence is WebSocket viewers (OTA counts - flashing needs link)",
-          "wsServer.clientCount() > 0 || otaHandler.isInProgress()" in ino)
-    c.add("eco parks the modem only in STA-only mode, never under the AP",
-          re.search(r"if \(!wifiMgr\.apActive\(\)\) \{\s*\n.*WiFi\.setSleep\(true\)",
-                    ino) is not None,
-          "setSleep(true) can hit the fallback AP that must beacon")
-    c.add("a returning viewer restores full power before needing the link",
-          re.search(r"WiFi\.setSleep\(false\)", ino) is not None)
-    c.add("eco state rides the snapshot and the dashboard shows it",
-          '\\"eco\\"' in sysjson and 'getElementById(\'ecoStatus\')' in js)
-    # The live `eco` bit alone leaves no trail: without event-log entries
-    # there is no way to tell afterwards whether the board really slept.
-    # Both transitions must be forensic events (survive reboot, mirrored to
-    # the cloud payload which already carries the last 10 events) and render
-    # as SYS, not CH1.
-    c.add("eco transitions are logged as forensic events (sleep + wake)",
-          "logEcoSleep()" in ino and "logEcoWake()" in ino and
-          "void logEcoSleep();" in lm_h and "void logEcoWake();" in lm_h and
-          "Eco on — radio idling (no viewers)" in lm and
-          "Eco off — viewer back, full power" in lm and
-          "logForensicEvent(0, STATUS_OK, \"Eco on" in lm and
-          "logForensicEvent(0, STATUS_OK, \"Eco off" in lm,
-          "updateEcoMode() changes power with no History trail")
-    c.add("eco events render as SYS, not CH1",
+    # Eco mode is GONE (removed 2026-10-19). The board no longer naps its
+    # modem when nobody is watching: a sleeping radio delays every cloud push,
+    # downlink poll and LAN OTA, and saved little heat. What is left is the
+    # absence, so the rules below assert the absence across every layer a
+    # re-added eco mode would have to touch. A "gone" claim nobody checks is
+    # exactly how a deleted feature comes back.
+    _eco_tokens = [
+        ("esp32-electricity-counter.ino", "updateEcoMode", "ecoActive",
+         "ECO_IDLE_MS", "lastViewerMs"),
+        ("src/config.h", "ecoMode"),
+        ("src/network/system_json.cpp", '\\"eco\\"'),
+        ("src/core/limit_manager.h", "logEcoSleep", "logEcoWake"),
+        ("src/network/cloud_push.h", "wantsRadio"),
+        ("frontend/script.js", "ecoStatus", "data.eco"),
+        ("frontend/index.html", "ecoStatus"),
+        ("cloud-viewer/cloud.js", "d.eco"),
+    ]
+    _eco_left = []
+    for _fn, *_toks in _eco_tokens:
+        _src = strip_comments(read(_fn))
+        _eco_left += ["%s:%s" % (_fn, t) for t in _toks if t in _src]
+    c.add("eco mode is gone from every layer (no token survives)",
+          not _eco_left,
+          "eco residue: %s" % ", ".join(_eco_left))
+    # The one deliberate exception, asserted so it is never "cleaned up" by
+    # mistake: eventTag() still maps the 'Eco ' prefix to SYS. Those events are
+    # persisted in the board's NVS ring, so an upgraded board still renders
+    # them in History and would mislabel them CH1 without this branch.
+    c.add("the legacy 'Eco ' event prefix still renders as SYS",
           "m.indexOf('Eco ') === 0" in js,
-          "eventTag() would claim only Counter 1 slept")
+          "persisted pre-upgrade Eco events would be tagged CH1")
 
     # --- chip temperature rides the snapshot --------------------------------
     c.add("the snapshot carries MCU temperature, null when sensorless",

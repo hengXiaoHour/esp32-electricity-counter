@@ -191,10 +191,6 @@
             <label>MCU:</label>
             <span id="mcuTemp" class="mono conn-txt">--</span>
           </div>
-          <div class="cal-row-single">
-            <label>Power:</label>
-            <span id="ecoStatus" class="mono conn-txt">--</span>
-          </div>
           <div style="margin-top:12px;">
             <button class="btn-outline" onclick="handleDisconnect()">Disconnect</button>
           </div>
@@ -293,7 +289,7 @@
             <button class="btn-sm" id="cloudSaveBtn" onclick="saveCloudSettings()">Save</button>
             <button class="btn-sm" id="cloudForgetBtn" onclick="clearCloudSettings()">Forget</button>
           </div>
-          <div class="hint" id="cloudHint">Signs into your realtime database and pushes a small reading every second, <strong>home WiFi only</strong> (never on the fallback AP). The device path is <strong>/devices/&lt;MAC&gt;/latest</strong> - the Status line shows the MAC. <strong>Save reboots the board.</strong> The password is never shown back, and signing in keeps the radio awake (eco stays off).</div>
+          <div class="hint" id="cloudHint">Signs into your realtime database and pushes a small reading every second, <strong>home WiFi only</strong> (never on the fallback AP). The device path is <strong>/devices/&lt;MAC&gt;/latest</strong> - the Status line shows the MAC. <strong>Save reboots the board.</strong> The password is never shown back, and signing in keeps the radio busy every second.</div>
         </div>
 
         <div class="panel-box admin-only">

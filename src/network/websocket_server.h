@@ -23,8 +23,8 @@ public:
   bool isRunning() const { return started; }
   void loop();
 
-  // Live UI clients on /ws (Local dashboard, AP portal). Zero = nobody
-  // watching over the LAN leg — one input of the eco-mode decision.
+  // Live UI clients on /ws (Local dashboard, AP portal). Reported by the
+  // serial/web console, not by the radio logic.
   size_t clientCount() const;
 
   void broadcastData(const SystemData &data);

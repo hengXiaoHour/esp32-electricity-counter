@@ -82,47 +82,6 @@ static float readMcuTempC() {
 #endif
 }
 
-// Eco mode: nobody is watching the dashboard, so the radio idles.
-// Presence = at least one WebSocket viewer (an OTA in progress also counts -
-// flashing needs a solid link) or an enabled cloud push (a radio that naps
-// cannot push - cloud on means eco off, stated in the UI). After ECO_IDLE_MS
-// with no viewer the board lets the WiFi modem sleep; sensing, limits, NVS
-// and the buzzer are untouched - only the radio quiets down, which is where
-// the heat comes from.
-// The AP never sleeps (it must keep beaconing), so eco only parks the modem
-// in STA-only mode; in fallback-AP mode eco just means "no viewers".
-static bool ecoActive = false;
-static uint32_t lastViewerMs = 0;
-static const uint32_t ECO_IDLE_MS = 60000;
-
-static void updateEcoMode() {
-  bool watched = wsServer.clientCount() > 0 || otaHandler.isInProgress() ||
-                 cloudPush.wantsRadio();
-  if (watched) {
-    lastViewerMs = millis();
-    if (ecoActive) {
-      ecoActive = false;
-      // Full power back BEFORE the viewer needs the link: broadcasts resume on
-      // the next cycle and the modem is already awake.
-      WiFi.setSleep(false);
-      STATUS_LOG("  [ECO] viewer back - full power\n");
-      // History trail (local + cloud event log): the live `eco` bit alone
-      // leaves no proof afterwards that the board ever slept.
-      limitMgr.logEcoWake();
-    }
-    return;
-  }
-  if (!ecoActive && millis() - lastViewerMs > ECO_IDLE_MS) {
-    ecoActive = true;
-    if (!wifiMgr.apActive()) {
-      WiFi.setSleep(true);  // STA-only: modem naps between DTIM beacons
-    }
-    STATUS_LOG("  [ECO] no viewers for %lus - radio idling (sensing unaffected)\n",
-               (unsigned long)(ECO_IDLE_MS / 1000));
-    limitMgr.logEcoSleep();
-  }
-}
-
 static void updateLED() {
   // One meaning in every radio state (STA or fallback AP):
   //   OTA running        -> blink yellow
@@ -190,7 +149,6 @@ static void updateSharedData() {
   }
   systemData.otaInProgress = otaHandler.isInProgress();
   systemData.otaProgress = otaHandler.getProgress();
-  systemData.ecoMode = ecoActive;
   // Cloud status for the dashboard. The token NEVER lands here - only the
   // on/off state, the last-push health, and the MAC device id (which is also
   // the database path, so showing it tells the user where to look).
@@ -253,7 +211,6 @@ void networkTask(void *pvParameters) {
     wifiMgr.loop();
     wsServer.loop();
     otaHandler.loop();
-    updateEcoMode();
     // Second pump for the buzzer state machine (sensorTask pumps it too): the
     // 20ms network tick is what makes the 40ms beep timings land exactly.
     // Safe to call from both tasks - see buzzer.h.
@@ -333,10 +290,10 @@ void networkTask(void *pvParameters) {
       Serial.print("> ");
     }
 
-    // Live `status` / `debug` streams. There is no eco decision left to make
-    // here: the old "sleep the modem when nobody is watching" logic only ever
-    // applied to a STA link, and an access point has to keep beaconing whether
-    // or not anyone is connected. Sensing on Core 1 is unaffected either way.
+    // Live `status` / `debug` streams: a periodic snapshot of the link and the
+    // per-channel watts on serial. Both are opt-in (`status` / `debug`) and
+    // off by default, so a fresh boot stays quiet. Sensing on Core 1 is
+    // unaffected either way.
     {
       static uint32_t lastStatusPrint = 0;
       static uint32_t lastDebugPrint = 0;

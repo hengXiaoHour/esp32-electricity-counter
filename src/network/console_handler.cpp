@@ -91,7 +91,7 @@ void ConsoleHandler::exec(const String &line, String &out) {
   if (cmd.length() == 0) return;
 
   if (cmd == "status") {
-    // Toggle the live status stream (eco sleep, viewers, bridge, rollover…).
+    // Toggle the live status stream (viewers, bridge, rollover…).
     // Prints a snapshot when switching ON so one command does both jobs.
     g_statusStream = !g_statusStream;
     consoleAppendf(out, "  Status stream %s", g_statusStream ? "ON" : "OFF");

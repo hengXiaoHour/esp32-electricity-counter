@@ -146,7 +146,6 @@ function cl_adapt(latest, mac) {
   d.azProgress = (typeof latest.azProgress === 'number') ? latest.azProgress : 0;
   d.azQueue = cl_toArray(latest.azQueue) || [];
   d.mcuTemp = (latest.mcu === undefined || latest.mcu === null) ? null : latest.mcu;
-  d.eco = !!latest.eco;
   d.firmwareVersion = latest.fw;
   d.chip = (typeof latest.chip === 'string') ? latest.chip : undefined;
   d.ota = (latest.otaRun === true);

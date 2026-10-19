@@ -14,7 +14,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="style.css?v=0a888a3f">
+<link rel="stylesheet" href="style.css?v=ea77c89a">
 <script>
 // The board is always on location.host, so there is no session to restore and
 // nothing to decide before the first paint. This only hides the connect panel
@@ -199,10 +199,6 @@
           <div class="cal-row-single">
             <label>MCU:</label>
             <span id="mcuTemp" class="mono conn-txt">--</span>
-          </div>
-          <div class="cal-row-single">
-            <label>Power:</label>
-            <span id="ecoStatus" class="mono conn-txt">--</span>
           </div>
           <div style="margin-top:12px;">
             <button class="btn-outline" onclick="handleDisconnect()">Disconnect</button>
@@ -430,9 +426,9 @@
   </div>
 </div>
 
-<script src="script.js?v=0a888a3f"></script>
-<script src="cloud.js?v=0a888a3f"></script>
-<script src="install.js?v=0a888a3f"></script>
+<script src="script.js?v=ea77c89a"></script>
+<script src="cloud.js?v=ea77c89a"></script>
+<script src="install.js?v=ea77c89a"></script>
 <script>
 if ('serviceWorker' in navigator && window.isSecureContext) {
   window.addEventListener('load', function () {

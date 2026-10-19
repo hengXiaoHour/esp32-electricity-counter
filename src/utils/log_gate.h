@@ -6,8 +6,8 @@
 // (serial or web console — shared engine). Both default to OFF so a fresh
 // boot prints only the WiFi/server block.
 //
-// STATUS_LOG: operational transitions worth watching live — eco sleep,
-// cloud push health, rollover, auto-zero.
+// STATUS_LOG: operational transitions worth watching live — cloud push
+// health, rollover, auto-zero.
 // DEBUG_LOG: developer diagnostics — NVS save confirmations, [CMD] traces,
 // push refusal lines, boot calibration dumps.
 extern bool g_statusStream;
