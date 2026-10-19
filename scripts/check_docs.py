@@ -733,10 +733,12 @@ def main():
     c.add("ARCHITECTURE quotes the deadband/persistence constants and numbers",
           all(k in arch for k in ["NO_LOAD_CURRENT_A", "NO_LOAD_POWER_W",
                                   "PF_MIN_VA", "AUTO_RECOVER_PF",
-                                  "PF_RING_STABLE_CYCLES", "ENERGY_MIN_PF"]) and
+                                  "PF_RING_STABLE_CYCLES", "ENERGY_MIN_PF",
+                                  "ENERGY_PF_STABLE_CYCLES"]) and
           "`AUTO_RECOVER_PF` (0.2)" in arch and
           "`PF_RING_STABLE_CYCLES` (19)" in arch and
-          "`ENERGY_MIN_PF` (0.1)" in arch)
+          "`ENERGY_MIN_PF` (0.1)" in arch and
+          "`ENERGY_PF_STABLE_CYCLES` (13)" in arch)
 
     # --- firmware version / size ---------------------------------------
     m = re.search(r'#define FIRMWARE_VERSION "([^"]+)"', cfg)
