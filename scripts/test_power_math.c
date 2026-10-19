@@ -442,9 +442,10 @@ int main(void) {
     check(pf < ENERGY_MIN_PF,
           "its PF really sits under the 0.1 line (test has teeth)");
     double kwhOld = 0.0, kwhNew = 0.0;
+    int stable = 0;
     for (int c = 0; c < 45000; c++) {          /* 45000 x 80 ms = one hour */
       kwhOld += gatedP * (0.08 / 3600.0) / 1000.0;  /* pre-gate: counted */
-      kwhNew += energyNow(gatedP, pf, 0.08);        /* post-gate: refused */
+      kwhNew += energyNow(gatedP, pf, 0.08, &stable);  /* post-gate: refused */
     }
     printf("     one hour: old maths %.4f kWh (%.1f/month) | gated %.4f kWh\n",
            kwhOld, kwhOld * 720.0, kwhNew);
@@ -461,18 +462,27 @@ int main(void) {
     double s, pf;
     double gatedP = gateLoad(rawI, rawP, 230.0, &s, &pf);
     double kwhReal = 0.0;
-    for (int c = 0; c < 45000; c++) kwhReal += energyNow(gatedP, pf, 0.08);
+    int stable = 0;
+    for (int c = 0; c < 45000; c++) kwhReal += energyNow(gatedP, pf, 0.08, &stable);
     printf("     1.00 A resistive -> P %.1f W PF %.3f -> %.4f kWh in one hour\n",
            gatedP, pf, kwhReal);
     check(gatedP > 0.0 && pf > 0.5,
           "a real load passes the deadband and the PF gate");
-    near(kwhReal, gatedP / 1000.0, 0.001, "one hour of real load counts P x 1 h");
+    /* The dwell costs exactly the first ENERGY_PF_STABLE_CYCLES cycles of a
+     * load's run, and nothing after that. Asserted as an exact subtraction
+     * rather than a loose tolerance, because "the dwell is ~1 s" drifting to
+     * "~1 s per cycle" is exactly the bug this locks down. */
+    double dwellCost = gatedP * (ENERGY_PF_STABLE_CYCLES * 0.08 / 3600.0) / 1000.0;
+    near(kwhReal + dwellCost, gatedP / 1000.0, 1e-9,
+         "one hour of real load counts P x 1 h, less the one-off dwell");
   }
 
-  /* Boundary: the rule is ABOVE 0.1 — 0.10 is out, 0.11 is in. */
-  check(energyNow(100.0, 0.10, 0.08) == 0.0, "PF exactly 0.10 does not count");
-  check(energyNow(100.0, 0.11, 0.08) > 0.0, "PF 0.11 counts");
-  check(energyNow(100.0, 0.0, 0.08) == 0.0,
+  /* Boundary on the THRESHOLD: the rule is ABOVE 0.1 — 0.10 is out, 0.11 is in.
+   * These are about lock 1 only, so they use the no-dwell variant; the dwell's
+   * own boundary is pinned in §10. */
+  check(energyNowNoDwell(100.0, 0.10, 0.08) == 0.0, "PF exactly 0.10 does not count");
+  check(energyNowNoDwell(100.0, 0.11, 0.08) > 0.0, "PF 0.11 counts");
+  check(energyNowNoDwell(100.0, 0.0, 0.08) == 0.0,
         "PF 0 (deadband-blanked channel) does not count either");
 
   printf("\n%d checks, %d failures\n", checks, failures);
