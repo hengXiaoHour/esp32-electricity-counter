@@ -155,19 +155,45 @@ python3 - "$WORK/test.c" <<'PY'
 import sys
 p = sys.argv[1]
 s = open(p).read()
-old = """static double energyNow(double P, double pf, double dtS) {
-  if (pf <= ENERGY_MIN_PF) return 0.0;
+old = """static double energyNow(double P, double pf, double dtS, int *stable) {
+  if (pf <= ENERGY_MIN_PF) {
+    *stable = 0;
+    return 0.0;
+  }"""
+new = """static double energyNow(double P, double pf, double dtS, int *stable) {
+  (void)pf; (void)stable;  /* MUTANT: energy PF gate deleted */
   return P * (dtS / 3600.0) / 1000.0;
-}"""
-new = """static double energyNow(double P, double pf, double dtS) {
-  (void)pf;  /* MUTANT: energy PF gate deleted */
-  return P * (dtS / 3600.0) / 1000.0;
-}"""
+  if (0) {"""
 assert old in s, "N5 anchor not found"
 open(p,'w').write(s.replace(old, new))
 print("    mutant written")
 PY
 run_case N5 "noise current with PF ~0.05 keeps adding kWh"
+
+echo
+echo "=============================================================="
+echo "  N6: delete the energy DWELL (threshold only, no persistence)"
+echo "=============================================================="
+# This is the defect the dwell was added for, and the one the §9 threshold
+# case structurally CANNOT catch: §9's noise sits below 0.1 forever, so
+# deleting the dwell leaves it looking perfectly gated and the suite stays
+# green. Only the §10 burst case - PF alternating above and below the line -
+# sees it. A control that passes on the mutant it is meant to catch is worse
+# than no control, so N6 must FAIL here.
+python3 - "$WORK/test.c" <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+old = """  if (*stable < ENERGY_PF_STABLE_CYCLES) {
+    (*stable)++;
+    return 0.0;
+  }
+"""
+assert old in s, "N6 anchor not found"
+open(p,'w').write(s.replace(old, "  /* MUTANT: dwell deleted */\n"))
+print("    mutant written")
+PY
+run_case N6 "a bursting PF bills kWh again with no dwell to hold it"
 
 echo
 echo "=============================================================="
